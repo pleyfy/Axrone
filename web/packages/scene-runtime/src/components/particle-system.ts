@@ -222,7 +222,7 @@ export interface ParticleRenderData {
  *     startSpeed: 3.2,
  *     shapeType: 'cone',
  * });
- * actor.addComponent(ParticleSystem, particles);
+ * entity.addComponent(ParticleSystem, particles);
  * particles.play();
  * ```
  */
@@ -1043,7 +1043,7 @@ export class ParticleSystem extends Component {
                 this.enabled = false;
                 break;
             case 'destroy':
-                this.actor?.destroy();
+                this.entity?.destroy();
                 break;
             case 'callback':
                 (
@@ -1053,7 +1053,7 @@ export class ParticleSystem extends Component {
                           }
                         | undefined
                 )?.emitSync?.('particle:stopped', {
-                    actorId: this.actor?.id,
+                    entityUid: this.entity?.id,
                     entity: this.entity,
                 });
                 break;

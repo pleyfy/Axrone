@@ -352,7 +352,7 @@ void main() {
 	registerSolidMaterial('playground/solar/sun-fill', SOLAR_SUN_COLOR, 'fill');
 	registerSolidMaterial('playground/solar/sun-wire', SOLAR_SUN_WIREFRAME_COLOR, 'line');
 
-	const camera = scene.createCameraActor(
+	const camera = scene.createCameraEntity(
 		{ name: 'SolarCamera' },
 		{ primary: true, fieldOfView: 55, near: 0.1, far: 800 },
 	);
@@ -382,7 +382,7 @@ void main() {
 	const axes = createAxesOverlay(scene, shaders.solid, { prefix: 'playground/solar', length: 5 });
 	axes.setVisible(false);
 
-	const sun = scene.createRenderableActor(
+	const sun = scene.createRenderableEntity(
 		{ name: 'SolarSun' },
 		{ meshId: SOLAR_SPHERE_MESH_ID, materialId: 'playground/solar/sun-fill', receiveLighting: false },
 	);
@@ -393,21 +393,21 @@ void main() {
 		throw new Error('Solar system sun renderer was not created correctly.');
 	}
 
-	const sunLight = scene.createActor({ name: 'SolarSunLight' });
+	const sunLight = scene.createEntity({ name: 'SolarSunLight' });
 	sunLight.addComponent(PointLight, {
 		color: SOLAR_LIGHT_COLOR,
 		intensity: SOLAR_LIGHT_INTENSITY,
 		range: SOLAR_LIGHT_RANGE,
 	});
 
-	const fillLight = scene.createActor({ name: 'SolarFillLight' });
+	const fillLight = scene.createEntity({ name: 'SolarFillLight' });
 	fillLight.requireComponent(Transform).position = new Vec3(34, 42, 46);
 	fillLight.addComponent(PointLight, {
 		color: [0.55, 0.68, 1],
 		intensity: 0.5,
 		range: 220,
 	});
-	const rimLight = scene.createActor({ name: 'SolarRimLight' });
+	const rimLight = scene.createEntity({ name: 'SolarRimLight' });
 	rimLight.requireComponent(Transform).position = new Vec3(-52, 26, -38);
 	rimLight.addComponent(PointLight, {
 		color: [0.45, 0.52, 0.85],
@@ -452,24 +452,24 @@ void main() {
 		});
 		registerSolidMaterial(orbitWireMaterialId, [0.6, 0.72, 0.92, 1], 'line', { doubleSided: true });
 
-		const orbitActor = scene.createRenderableActor(
+		const orbitEntity = scene.createRenderableEntity(
 			{ name: `${planet.label}OrbitRing` },
 			{ meshId: orbitMeshId, materialId: orbitFillMaterialId, receiveLighting: false },
 		);
-		const orbitTransform = orbitActor.requireComponent(Transform);
+		const orbitTransform = orbitEntity.requireComponent(Transform);
 		orbitTransform.position = new Vec3(0, 0.03, 0);
 
-		const planetActor = scene.createRenderableActor(
+		const planetEntity = scene.createRenderableEntity(
 			{ name: planet.label },
 			{ meshId: SOLAR_SPHERE_MESH_ID, materialId: fillMaterialId, receiveLighting: true },
 		);
-		const planetTransform = planetActor.requireComponent(Transform);
+		const planetTransform = planetEntity.requireComponent(Transform);
 		planetTransform.scale = new Vec3(planet.radius, planet.radius, planet.radius);
 
-		const planetRenderer = planetActor.getComponent(MeshRenderer);
-		const orbitRenderer = orbitActor.getComponent(MeshRenderer);
+		const planetRenderer = planetEntity.getComponent(MeshRenderer);
+		const orbitRenderer = orbitEntity.getComponent(MeshRenderer);
 		if (!planetRenderer || !orbitRenderer) {
-			throw new Error(`Solar system actor setup failed for ${planet.label}.`);
+			throw new Error(`Solar system entity setup failed for ${planet.label}.`);
 		}
 
 		let moonTransform: Transform | undefined;
@@ -488,13 +488,13 @@ void main() {
 				{ color: [0.9, 0.88, 0.82], strength: 0.12 },
 			);
 			registerSolidMaterial(moonWireMaterialId, [0.72, 0.7, 0.64, 1], 'line');
-			const moonActor = scene.createRenderableActor(
+			const moonEntity = scene.createRenderableEntity(
 				{ name: `${planet.label}Moon` },
 				{ meshId: SOLAR_SPHERE_MESH_ID, materialId: moonFillMaterialId, receiveLighting: true },
 			);
-			moonTransform = moonActor.requireComponent(Transform);
+			moonTransform = moonEntity.requireComponent(Transform);
 			moonTransform.scale = new Vec3(planet.moon.radius, planet.moon.radius, planet.moon.radius);
-			moonRenderer = moonActor.getComponent(MeshRenderer) ?? undefined;
+			moonRenderer = moonEntity.getComponent(MeshRenderer) ?? undefined;
 		}
 
 		let saturnRingTransform: Transform | undefined;
@@ -511,7 +511,7 @@ void main() {
 			});
 			registerSolidMaterial(saturnRingWireMaterialId, [0.9, 0.83, 0.63, 1], 'line', { doubleSided: true });
 
-			const saturnRing = scene.createRenderableActor(
+			const saturnRing = scene.createRenderableEntity(
 				{ name: `${planet.label}Ring` },
 				{ meshId: SOLAR_SATURN_RING_MESH_ID, materialId: saturnRingFillMaterialId, receiveLighting: false },
 			);
@@ -543,7 +543,7 @@ void main() {
 		{ id: 'playground/solar/stars-faint', count: 900, size: 2.8, opacity: 0.75 },
 		{ id: 'playground/solar/stars-bright', count: 120, size: 4.6, opacity: 1 },
 	];
-	const starfieldActors: ReturnType<typeof scene.createRenderableActor>[] = [];
+	const starfieldEntities: ReturnType<typeof scene.createRenderableEntity>[] = [];
 	for (const layer of starfieldMeshes) {
 		scene.registerMesh(createStarfieldMesh(layer.id, layer.count));
 		const materialId = `${layer.id}-material`;
@@ -557,11 +557,11 @@ void main() {
 			surface: { alphaMode: 'blend' },
 			passes: [createAdditivePass(`${layer.id}-pass`, 'point-list')],
 		});
-		const actor = scene.createRenderableActor(
-			{ name: `${layer.id}-actor` },
+		const entity = scene.createRenderableEntity(
+			{ name: `${layer.id}-entity` },
 			{ meshId: layer.id, materialId, receiveLighting: false },
 		);
-		starfieldActors.push(actor);
+		starfieldEntities.push(entity);
 	}
 
 	console.log(`Solar system: ${planetRuntimes.length} planets`);
@@ -575,8 +575,8 @@ void main() {
 		if (playing) {
 			elapsed += deltaSeconds;
 			sunTransform.rotation = Quat.fromEuler(0, elapsed * 0.12, 0);
-			for (const starfieldActor of starfieldActors) {
-				starfieldActor.requireComponent(Transform).rotation = Quat.fromEuler(0, elapsed * 0.0035, 0);
+			for (const starfieldEntity of starfieldEntities) {
+				starfieldEntity.requireComponent(Transform).rotation = Quat.fromEuler(0, elapsed * 0.0035, 0);
 			}
 
 			for (const runtime of planetRuntimes) {

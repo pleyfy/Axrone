@@ -79,7 +79,7 @@ describe('Scene runtime profile manifests', () => {
         expect('Animator' in registry).toBe(false);
     });
 
-    it('fails fast with a capability error when 3d actor helpers are used in a core profile', async () => {
+    it('fails fast with a capability error when 3d entity helpers are used in a core profile', async () => {
         installWebGL2Constants();
         const { Scene } = await import('@axrone/scene-3d');
         const scheduler = new ManualScheduler();
@@ -110,9 +110,9 @@ describe('Scene runtime profile manifests', () => {
         });
 
         try {
-            expect(() => scene.createCameraActor({ name: 'Camera' })).toThrow(SceneCapabilityError);
+            expect(() => scene.createCameraEntity({ name: 'Camera' })).toThrow(SceneCapabilityError);
             expect(() =>
-                scene.createRenderableActor(
+                scene.createRenderableEntity(
                     { name: 'Mesh' },
                     { meshId: 'mesh', materialId: 'material' }
                 )

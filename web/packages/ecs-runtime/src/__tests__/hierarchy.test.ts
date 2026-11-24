@@ -5,17 +5,18 @@ import { Hierarchy } from '../component-system/components/hierarchy';
  * Helper: assign a fake entity id to a Hierarchy instance so that
  * _linkChild / _unlinkChild guards pass (they check `child.entity`).
  */
-const assignEntity = (h: Hierarchy, entity: number): void => {
-    (h as any).entity = entity;
+const assignEntity = (h: Hierarchy, entityId: number): void => {
+    (h as any).entityId = entityId;
 };
 
-/** Helper: assign fake actor/world so _emitHierarchyChanged can fire. */
-const assignActorContext = (
+/** Helper: assign fake entity/world so _emitHierarchyChanged can fire. */
+const assignEntityContext = (
     h: Hierarchy,
-    actor: any,
+    entity: any,
     world: any
 ): void => {
-    (h as any).actor = actor;
+    (h as any).entityId = (h as any).entityId ?? 1;
+    (h as any).entity = entity;
     (h as any).world = world;
 };
 
@@ -230,38 +231,38 @@ describe('Hierarchy', () => {
         });
     });
 
-    // ─── childActors lazy cache ─────────────────────────────────────
+    // ─── childEntities lazy cache ─────────────────────────────────────
 
-    describe('childActors lazy cache', () => {
-        it('returns empty array when children have no actors', () => {
+    describe('childEntities lazy cache', () => {
+        it('returns empty array when children have no entities', () => {
             childA.setParent(root);
-            expect(root.childActors).toEqual([]);
+            expect(root.childEntities).toEqual([]);
         });
 
-        it('collects actors from children', () => {
-            const mockActor = { id: 'actor-a' } as any;
-            (childA as any).actor = mockActor;
+        it('collects entities from children', () => {
+            const mockEntity = { id: 'entity-a' } as any;
+            (childA as any).entity = mockEntity;
 
             childA.setParent(root);
-            const actors = root.childActors;
+            const entities = root.childEntities;
 
-            expect(actors).toContain(mockActor);
+            expect(entities).toContain(mockEntity);
         });
 
         it('rebuilds when version changes', () => {
             childA.setParent(root);
-            const first = root.childActors;
+            const first = root.childEntities;
             expect(first).toHaveLength(0);
 
-            // Adding a child with an actor should cause rebuild
-            const mockActor = { id: 'actor-b' } as any;
-            (childB as any).actor = mockActor;
+            // Adding a child with an entity should cause rebuild
+            const mockEntity = { id: 'entity-b' } as any;
+            (childB as any).entity = mockEntity;
             childB.setParent(root);
 
-            const second = root.childActors;
+            const second = root.childEntities;
             // Same array reference, mutated in-place
             expect(second).toHaveLength(1);
-            expect(second).toContain(mockActor);
+            expect(second).toContain(mockEntity);
         });
     });
 
@@ -284,19 +285,19 @@ describe('Hierarchy', () => {
         });
     });
 
-    // ─── parentActor ────────────────────────────────────────────────
+    // ─── parentEntity ────────────────────────────────────────────────
 
-    describe('parentActor', () => {
+    describe('parentEntity', () => {
         it('returns undefined when no parent', () => {
-            expect(root.parentActor).toBeUndefined();
+            expect(root.parentEntity).toBeUndefined();
         });
 
-        it('returns parent actor when parent has one', () => {
-            const mockActor = { id: 'parent-actor' } as any;
-            (root as any).actor = mockActor;
+        it('returns parent entity when parent has one', () => {
+            const mockEntity = { id: 'parent-entity' } as any;
+            (root as any).entity = mockEntity;
 
             childA.setParent(root);
-            expect(childA.parentActor).toBe(mockActor);
+            expect(childA.parentEntity).toBe(mockEntity);
         });
     });
 
@@ -390,32 +391,32 @@ describe('Hierarchy', () => {
 
     describe('_emitHierarchyChanged', () => {
         it('skips when world is not set', () => {
-            // No world/actor/entity set, should not throw
+            // No world/entity/entity set, should not throw
             expect(() => childA.setParent(root)).not.toThrow();
         });
 
         it('emits TransformHierarchyChanged when context is available', () => {
             const mockWorld = { emitSync: vi.fn(), registry: {} };
-            const mockActor = { id: 'test-actor', getComponent: () => undefined };
+            const mockEntity = { id: 'test-entity', getComponent: () => undefined };
 
-            assignActorContext(childA, mockActor, mockWorld);
+            assignEntityContext(childA, mockEntity, mockWorld);
 
             childA.setParent(root);
 
             expect(mockWorld.emitSync).toHaveBeenCalledWith(
                 'TransformHierarchyChanged',
                 expect.objectContaining({
-                    entity: childA.entity,
-                    actor: mockActor,
+                    entityId: childA.entityId,
+                    entity: mockEntity,
                 })
             );
         });
 
         it('uses self as component fallback when no Transform', () => {
             const mockWorld = { emitSync: vi.fn(), registry: {} };
-            const mockActor = { id: 'test-actor', getComponent: () => undefined };
+            const mockEntity = { id: 'test-entity', getComponent: () => undefined };
 
-            assignActorContext(childA, mockActor, mockWorld);
+            assignEntityContext(childA, mockEntity, mockWorld);
 
             childA.setParent(root);
 
@@ -430,14 +431,14 @@ describe('Hierarchy', () => {
     describe('_markSpatialTreeDirty', () => {
         it('calls markHierarchyDirty on transform when available', () => {
             const mockTransform = { markHierarchyDirty: vi.fn() };
-            const mockActor = {
-                id: 'child-actor',
+            const mockEntity = {
+                id: 'child-entity',
                 getComponent: () => mockTransform,
             };
             const mockWorld = { emitSync: vi.fn(), registry: { Transform: class {} } };
 
             // _markSpatialTreeDirty is called on `this` (the hierarchy calling setParent)
-            assignActorContext(childA, mockActor, mockWorld);
+            assignEntityContext(childA, mockEntity, mockWorld);
 
             childA.setParent(root);
 
@@ -446,13 +447,13 @@ describe('Hierarchy', () => {
 
         it('does not throw when transform has no markHierarchyDirty', () => {
             const mockTransform = {}; // no markHierarchyDirty
-            const mockActor = {
-                id: 'test-actor',
+            const mockEntity = {
+                id: 'test-entity',
                 getComponent: () => mockTransform,
             };
             const mockWorld = { emitSync: vi.fn(), registry: { Transform: class {} } };
 
-            assignActorContext(root, mockActor, mockWorld);
+            assignEntityContext(root, mockEntity, mockWorld);
 
             expect(() => childA.setParent(root)).not.toThrow();
         });

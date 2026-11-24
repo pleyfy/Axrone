@@ -138,8 +138,8 @@ const sceneRemoteGltfExample: SceneExample = {
                 }
             );
 
-            for (const actor of load.actors) {
-                const importedCamera = actor.getComponent(Camera);
+            for (const entity of load.entities) {
+                const importedCamera = entity.getComponent(Camera);
                 if (importedCamera) {
                     importedCamera.primary = false;
                 }
@@ -154,9 +154,9 @@ const sceneRemoteGltfExample: SceneExample = {
                 let maxZ = Number.NEGATIVE_INFINITY;
                 let found = false;
 
-                for (const actor of load.actors) {
-                    const renderer = actor.getComponent(MeshRenderer);
-                    const transform = actor.getComponent(Transform);
+                for (const entity of load.entities) {
+                    const renderer = entity.getComponent(MeshRenderer);
+                    const transform = entity.getComponent(Transform);
                     if (!renderer?.meshId || !transform) {
                         continue;
                     }
@@ -221,7 +221,7 @@ const sceneRemoteGltfExample: SceneExample = {
             const near = Math.max(0.1, radius * 0.02);
             const far = Math.max(1000, distance + radius * 8);
 
-            const camera = scene.createCameraActor(
+            const camera = scene.createCameraEntity(
                 { name: 'RemoteCamera' },
                 { primary: true, fieldOfView, near, far }
             );
@@ -235,7 +235,7 @@ const sceneRemoteGltfExample: SceneExample = {
                 autoRotateSpeed: 0.06,
             });
 
-            const sun = scene.createActor({ name: 'RemoteSun' });
+            const sun = scene.createEntity({ name: 'RemoteSun' });
             sun.addComponent(DirectionalLight, {
                 color: [1, 0.97, 0.92],
                 intensity: 1.2,
@@ -250,7 +250,7 @@ const sceneRemoteGltfExample: SceneExample = {
             const suffix = diagnostics.length > 0 ? `\n${diagnostics}` : '\nNo importer warnings.';
 
             overlay.setStatus(
-                `Loaded ${load.actors.length} actors from remote GLB.\nYou can feed Axrone a direct internet .glb URL as long as the host allows CORS.${suffix}`,
+                `Loaded ${load.entities.length} entities from remote GLB.\nYou can feed Axrone a direct internet .glb URL as long as the host allows CORS.${suffix}`,
                 '#e2e8f0'
             );
         } catch (error) {

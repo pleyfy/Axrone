@@ -1,5 +1,5 @@
 import { Vec4 } from '@axrone/numeric';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { EntityId } from '@axrone/ecs-runtime';
 import { SceneSnapshotLoader } from './scene-snapshot-loader';
 import type {
     ScenePrefabDefinition,
@@ -9,13 +9,13 @@ import type {
     SceneSnapshotLoadOptions,
 } from './types';
 
-export interface SceneSnapshotActorHost {
-    createPrefab(id: string, actors?: readonly Actor[]): ScenePrefabDefinition;
+export interface SceneSnapshotEntityHost {
+    createPrefab(id: string, entities?: readonly EntityId[]): ScenePrefabDefinition;
     instantiatePrefab(
         prefab: ScenePrefabDefinition,
         options?: ScenePrefabInstantiateOptions
-    ): readonly Actor[];
-    destroyAllActors(): void;
+    ): readonly EntityId[];
+    destroyAllEntities(): void;
 }
 
 export interface SceneSnapshotAssetHost {
@@ -34,7 +34,7 @@ export interface SceneSnapshotRuntimeOptions {
     readonly sceneId: string;
     readonly defaultRenderPassId: string;
     readonly defaultClearColor: Vec4;
-    readonly actors: SceneSnapshotActorHost;
+    readonly entities: SceneSnapshotEntityHost;
     readonly assets: SceneSnapshotAssetHost;
 }
 
@@ -46,7 +46,7 @@ export class SceneSnapshotRuntime {
             defaultRenderPassId: _options.defaultRenderPassId,
             defaultClearColor: _options.defaultClearColor,
             clearExisting: () => {
-                _options.actors.destroyAllActors();
+                _options.entities.destroyAllEntities();
                 _options.assets.clear();
             },
             clearRenderPasses: () => {
@@ -71,7 +71,7 @@ export class SceneSnapshotRuntime {
                 _options.assets.createMaterial(material);
             },
             instantiatePrefab: (prefab, options) =>
-                _options.actors.instantiatePrefab(prefab, options),
+                _options.entities.instantiatePrefab(prefab, options),
         });
     }
 
@@ -94,15 +94,15 @@ export class SceneSnapshotRuntime {
         }
     }
 
-    createPrefab(id: string, actors?: readonly Actor[]): ScenePrefabDefinition {
-        return this._options.actors.createPrefab(id, actors);
+    createPrefab(id: string, entities?: readonly EntityId[]): ScenePrefabDefinition {
+        return this._options.entities.createPrefab(id, entities);
     }
 
     instantiatePrefab(
         prefab: ScenePrefabDefinition,
         options: ScenePrefabInstantiateOptions = {}
-    ): readonly Actor[] {
-        return this._options.actors.instantiatePrefab(prefab, options);
+    ): readonly EntityId[] {
+        return this._options.entities.instantiatePrefab(prefab, options);
     }
 
     serializeScene(): SceneSnapshot {
@@ -116,7 +116,7 @@ export class SceneSnapshotRuntime {
     async loadScene(
         snapshot: SceneSnapshot,
         options: SceneSnapshotLoadOptions = {}
-    ): Promise<readonly Actor[]> {
+    ): Promise<readonly EntityId[]> {
         return await this._loader.load(snapshot, options);
     }
 }

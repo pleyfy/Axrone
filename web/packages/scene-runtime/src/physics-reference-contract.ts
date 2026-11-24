@@ -100,7 +100,7 @@ export function isRigidbodyLike(value: unknown): boolean {
 /**
  * True for the flat/planar rigidbody, false for the spatial one.
  *
- * The mixed scene profile runs both physics worlds, so a single actor can carry
+ * The mixed scene profile runs both physics worlds, so a single entity can carry
  * a `Rigidbody2D` and a `Rigidbody3D`; a reference resolver that ignores the
  * dimension can link a 2D joint to a 3D body. The markers are the only members
  * each package declares exclusively for its dimension.
@@ -231,7 +231,7 @@ export function readResolvedJointReference(gear: unknown, end: 'jointA' | 'joint
  *
  * `resolveConnectedBodyRef(null)` clears the pending reference on builds that
  * have it, so callers must only use it for a body that was actually found; a
- * dangling id may describe an actor that a later prefab instance will create.
+ * dangling id may describe an entity that a later prefab instance will create.
  */
 export function applyBodyReference(joint: unknown, body: unknown): void {
     const contract = joint as BodyRefContract;

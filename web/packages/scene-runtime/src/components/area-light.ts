@@ -46,7 +46,7 @@ const normalizeShape = (value: unknown): AreaLightShape =>
  *     height: 2,
  *     shape: 'rectangle',
  * });
- * actor.addComponent(AreaLight, light);
+ * entity.addComponent(AreaLight, light);
  * ```
  */
 @script({

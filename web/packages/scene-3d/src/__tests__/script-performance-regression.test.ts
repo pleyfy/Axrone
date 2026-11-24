@@ -52,11 +52,11 @@ describe('Script Performance Regression', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
             targetTransform.position = new Vec3(5, 0, 0);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(FollowCameraController, {
                 distance: 6,
                 azimuth: 0,
@@ -93,10 +93,10 @@ describe('Script Performance Regression', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const target = scene.createActor({ name: 'MovingTarget' });
+            const target = scene.createEntity({ name: 'MovingTarget' });
             const targetTransform = target.requireComponent(Transform);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(FollowCameraController, {
                 distance: 8,
                 azimuth: 0.5,
@@ -134,11 +134,11 @@ describe('Script Performance Regression', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
             targetTransform.position = new Vec3(0, 0, 0);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(FollowCameraController, {
                 distance: 7,
                 azimuth: 0,
@@ -176,7 +176,7 @@ describe('Script Performance Regression', () => {
             // Warm-up cycle
             {
                 const s = new Scene(createSceneOptions(scheduler, canvas));
-                const t = s.createActor({ name: 'Warmup' });
+                const t = s.createEntity({ name: 'Warmup' });
                 s.start(0);
                 runFrames(scheduler, 20, 0);
                 s.stop();
@@ -186,10 +186,10 @@ describe('Script Performance Regression', () => {
             const samples: number[] = [];
             for (let cycle = 0; cycle < 10; cycle++) {
                 const scene = new Scene(createSceneOptions(scheduler, canvas));
-                const target = scene.createActor({ name: 'Target' });
+                const target = scene.createEntity({ name: 'Target' });
                 const targetTransform = target.requireComponent(Transform);
 
-                const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+                const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
                 const controller = camera.addComponent(FollowCameraController, {
                     distance: 5,
                 });
@@ -255,9 +255,9 @@ describe('Script Performance Regression', () => {
                     materials: [{ id: 'default-mat', shaderId: 'test/solid' }],
                     prefab: {
                         id: 'root-prefab',
-                        actors: [
+                        entities: [
                             {
-                                name: 'TestActor',
+                                name: 'TestEntity',
                                 layer: 0,
                                 tag: 'Default',
                                 active: true,
@@ -297,11 +297,11 @@ describe('Script Performance Regression', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
             targetTransform.position = new Vec3(3, 0, 0);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(FollowCameraController, {
                 distance: 6,
                 azimuth: 0,
@@ -334,10 +334,10 @@ describe('Script Performance Regression', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(FollowCameraController, {
                 distance: 10,
                 positionDamping: 5,
@@ -379,11 +379,11 @@ describe('Script Performance Regression', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
             targetTransform.position = new Vec3(2, 0, 0);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(FollowCameraController, {
                 distance: 6,
             });
@@ -415,10 +415,10 @@ describe('Script Performance Regression', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(FollowCameraController, {
                 distance: 6,
             });
@@ -447,10 +447,10 @@ describe('Script Performance Regression', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(FollowCameraController, {
                 distance: 6,
             });
@@ -643,10 +643,10 @@ describe('Script Performance Regression', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(FollowCameraController, {
                 distance: 6,
             });
@@ -679,7 +679,7 @@ describe('Script Performance Regression', () => {
             scene.dispose();
         });
 
-        it('heap does not grow unboundedly after repeated actor creation and disposal', () => {
+        it('heap does not grow unboundedly after repeated entity creation and disposal', () => {
             if (typeof process === 'undefined' || typeof process.memoryUsage !== 'function') {
                 return;
             }
@@ -691,14 +691,14 @@ describe('Script Performance Regression', () => {
             // Warm-up
             runFrames(scheduler, 100, 0);
 
-            // Sample heap across 5 rounds of actor churn
+            // Sample heap across 5 rounds of entity churn
             const samples: number[] = [];
             for (let round = 0; round < 5; round++) {
                 for (let i = 0; i < 20; i++) {
-                    const actor = scene.createActor({ name: `Temp_${round}_${i}` });
-                    const transform = actor.requireComponent(Transform);
+                    const entity = scene.createEntity({ name: `Temp_${round}_${i}` });
+                    const transform = entity.requireComponent(Transform);
                     transform.position = new Vec3(i, round, 0);
-                    actor.destroy();
+                    entity.destroy();
                 }
                 runFrames(scheduler, 10, 1600 + round * 160);
                 samples.push(process.memoryUsage().heapUsed);
@@ -772,13 +772,13 @@ describe('Script Performance Regression', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
             targetTransform.position = new Vec3(0, 0, 0);
 
             const controllers: InstanceType<typeof FollowCameraController>[] = [];
             for (let i = 0; i < 10; i++) {
-                const cam = scene.createCameraActor(
+                const cam = scene.createCameraEntity(
                     { name: `Camera_${i}` },
                     { primary: i === 0 },
                 );
@@ -820,11 +820,11 @@ describe('Script Performance Regression', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
 
             for (let i = 0; i < 10; i++) {
-                const cam = scene.createCameraActor(
+                const cam = scene.createCameraEntity(
                     { name: `Camera_${i}` },
                     { primary: i === 0 },
                 );

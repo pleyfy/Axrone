@@ -1,5 +1,5 @@
 import { Mat4 } from '@axrone/numeric';
-import { Transform, type Actor } from '@axrone/ecs-runtime';
+import { Transform, type EntityId } from '@axrone/ecs-runtime';
 import type { SceneCameraFrameState } from '../camera-frame-state';
 import { ParticleSystem } from '../components/particle-system';
 import type { ParticleRenderData } from '../components/particle-system';
@@ -39,7 +39,7 @@ export interface SceneParticleBatchRuntimeOptions {
 }
 
 export interface SceneParticleBatchRuntimeRenderParams {
-    readonly actors: readonly Actor[];
+    readonly entities: readonly EntityId[];
     readonly cameraFrame: SceneCameraFrameState;
     readonly frameState: SceneRenderFrameState;
     readonly viewportWidth: number;
@@ -57,7 +57,7 @@ const EMPTY_STATS: SceneParticleBatchRuntimeRenderStats = Object.freeze({
 });
 
 interface SceneParticleRenderSubject {
-    readonly actor: Actor;
+    readonly entity: EntityId;
     readonly system: ParticleSystem;
 }
 
@@ -102,13 +102,13 @@ export class SceneParticleBatchRuntime {
         }
 
         this._subjects.length = 0;
-        for (const actor of params.actors) {
-            if (!actor.active) {
+        for (const entity of params.entities) {
+            if (!entity.active) {
                 continue;
             }
-            const system = actor.getComponent(ParticleSystem);
+            const system = entity.getComponent(ParticleSystem);
             if (system && system.enabled) {
-                this._subjects.push({ actor, system });
+                this._subjects.push({ entity, system });
             }
         }
 
@@ -194,7 +194,7 @@ export class SceneParticleBatchRuntime {
         const modelMatrix =
             subject.system.simulationSpace === 'world'
                 ? Mat4.IDENTITY
-                : (subject.actor.getComponent(Transform)?.worldMatrix ?? Mat4.IDENTITY);
+                : (subject.entity.getComponent(Transform)?.worldMatrix ?? Mat4.IDENTITY);
         this._options.uniformWriter.write(shader, 'u_Model', modelMatrix);
         this._options.uniformWriter.write(
             shader,

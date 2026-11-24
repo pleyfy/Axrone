@@ -1,4 +1,4 @@
-import { Actor } from '@axrone/ecs-runtime';
+import { Entity } from '@axrone/ecs-runtime';
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
 import type {
     SceneOptions,
@@ -18,16 +18,16 @@ export class SceneSnapshotFacade<
 
     createPrefab(
         id: string,
-        actors: readonly Actor[] = this.world.getAllActors()
+        entities: readonly EntityId[] = this.world.getAllEntities()
     ): ScenePrefabDefinition {
         this.assertNotDisposed();
-        return this._kernel.snapshots.createPrefab(id, actors);
+        return this._kernel.snapshots.createPrefab(id, entities);
     }
 
     instantiatePrefab(
         prefab: ScenePrefabDefinition,
         options: ScenePrefabInstantiateOptions = {}
-    ): readonly Actor[] {
+    ): readonly EntityId[] {
         this.assertNotDisposed();
         return this._kernel.snapshots.instantiatePrefab(prefab, options);
     }
@@ -40,7 +40,7 @@ export class SceneSnapshotFacade<
     async loadScene(
         snapshot: SceneSnapshot,
         options: SceneSnapshotLoadOptions = {}
-    ): Promise<readonly Actor[]> {
+    ): Promise<readonly EntityId[]> {
         this.assertNotDisposed();
         return await this._kernel.snapshots.loadScene(snapshot, options);
     }

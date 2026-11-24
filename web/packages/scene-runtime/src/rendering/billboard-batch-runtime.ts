@@ -1,5 +1,5 @@
 import { Mat4, Vec3 } from '@axrone/numeric';
-import { Transform, type Actor } from '@axrone/ecs-runtime';
+import { Transform, type EntityId } from '@axrone/ecs-runtime';
 import type { SceneCameraFrameState } from '../camera-frame-state';
 import { BillboardRenderer } from '../components/billboard-renderer';
 import { SceneMeshError } from '../errors';
@@ -19,7 +19,7 @@ export interface SceneBillboardBatchRuntimeOptions {
 }
 
 export interface SceneBillboardBatchRuntimeRenderParams {
-    readonly actors: readonly Actor[];
+    readonly entities: readonly EntityId[];
     readonly cameraFrame: SceneCameraFrameState;
     readonly frameState: SceneRenderFrameState;
 }
@@ -95,7 +95,7 @@ const resolveBillboardModeValue = (mode: string): number => {
 };
 
 interface BillboardSubject {
-    readonly actor: Actor;
+    readonly entity: EntityId;
     readonly renderer: BillboardRenderer;
 }
 
@@ -141,14 +141,14 @@ export class SceneBillboardBatchRuntime {
 
         this._subjects.length = 0;
 
-        for (const actor of params.actors) {
-            if (!actor.active) {
+        for (const entity of params.entities) {
+            if (!entity.active) {
                 continue;
             }
 
-            const billboardRenderer = actor.getComponent(BillboardRenderer);
+            const billboardRenderer = entity.getComponent(BillboardRenderer);
             if (billboardRenderer && billboardRenderer.enabled && billboardRenderer.visible) {
-                this._subjects.push({ actor, renderer: billboardRenderer });
+                this._subjects.push({ entity, renderer: billboardRenderer });
             }
         }
 
@@ -297,7 +297,7 @@ export class SceneBillboardBatchRuntime {
         cameraPosition: Vec3
     ): boolean {
         const renderer = subject.renderer;
-        const transform = subject.actor.getComponent(Transform);
+        const transform = subject.entity.getComponent(Transform);
 
         if (!transform) {
             return false;

@@ -322,7 +322,7 @@ describe('World', () => {
             const entity1 = world.createEntity();
             const entity2 = world.createEntity();
 
-            const allEntities = world.getAllEntities();
+            const allEntities = world.getAllEntityIds();
             expect(allEntities).toHaveLength(2);
             expect(allEntities).toContain(entity1);
             expect(allEntities).toContain(entity2);
@@ -368,25 +368,25 @@ describe('World', () => {
 
     describe('events', () => {
         it('should publish lifecycle events through the world event runtime', () => {
-            const entity = world.createEntity();
-            const actor = { name: 'Actor', tag: 'Default', layer: 0 } as any;
+            const entityId = world.createEntity();
+            const entity = { name: 'Entity', tag: 'Default', layer: 0 } as any;
             const seen: number[] = [];
 
-            const unsubscribe = world.on('EntityCreated', ({ entity: createdEntity, actor: createdActor }) => {
-                seen.push(createdEntity);
-                expect(createdActor).toBe(actor);
+            const unsubscribe = world.on('EntityCreated', ({ entityId: createdId, entity: createdEntity }) => {
+                seen.push(createdId);
+                expect(createdEntity).toBe(entity);
             });
 
-            world.registerActor(entity, actor);
+            world.registerEntity(entityId, entity);
 
-            expect(seen).toEqual([entity]);
+            expect(seen).toEqual([entityId]);
 
             unsubscribe();
         });
 
         it('should update reactive queries when component membership changes', async () => {
             const entity = world.createEntity();
-            world.registerActor(entity, { name: 'Reactive', tag: 'Default', layer: 0 } as any);
+            world.registerEntity(entity, { name: 'Reactive', tag: 'Default', layer: 0 } as any);
 
             const query = world.createReactiveQuery('TestComponent');
             const counts: number[] = [];
@@ -486,46 +486,46 @@ describe('World', () => {
         });
     });
 
-    // ─── Actor registry ─────────────────────────────────────────────
+    // ─── Entity registry ─────────────────────────────────────────────
 
-    describe('actor registry', () => {
-        it('registerActor throws EntityError for null actor', () => {
+    describe('entity registry', () => {
+        it('registerEntity throws EntityError for null entity', () => {
             const entity = world.createEntity();
-            expect(() => world.registerActor(entity, null as any)).toThrow(EntityError);
+            expect(() => world.registerEntity(entity, null as any)).toThrow(EntityError);
         });
 
-        it('getActor returns registered actor', () => {
+        it('getEntity returns registered entity', () => {
             const entity = world.createEntity();
-            const mockActor = { name: 'Test' } as any;
-            world.registerActor(entity, mockActor);
+            const mockEntity = { name: 'Test' } as any;
+            world.registerEntity(entity, mockEntity);
 
-            expect(world.getActor(entity)).toBe(mockActor);
+            expect(world.getEntity(entity)).toBe(mockEntity);
         });
 
-        it('getActor returns undefined for unknown entity', () => {
-            expect(world.getActor(999 as any)).toBeUndefined();
+        it('getEntity returns undefined for unknown entity', () => {
+            expect(world.getEntity(999 as any)).toBeUndefined();
         });
 
-        it('getAllActors returns all registered actors', () => {
+        it('getAllEntityIds returns all registered entities', () => {
             const e1 = world.createEntity();
             const e2 = world.createEntity();
             const a1 = { name: 'A1' } as any;
             const a2 = { name: 'A2' } as any;
 
-            world.registerActor(e1, a1);
-            world.registerActor(e2, a2);
+            world.registerEntity(e1, a1);
+            world.registerEntity(e2, a2);
 
-            const all = world.getAllActors();
+            const all = world.getAllEntities();
             expect(all).toHaveLength(2);
             expect(all).toContain(a1);
             expect(all).toContain(a2);
         });
 
-        it('unregisterActor on disposed world is a no-op', () => {
+        it('unregisterEntity on disposed world is a no-op', () => {
             const entity = world.createEntity();
             world.clear();
 
-            expect(() => world.unregisterActor(entity)).not.toThrow();
+            expect(() => world.unregisterEntity(entity)).not.toThrow();
         });
     });
 
@@ -590,20 +590,20 @@ describe('World', () => {
             const handler = vi.fn();
             world.once('EntityCreated' as any, handler);
 
-            const entity = world.createEntity();
-            const actor = { name: 'OnceActor' } as any;
-            world.registerActor(entity, actor);
+            const entityId = world.createEntity();
+            const entity = { name: 'OnceEntity' } as any;
+            world.registerEntity(entityId, entity);
 
             expect(handler).toHaveBeenCalledTimes(1);
 
             // Second registration should not trigger handler
             const entity2 = world.createEntity();
-            world.registerActor(entity2, { name: 'Another' } as any);
+            world.registerEntity(entity2, { name: 'Another' } as any);
             expect(handler).toHaveBeenCalledTimes(1);
         });
 
         it('emitSync returns boolean', () => {
-            const result = world.emitSync('EntityCreated' as any, { entity: 0, actor: null });
+            const result = world.emitSync('EntityCreated' as any, { entityId: 0, entity: null });
             expect(typeof result).toBe('boolean');
         });
 
@@ -612,13 +612,13 @@ describe('World', () => {
             world.on('EntityCreated' as any, handler);
 
             const entity = world.createEntity();
-            world.registerActor(entity, { name: 'A' } as any);
+            world.registerEntity(entity, { name: 'A' } as any);
             expect(handler).toHaveBeenCalledTimes(1);
 
             world.off('EntityCreated' as any, handler);
 
             const entity2 = world.createEntity();
-            world.registerActor(entity2, { name: 'B' } as any);
+            world.registerEntity(entity2, { name: 'B' } as any);
             expect(handler).toHaveBeenCalledTimes(1); // not called again
         });
 

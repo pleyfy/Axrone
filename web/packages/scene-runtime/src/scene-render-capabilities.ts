@@ -6,8 +6,8 @@ import { getComponentMetadata, type ComponentConstructor } from '@axrone/ecs-run
  *
  * A 2D scene's registry has no mesh renderer, light, particle, line or
  * billboard components, so every per-frame scan those renderers perform over
- * the actor list is provably empty work. Detecting that once at construction
- * keeps the hot path free of per-actor component probes.
+ * the entity list is provably empty work. Detecting that once at construction
+ * keeps the hot path free of per-entity component probes.
  *
  * Detection is deliberately conservative: it matches registered components by
  * their script metadata name, so a custom registry that re-keys a built-in

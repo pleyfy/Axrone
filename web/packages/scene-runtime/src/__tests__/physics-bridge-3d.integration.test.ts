@@ -47,18 +47,18 @@ function createMockTransform(
     });
 }
 
-// ─── Mock Actor ──────────────────────────────────────────────────────────────
+// ─── Mock Entity ──────────────────────────────────────────────────────────────
 // Satisfies the bridge's usage: active, isDestroyed, getComponent(Ctor), getAllComponents().
-class MockActor {
+class MockEntity {
     active = true;
     isDestroyed = false;
     private _components: any[] = [];
 
     addComponent(c: any): this {
         this._components.push(c);
-        // Wire the component's actor reference so Component.transform lookup can work
+        // Wire the component's entity reference so Component.transform lookup can work
         // (though we override transform directly for reliability).
-        if ('actor' in c) (c as any).actor = this;
+        if ('entity' in c) (c as any).entity = this;
         return this;
     }
 
@@ -73,18 +73,18 @@ class MockActor {
 
 // ─── Mock ECS World ──────────────────────────────────────────────────────────
 class MockEcsWorld {
-    private _actors: MockActor[] = [];
-    addActor(a: MockActor): void {
-        this._actors.push(a);
+    private _entities: MockEntity[] = [];
+    addEntity(a: MockEntity): void {
+        this._entities.push(a);
     }
-    getAllActors(): MockActor[] {
-        return [...this._actors];
+    getAllEntities(): MockEntity[] {
+        return [...this._entities];
     }
 }
 
 // ─── Collision Handler Component ─────────────────────────────────────────────
 // Not a full ECS Component — just a plain class implementing IPhysicsCollisionHandler.
-// The bridge iterates actor.getAllComponents() and checks for handler methods via typeof.
+// The bridge iterates entity.getAllComponents() and checks for handler methods via typeof.
 class CollisionHandler implements IPhysicsCollisionHandler {
     collisionEnters: { other: Rigidbody3D; event: any }[] = [];
     collisionStays: { other: Rigidbody3D; event: any }[] = [];
@@ -155,28 +155,28 @@ function createHarness(gravity = { x: 0, y: GRAVITY, z: 0 }) {
             isTrigger?: boolean;
             handler?: CollisionHandler;
         } = {}
-    ): { actor: MockActor; rb: Rigidbody3D; collider?: SphereCollider3D | BoxCollider3D } {
-        const actor = new MockActor();
+    ): { entity: MockEntity; rb: Rigidbody3D; collider?: SphereCollider3D | BoxCollider3D } {
+        const entity = new MockEntity();
         const rb = new Rigidbody3D();
         attachTransform(rb, transform);
-        actor.addComponent(rb);
+        entity.addComponent(rb);
 
         if (opts.collider === 'sphere' || opts.collider === undefined) {
             const col = new SphereCollider3D();
             col.radius = opts.sphereRadius ?? 0.5;
             if (opts.isTrigger) col.isTrigger = true;
-            actor.addComponent(col);
-            if (opts.handler) actor.addComponent(opts.handler);
-            ecsWorld.addActor(actor);
-            return { actor, rb, collider: col };
+            entity.addComponent(col);
+            if (opts.handler) entity.addComponent(opts.handler);
+            ecsWorld.addEntity(entity);
+            return { entity, rb, collider: col };
         } else {
             const col = new BoxCollider3D();
             if (opts.boxSize) col.size = opts.boxSize;
             if (opts.isTrigger) col.isTrigger = true;
-            actor.addComponent(col);
-            if (opts.handler) actor.addComponent(opts.handler);
-            ecsWorld.addActor(actor);
-            return { actor, rb, collider: col };
+            entity.addComponent(col);
+            if (opts.handler) entity.addComponent(opts.handler);
+            ecsWorld.addEntity(entity);
+            return { entity, rb, collider: col };
         }
     }
 

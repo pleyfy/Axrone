@@ -19,7 +19,7 @@ describe('RayCast3D', () => {
         it('has hitPoint null', () => { expect(create().hitPoint).toBeNull(); });
         it('has hitNormal null', () => { expect(create().hitNormal).toBeNull(); });
         it('has hitDistance 0', () => { expect(create().hitDistance).toBe(0); });
-        it('has hitActorId null', () => { expect(create().hitActorId).toBeNull(); });
+        it('has hitEntityUid null', () => { expect(create().hitEntityUid).toBeNull(); });
         it('has lastHit null', () => { expect(create().lastHit).toBeNull(); });
     });
 
@@ -129,7 +129,7 @@ describe('RayCast3D', () => {
                 normal: new Vec3(0, 1, 0),
                 distance: 5,
                 colliderId: 42,
-                actorId: 'target',
+                entityUid: 'target',
             };
             r.setHitResult(hit);
             expect(r.hasHit).toBe(true);
@@ -138,7 +138,7 @@ describe('RayCast3D', () => {
             expect(r.hitPoint!.y).toBeCloseTo(2, 5);
             expect(r.hitPoint!.z).toBeCloseTo(3, 5);
             expect(r.hitDistance).toBe(5);
-            expect(r.hitActorId).toBe('target');
+            expect(r.hitEntityUid).toBe('target');
         });
         it('clearHit resets hit state', () => {
             const r = create();
@@ -149,7 +149,7 @@ describe('RayCast3D', () => {
                 normal: new Vec3(0, 1, 0),
                 distance: 1,
                 colliderId: 0,
-                actorId: null,
+                entityUid: null,
             });
             expect(r.hasHit).toBe(true);
             r.clearHit();

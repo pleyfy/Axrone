@@ -184,9 +184,9 @@ const sceneUiOverlayExample: SceneExample = {
             },
         });
 
-        scene.createCameraActor({ name: 'OverlayCamera' }, { primary: true, fieldOfView: 60 });
+        scene.createCameraEntity({ name: 'OverlayCamera' }, { primary: true, fieldOfView: 60 });
 
-        const cube = scene.createRenderableActor(
+        const cube = scene.createRenderableEntity(
             { name: 'OverlayCube' },
             { meshId: 'overlay-demo-box', materialId: 'overlay-demo-material' }
         );

@@ -69,7 +69,7 @@ const createGateScene = (launchVelocityY: number | null) => {
         },
     });
 
-    const actors = kernel.actors.createActorsWithComponents([
+    const entities = kernel.entities.createEntitiesWithComponents([
         {
             components: [{ type: Rigidbody3D }, { type: BoxCollider3D }, { type: CollisionProbe }],
         },
@@ -78,20 +78,20 @@ const createGateScene = (launchVelocityY: number | null) => {
         },
     ]);
 
-    const [groundActor, boxActor] = actors;
-    if (groundActor === undefined || boxActor === undefined) {
-        throw new Error('scene descriptor produced no actors');
+    const [groundEntity, boxEntity] = entities;
+    if (groundEntity === undefined || boxEntity === undefined) {
+        throw new Error('scene descriptor produced no entities');
     }
 
     const components = {
-        groundTransform: groundActor.getComponent(Transform),
-        boxTransform: boxActor.getComponent(Transform),
-        groundRigidbody: groundActor.getComponent(Rigidbody3D),
-        boxRigidbody: boxActor.getComponent(Rigidbody3D),
-        groundCollider: groundActor.getComponent(BoxCollider3D),
-        boxCollider: boxActor.getComponent(BoxCollider3D),
-        groundProbe: groundActor.getComponent(CollisionProbe),
-        boxProbe: boxActor.getComponent(CollisionProbe),
+        groundTransform: groundEntity.getComponent(Transform),
+        boxTransform: boxEntity.getComponent(Transform),
+        groundRigidbody: groundEntity.getComponent(Rigidbody3D),
+        boxRigidbody: boxEntity.getComponent(Rigidbody3D),
+        groundCollider: groundEntity.getComponent(BoxCollider3D),
+        boxCollider: boxEntity.getComponent(BoxCollider3D),
+        groundProbe: groundEntity.getComponent(CollisionProbe),
+        boxProbe: boxEntity.getComponent(CollisionProbe),
     };
 
     const {

@@ -159,7 +159,7 @@ export interface GltfMaterialDefinition {
 
 export type {
     GltfComponentSnapshot,
-    GltfActorSnapshot,
+    GltfEntitySnapshot,
     GltfPrefabDefinition,
     ComponentType,
     ComponentDataMap,

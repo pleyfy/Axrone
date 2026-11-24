@@ -100,11 +100,11 @@ export const createPhysicsDominoScene = (container: HTMLElement): PlaygroundScen
 		);
 	}
 
-	const tableActor = scene.createRenderableActor(
+	const tableEntity = scene.createRenderableEntity(
 		{ name: 'DominoTable' },
 		{ meshId: TABLE_MESH_ID, materialId: TABLE_MATERIAL_ID },
 	);
-	const tableTransform = tableActor.requireComponent(Transform);
+	const tableTransform = tableEntity.requireComponent(Transform);
 	tableTransform.position = new Vec3(0, -0.22, 0);
 	tableTransform.scale = new Vec3(18, 0.44, 6.4);
 
@@ -163,11 +163,11 @@ export const createPhysicsDominoScene = (container: HTMLElement): PlaygroundScen
 		);
 		world.getBody(bodyId as never)?.resetMassData();
 
-		const actor = scene.createRenderableActor(
+		const entity = scene.createRenderableEntity(
 			{ name: `Domino-${index}` },
 			{ meshId: DOMINO_MESH_ID, materialId },
 		);
-		const transform = actor.requireComponent(Transform);
+		const transform = entity.requireComponent(Transform);
 		transform.position = new Vec3(x, REST_Y, 0);
 		transform.scale = new Vec3(DOMINO_SIZE.x, DOMINO_SIZE.y, DOMINO_SIZE.z);
 		const body = world.getBody(bodyId as never);
@@ -190,7 +190,7 @@ export const createPhysicsDominoScene = (container: HTMLElement): PlaygroundScen
 		}
 	};
 
-	const camera = scene.createCameraActor({ name: 'DominoCamera' }, { primary: true, fieldOfView: 50 });
+	const camera = scene.createCameraEntity({ name: 'DominoCamera' }, { primary: true, fieldOfView: 50 });
 	const orbit = camera.addComponent(OrbitCameraController, {
 		target: [1, 0.72, 0],
 		distance: 15.2,

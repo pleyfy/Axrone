@@ -89,7 +89,7 @@ describe('motion-matching graph node', () => {
         expect(controller.activeClips[0]!.clipId).toBe('run');
     });
 
-    it('selects the walk clip when the actor is slow', () => {
+    it('selects the walk clip when the entity is slow', () => {
         const controller = makeController(makeDatabase());
 
         controller.parameters.setFloat('trajectoryX', 0);

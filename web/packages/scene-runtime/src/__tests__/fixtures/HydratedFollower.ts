@@ -1,12 +1,12 @@
-import { Actor, Component, Transform, property, script } from '@axrone/ecs-runtime';
+import { Entity, Component, Transform, property, script } from '@axrone/ecs-runtime';
 import { Vec3 } from '@axrone/numeric';
 
 @script({
 	scriptName: 'HydratedFollower',
 })
 export class HydratedFollower extends Component {
-	@property({ type: Actor })
-	public targetActor: Actor | null = null;
+	@property({ type: EntityId })
+	public targetEntity: EntityId | null = null;
 
 	@property({ type: Transform })
 	public targetTransform: Transform | null = null;

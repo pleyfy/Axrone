@@ -81,7 +81,7 @@ const toVec4 = (
  *     startColor: [1, 0, 0, 1],
  *     endColor: [0, 0, 1, 1],
  * });
- * actor.addComponent(LineRenderer, line);
+ * entity.addComponent(LineRenderer, line);
  * ```
  */
 @script({

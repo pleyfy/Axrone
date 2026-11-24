@@ -67,9 +67,9 @@ export type ScenePrefabComponentSelector =
           readonly occurrence?: number;
       };
 
-// ─── Actor fields ───────────────────────────────────────────────────
+// ─── Entity fields ───────────────────────────────────────────────────
 
-export type ScenePrefabActorField =
+export type ScenePrefabEntityField =
     | 'name'
     | 'layer'
     | 'tag'
@@ -77,8 +77,8 @@ export type ScenePrefabActorField =
     | 'persistent'
     | 'pooled';
 
-export type ScenePrefabActorFieldValue<
-    TField extends ScenePrefabActorField = ScenePrefabActorField,
+export type ScenePrefabEntityFieldValue<
+    TField extends ScenePrefabEntityField = ScenePrefabEntityField,
 > = TField extends 'name' | 'tag'
     ? string
     : TField extends 'layer'
@@ -93,7 +93,7 @@ export interface SceneComponentSnapshot {
     readonly data: SceneSerializedValue;
 }
 
-export interface SceneActorSnapshot {
+export interface SceneEntitySnapshot {
     readonly nodeId?: string;
     readonly parentNodeId?: string | null;
     readonly name: string;
@@ -121,24 +121,24 @@ export type ScenePrefabReference =
 
 export type ScenePrefabOverrideOperation =
     | {
-          readonly kind: 'add-actor';
-          readonly actor: SceneActorSnapshot;
+          readonly kind: 'add-entity';
+          readonly entity: SceneEntitySnapshot;
           readonly afterNodeId?: string;
       }
     | {
-          readonly kind: 'remove-actor';
+          readonly kind: 'remove-entity';
           readonly nodeId: string;
       }
     | {
-          readonly kind: 'reparent-actor';
+          readonly kind: 'reparent-entity';
           readonly nodeId: string;
           readonly parentNodeId?: string | null;
       }
     | {
-          readonly kind: 'set-actor-field';
+          readonly kind: 'set-entity-field';
           readonly nodeId: string;
-          readonly field: ScenePrefabActorField;
-          readonly value: ScenePrefabActorFieldValue;
+          readonly field: ScenePrefabEntityField;
+          readonly value: ScenePrefabEntityFieldValue;
       }
     | {
           readonly kind: 'add-component';
@@ -186,7 +186,7 @@ export interface ScenePrefabNestedInstance {
 export interface ScenePrefabDefinition {
     readonly id: string;
     readonly kind?: 'prefab' | 'variant' | 'resolved';
-    readonly actors: readonly SceneActorSnapshot[];
+    readonly entities: readonly SceneEntitySnapshot[];
     readonly base?: ScenePrefabReference;
     readonly nested?: readonly ScenePrefabNestedInstance[];
     readonly overrides?: readonly ScenePrefabOverrideOperation[];
@@ -199,9 +199,9 @@ export type ScenePrefabConflictPolicy = 'manual' | 'prefer-local' | 'prefer-inco
 export type ScenePrefabConflictResolution = 'local' | 'incoming' | 'base';
 export type ScenePrefabConflictBaseValue =
     | SceneSerializedValue
-    | SceneActorSnapshot
+    | SceneEntitySnapshot
     | SceneComponentSnapshot
-    | ScenePrefabActorFieldValue
+    | ScenePrefabEntityFieldValue
     | null;
 
 export interface ScenePrefabConflict {

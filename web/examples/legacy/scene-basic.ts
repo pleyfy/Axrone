@@ -97,10 +97,10 @@ void main() {
         });
 
         // Create camera
-        scene.createCameraActor({ name: 'MainCamera' }, { primary: true, fieldOfView: 60 });
+        scene.createCameraEntity({ name: 'MainCamera' }, { primary: true, fieldOfView: 60 });
 
-        // Create box actor with orbit motion
-        const box = scene.createRenderableActor(
+        // Create box entity with orbit motion
+        const box = scene.createRenderableEntity(
             { name: 'Box' },
             { meshId: 'box', materialId: 'box-material' }
         );

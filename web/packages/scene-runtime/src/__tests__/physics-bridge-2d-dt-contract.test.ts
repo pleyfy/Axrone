@@ -3,7 +3,7 @@ import { createGameLoop } from '@axrone/game-loop';
 import { PhysicsWorld2D, RigidbodyType2D } from '@axrone/physics-2d';
 import { ManualScheduler } from '../../../../tests/shared/test-harness';
 import { PhysicsBridge2D } from '../components/physics-bridge-2d';
-import { SceneActorLifecycleRunner } from '../actor-lifecycle-runner';
+import { SceneEntityLifecycleRunner } from '../entity-lifecycle-runner';
 import type { SceneLoopState } from '../types';
 
 type StepProbe = (
@@ -51,7 +51,7 @@ const createFallingBody = (world: PhysicsWorld2D) => {
 };
 
 const createShippedPathHarness = (frameSpacingMs: readonly number[] = IRREGULAR_FRAME_SPACING_MS) => {
-    const bridge = new PhysicsBridge2D({ getAllActors: () => [] } as never, {
+    const bridge = new PhysicsBridge2D({ getAllEntities: () => [] } as never, {
         worldConfig: { gravity: { x: 0, y: GRAVITY_Y } },
     });
 
@@ -70,7 +70,7 @@ const createShippedPathHarness = (frameSpacingMs: readonly number[] = IRREGULAR_
         PhysicsWorld2D.prototype.step = solverStep;
     });
 
-    const actors = [
+    const entities = [
         {
             active: true,
             isDestroyed: false,
@@ -82,8 +82,8 @@ const createShippedPathHarness = (frameSpacingMs: readonly number[] = IRREGULAR_
         },
     ];
 
-    const runner = new SceneActorLifecycleRunner({
-        getActors: () => actors as never,
+    const runner = new SceneEntityLifecycleRunner({
+        getEntitys: () => entities as never,
     });
 
     const scheduler = new ManualScheduler();

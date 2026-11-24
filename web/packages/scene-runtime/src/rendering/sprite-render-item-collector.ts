@@ -1,11 +1,11 @@
 import type { CameraFrustum } from '@axrone/geometry';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { EntityId } from '@axrone/ecs-runtime';
 import { Transform } from '@axrone/ecs-runtime';
 import { Vec3 } from '@axrone/numeric';
 import { SpriteRenderer } from '../components/sprite-renderer';
 
 export interface SceneSpriteRenderItem {
-    actor: Actor;
+    entity: EntityId;
     transform: Transform;
     renderer: SpriteRenderer;
     sequence: number;
@@ -27,19 +27,19 @@ export class SceneSpriteRenderItemCollector {
     };
 
     collect(
-        actors: readonly Actor[],
+        entities: readonly EntityId[],
         passId: string,
         options: SceneSpriteRenderItemCollectOptions = {}
     ): readonly SceneSpriteRenderItem[] {
         let count = 0;
 
-        for (const actor of actors) {
-            if (!actor.active) {
+        for (const entity of entities) {
+            if (!entity.active) {
                 continue;
             }
 
-            const transform = actor.getComponent(Transform);
-            const renderer = actor.getComponent(SpriteRenderer);
+            const transform = entity.getComponent(Transform);
+            const renderer = entity.getComponent(SpriteRenderer);
 
             if (
                 !transform ||
@@ -60,13 +60,13 @@ export class SceneSpriteRenderItemCollector {
             }
 
             const item = this._items[count] ?? {
-                actor,
+                entity,
                 transform,
                 renderer,
                 sequence: count,
                 depth: transform.worldPosition.z,
             };
-            item.actor = actor;
+            item.entity = entity;
             item.transform = transform;
             item.renderer = renderer;
             item.sequence = count;

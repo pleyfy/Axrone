@@ -385,7 +385,7 @@ export const createFollowCubeScene = (container: HTMLElement): PlaygroundSceneHa
 		passes: [createAdditiveRingPass('follow-cube-edge-ring')],
 	});
 
-	const camera = scene.createCameraActor(
+	const camera = scene.createCameraEntity(
 		{ name: 'FollowCubeCamera' },
 		{ primary: true, fieldOfView: 55, near: 0.1, far: 600 },
 	);
@@ -413,29 +413,29 @@ export const createFollowCubeScene = (container: HTMLElement): PlaygroundSceneHa
 	const axes = createAxesOverlay(scene, shaders.solid, { prefix: 'playground/follow-cube', length: 5 });
 	axes.setVisible(false);
 
-	const floorActor = scene.createRenderableActor(
+	const floorEntity = scene.createRenderableEntity(
 		{ name: 'FollowCubeArena' },
 		{ meshId: FOLLOW_ARENA_MESH_ID, materialId: FOLLOW_FLOOR_FILL_MATERIAL_ID },
 	);
-	floorActor.requireComponent(Transform).position = new Vec3(0, -FOLLOW_ARENA_HEIGHT * 0.5, 0);
+	floorEntity.requireComponent(Transform).position = new Vec3(0, -FOLLOW_ARENA_HEIGHT * 0.5, 0);
 
-	const boundaryActor = scene.createRenderableActor(
+	const boundaryEntity = scene.createRenderableEntity(
 		{ name: 'FollowCubeBoundary' },
 		{ meshId: 'playground/follow-cube/boundary-ring', materialId: 'playground/follow-cube/boundary-material' },
 	);
-	boundaryActor.requireComponent(Transform).position = new Vec3(0, 0.035, 0);
+	boundaryEntity.requireComponent(Transform).position = new Vec3(0, 0.035, 0);
 
-	const centerActor = scene.createRenderableActor(
+	const centerEntity = scene.createRenderableEntity(
 		{ name: 'FollowCubeCenterMark' },
 		{ meshId: 'playground/follow-cube/center-ring', materialId: 'playground/follow-cube/center-material' },
 	);
-	centerActor.requireComponent(Transform).position = new Vec3(0, 0.03, 0);
+	centerEntity.requireComponent(Transform).position = new Vec3(0, 0.03, 0);
 
-	const edgeActor = scene.createRenderableActor(
+	const edgeEntity = scene.createRenderableEntity(
 		{ name: 'FollowCubeArenaEdge' },
 		{ meshId: 'playground/follow-cube/edge-ring', materialId: 'playground/follow-cube/edge-material' },
 	);
-	edgeActor.requireComponent(Transform).position = new Vec3(0, 0.012, 0);
+	edgeEntity.requireComponent(Transform).position = new Vec3(0, 0.012, 0);
 
 	const platformShadow = createContactShadow(scene, {
 		prefix: 'playground/follow-cube/arena-shadow',
@@ -443,22 +443,22 @@ export const createFollowCubeScene = (container: HTMLElement): PlaygroundSceneHa
 		y: -FOLLOW_ARENA_HEIGHT - 0.02,
 		color: [0.02, 0.01, 0.03, 0.32],
 	});
-	platformShadow.actor.active = true;
+	platformShadow.entity.active = true;
 
-	const playerActor = scene.createRenderableActor(
+	const playerEntity = scene.createRenderableEntity(
 		{ name: 'FollowCubePlayer' },
 		{ meshId: FOLLOW_PLAYER_MESH_ID, materialId: FOLLOW_PLAYER_FILL_MATERIAL_ID },
 	);
-	const playerTransform = playerActor.requireComponent(Transform);
+	const playerTransform = playerEntity.requireComponent(Transform);
 	playerTransform.position = new Vec3(0, FOLLOW_CUBE_SIZE * 0.5, 0);
-	playerActor.addComponent(FollowCubeController, input);
+	playerEntity.addComponent(FollowCubeController, input);
 
-	const selectionActor = scene.createRenderableActor(
+	const selectionEntity = scene.createRenderableEntity(
 		{ name: 'FollowCubeSelection' },
 		{ meshId: 'playground/follow-cube/selection-ring', materialId: 'playground/follow-cube/selection-material' },
 	);
-	selectionActor.requireComponent(Transform);
-	selectionActor.addComponent(FollowCubeGrounding, { target: playerTransform, height: 0.04 });
+	selectionEntity.requireComponent(Transform);
+	selectionEntity.addComponent(FollowCubeGrounding, { target: playerTransform, height: 0.04 });
 
 	const shadow = createContactShadow(scene, {
 		prefix: 'playground/follow-cube/player-shadow',
@@ -466,27 +466,27 @@ export const createFollowCubeScene = (container: HTMLElement): PlaygroundSceneHa
 		y: 0.025,
 		color: [0.03, 0.015, 0.03, 0.62],
 	});
-	shadow.actor.addComponent(FollowCubeGrounding, { target: playerTransform, height: 0.025 });
+	shadow.entity.addComponent(FollowCubeGrounding, { target: playerTransform, height: 0.025 });
 
 	for (const x of [-7.2, 7.2]) {
 		for (const z of [-7.2, 7.2]) {
-			const postActor = scene.createRenderableActor(
+			const postEntity = scene.createRenderableEntity(
 				{ name: `FollowCubePost-${x}-${z}` },
 				{ meshId: 'playground/follow-cube/post', materialId: 'playground/follow-cube/post-material' },
 			);
-			postActor.requireComponent(Transform).position = new Vec3(x, 0.625, z);
-			const capActor = scene.createRenderableActor(
+			postEntity.requireComponent(Transform).position = new Vec3(x, 0.625, z);
+			const capEntity = scene.createRenderableEntity(
 				{ name: `FollowCubePostCap-${x}-${z}` },
 				{ meshId: 'playground/follow-cube/post-cap', materialId: 'playground/follow-cube/cap-material' },
 			);
-			capActor.requireComponent(Transform).position = new Vec3(x, 1.29, z);
+			capEntity.requireComponent(Transform).position = new Vec3(x, 1.29, z);
 		}
 	}
 
 	followCamera.setTarget(playerTransform);
 
-	const floorRenderer = floorActor.getComponent(MeshRenderer);
-	const playerRenderer = playerActor.getComponent(MeshRenderer);
+	const floorRenderer = floorEntity.getComponent(MeshRenderer);
+	const playerRenderer = playerEntity.getComponent(MeshRenderer);
 	if (!floorRenderer || !playerRenderer) {
 		throw new Error('Follow cube scene renderers were not created correctly.');
 	}

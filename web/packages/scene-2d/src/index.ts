@@ -29,4 +29,4 @@ export {
 
 export { createScene2D } from './scene-2d-factory';
 export { Scene2D } from './scene-2d-full';
-export type { Scene2DBulkSpriteConfig } from './scene-2d-actor-runtime';
+export type { Scene2DBulkSpriteConfig } from './scene-2d-entity-runtime';

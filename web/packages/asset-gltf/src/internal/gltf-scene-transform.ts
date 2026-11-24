@@ -1,5 +1,5 @@
 import type { Vec3Tuple, QuatTuple, NodeId, TransformDecomposition, LightReference } from './gltf-branded-types';
-import type { GltfActorSnapshot, GltfComponentSnapshot, TransformComponentData } from './gltf-component-snapshot';
+import type { GltfEntitySnapshot, GltfComponentSnapshot, TransformComponentData } from './gltf-component-snapshot';
 import type { GltfNodeJson } from '../types';
 import { nodeId } from './gltf-branded-types';
 
@@ -70,12 +70,12 @@ export const createTransformSnapshot = (node: GltfNodeJson): GltfComponentSnapsh
     });
 };
 
-export const createActorSnapshot = (
+export const createEntitySnapshot = (
     nodeIdOrIndex: number | string,
     parentNodeIdOrIndex: (number | string) | null,
     name: string,
     components: readonly GltfComponentSnapshot[]
-): GltfActorSnapshot =>
+): GltfEntitySnapshot =>
     Object.freeze({
         nodeId: typeof nodeIdOrIndex === 'string' ? (nodeIdOrIndex as NodeId) : nodeId(nodeIdOrIndex),
         parentNodeId: parentNodeIdOrIndex !== null

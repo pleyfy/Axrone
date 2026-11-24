@@ -57,7 +57,7 @@ export interface SceneSpriteInstanceDrawView {
  * the ordered stream share one draw until the texture-slot budget is
  * exhausted, so painter order is preserved exactly and no alpha-mode gating is
  * required. This replaces the per-frame submission collection, sort and single
- * interleaved upload used by the legacy instanced path. The scene/actor model
+ * interleaved upload used by the legacy instanced path. The scene/entity model
  * is unchanged — the registry feeding these arrays is a derived render cache,
  * not a second scene.
  */

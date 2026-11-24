@@ -9,7 +9,7 @@
  *
  * Detection status (as of writing):
  *   - Prefab ID collision in registry:       NOT DETECTED (silent overwrite)
- *   - Entity nodeId collision in definition:  DETECTED (rebuildActorIndex)
+ *   - Entity nodeId collision in definition:  DETECTED (rebuildEntityIndex)
  *   - Component ID collision in overrides:    DETECTED (add-component guard)
  *   - Component ID collision in definition:   NOT DETECTED (no validation)
  *   - ID format/prefix validation:            NOT DETECTED (no validation)
@@ -20,7 +20,7 @@ import {
     ScenePrefabWorkflow,
     resolveScenePrefab,
     ScenePrefabValidationError,
-    type SceneActorSnapshot,
+    type SceneEntitySnapshot,
     type SceneComponentSnapshot,
     type ScenePrefabDefinition,
 } from '../index';
@@ -44,12 +44,12 @@ const makeComponent = (
     data,
 });
 
-const makeActor = (
+const makeEntity = (
     nodeId: string,
-    name = 'Actor',
+    name = 'Entity',
     parentNodeId: string | null = null,
     components: SceneComponentSnapshot[] = [],
-): SceneActorSnapshot => ({
+): SceneEntitySnapshot => ({
     nodeId,
     parentNodeId,
     name,
@@ -63,11 +63,11 @@ const makeActor = (
 
 const makeDefinition = (
     id: string,
-    actors: SceneActorSnapshot[] = [makeActor('ent_root', 'Root')],
+    entities: SceneEntitySnapshot[] = [makeEntity('ent_root', 'Root')],
 ): ScenePrefabDefinition => ({
     id,
     kind: 'prefab',
-    actors,
+    entities,
 });
 
 // ---------------------------------------------------------------------------
@@ -83,10 +83,10 @@ describe('T-03.1 — Duplicate Prefab ID Detection', () => {
         const wf = new ScenePrefabWorkflow();
 
         const original = makeDefinition('scn_cube', [
-            makeActor('ent_root', 'Cube'),
+            makeEntity('ent_root', 'Cube'),
         ]);
         const duplicate = makeDefinition('scn_cube', [
-            makeActor('ent_root', 'Cube-Copy'),
+            makeEntity('ent_root', 'Cube-Copy'),
         ]);
 
         wf.register(original);
@@ -95,7 +95,7 @@ describe('T-03.1 — Duplicate Prefab ID Detection', () => {
         // The duplicate silently replaced the original — this is the bug.
         const retrieved = wf.getPrefab('scn_cube');
         expect(retrieved).toBeDefined();
-        expect(retrieved!.actors[0]!.name).toBe('Cube-Copy');
+        expect(retrieved!.entities[0]!.name).toBe('Cube-Copy');
     });
 
     it('registerAll() silently overwrites on duplicate prefab IDs within a batch', () => {
@@ -105,8 +105,8 @@ describe('T-03.1 — Duplicate Prefab ID Detection', () => {
         const wf = new ScenePrefabWorkflow();
 
         const defs = [
-            makeDefinition('scn_shared_id', [makeActor('ent_a', 'First')]),
-            makeDefinition('scn_shared_id', [makeActor('ent_b', 'Second')]),
+            makeDefinition('scn_shared_id', [makeEntity('ent_a', 'First')]),
+            makeDefinition('scn_shared_id', [makeEntity('ent_b', 'Second')]),
         ];
 
         wf.registerAll(defs);
@@ -114,7 +114,7 @@ describe('T-03.1 — Duplicate Prefab ID Detection', () => {
         const retrieved = wf.getPrefab('scn_shared_id');
         expect(retrieved).toBeDefined();
         // Last-write-wins — no collision reported.
-        expect(retrieved!.actors[0]!.name).toBe('Second');
+        expect(retrieved!.entities[0]!.name).toBe('Second');
     });
 
     it('constructor prefabs option silently overwrites on duplicate IDs', () => {
@@ -122,13 +122,13 @@ describe('T-03.1 — Duplicate Prefab ID Detection', () => {
         // TODO(engine): Validate uniqueness in the constructor options.
         const wf = new ScenePrefabWorkflow({
             prefabs: [
-                makeDefinition('scn_dup', [makeActor('ent_a', 'A')]),
-                makeDefinition('scn_dup', [makeActor('ent_b', 'B')]),
+                makeDefinition('scn_dup', [makeEntity('ent_a', 'A')]),
+                makeDefinition('scn_dup', [makeEntity('ent_b', 'B')]),
             ],
         });
 
         const retrieved = wf.getPrefab('scn_dup');
-        expect(retrieved!.actors[0]!.name).toBe('B');
+        expect(retrieved!.entities[0]!.name).toBe('B');
     });
 
     it.todo('register() should throw ScenePrefabValidationError on duplicate prefab ID');
@@ -142,12 +142,12 @@ describe('T-03.1 — Duplicate Prefab ID Detection', () => {
 // Group 2: Duplicate Entity (nodeId) Detection
 // ---------------------------------------------------------------------------
 describe('T-03.2 — Duplicate Entity (nodeId) Detection', () => {
-    it('throws ScenePrefabValidationError when two actors share the same nodeId', () => {
-        // DETECTED: rebuildActorIndex() in scene-prefab-operations.ts
-        // iterates actors and throws if actorIndex already has the nodeId.
+    it('throws ScenePrefabValidationError when two entities share the same nodeId', () => {
+        // DETECTED: rebuildEntityIndex() in scene-prefab-operations.ts
+        // iterates entities and throws if entityIndex already has the nodeId.
         const definition = makeDefinition('scn_test', [
-            makeActor('ent_shared', 'Actor-A'),
-            makeActor('ent_shared', 'Actor-B'),
+            makeEntity('ent_shared', 'Entity-A'),
+            makeEntity('ent_shared', 'Entity-B'),
         ]);
 
         expect(() => resolveScenePrefab(definition)).toThrow(
@@ -157,36 +157,36 @@ describe('T-03.2 — Duplicate Entity (nodeId) Detection', () => {
 
     it('error message includes the duplicate nodeId and prefab ID', () => {
         const definition = makeDefinition('scn_myprefab', [
-            makeActor('ent_collision_node', 'First'),
-            makeActor('ent_collision_node', 'Second'),
+            makeEntity('ent_collision_node', 'First'),
+            makeEntity('ent_collision_node', 'Second'),
         ]);
 
         expect(() => resolveScenePrefab(definition)).toThrow(
-            /duplicate actor nodeId 'ent_collision_node'/,
+            /duplicate entity nodeId 'ent_collision_node'/,
         );
     });
 
-    it('mergeScenePrefabActors silently replaces when nested instance nodeId collides with parent actor', () => {
-        // GAP: mergeScenePrefabActors() in scene-prefab-operations.ts uses
-        // indexOf() + splice() to replace the existing actor when a nodeId
+    it('mergeScenePrefabEntities silently replaces when nested instance nodeId collides with parent entity', () => {
+        // GAP: mergeScenePrefabEntities() in scene-prefab-operations.ts uses
+        // indexOf() + splice() to replace the existing entity when a nodeId
         // collision occurs during merge, but does NOT throw or warn.
-        // The rebuildActorIndex() call in validateScenePrefabState() then
+        // The rebuildEntityIndex() call in validateScenePrefabState() then
         // sees only one entry per nodeId (the replacement), so no error.
-        // TODO(engine): mergeScenePrefabActors() should detect when a nested
-        // instance's scoped nodeId collides with an existing parent actor
+        // TODO(engine): mergeScenePrefabEntities() should detect when a nested
+        // instance's scoped nodeId collides with an existing parent entity
         // and throw ScenePrefabValidationError instead of silently replacing.
         const nested = makeDefinition('scn_nested', [
-            makeActor('ent_child', 'NestedChild'),
+            makeEntity('ent_child', 'NestedChild'),
         ]);
 
         const parent: ScenePrefabDefinition = {
             id: 'scn_parent',
             kind: 'prefab',
-            actors: [
-                makeActor('ent_root', 'Root'),
-                // This actor has the same nodeId that the scoped nested
+            entities: [
+                makeEntity('ent_root', 'Root'),
+                // This entity has the same nodeId that the scoped nested
                 // instance would produce: 'inst_1::ent_child'
-                makeActor('inst_1::ent_child', 'CollisionActor'),
+                makeEntity('inst_1::ent_child', 'CollisionEntity'),
             ],
             nested: [
                 {
@@ -200,20 +200,20 @@ describe('T-03.2 — Duplicate Entity (nodeId) Detection', () => {
         const wf = new ScenePrefabWorkflow({ prefabs: [nested, parent] });
         const result = wf.resolvePrefab({ kind: 'registry', prefabId: 'scn_parent' });
 
-        // The nested instance's actor silently replaced the parent's actor.
+        // The nested instance's entity silently replaced the parent's entity.
         // No collision was reported — this is the gap.
-        const collidingActor = result.definition.actors.find(
+        const collidingEntity = result.definition.entities.find(
             (a) => a.nodeId === 'inst_1::ent_child',
         );
-        expect(collidingActor).toBeDefined();
-        expect(collidingActor!.name).toBe('NestedChild');
+        expect(collidingEntity).toBeDefined();
+        expect(collidingEntity!.name).toBe('NestedChild');
     });
 
-    it('add-actor override throws when nodeId already exists', () => {
-        // DETECTED: applyScenePrefabOverrideOperation 'add-actor' branch
-        // checks state.actorIndex.has(actor.nodeId) before inserting.
+    it('add-entity override throws when nodeId already exists', () => {
+        // DETECTED: applyScenePrefabOverrideOperation 'add-entity' branch
+        // checks state.entityIndex.has(entity.nodeId) before inserting.
         const definition = makeDefinition('scn_test', [
-            makeActor('ent_existing', 'Existing'),
+            makeEntity('ent_existing', 'Existing'),
         ]);
 
         const wf = new ScenePrefabWorkflow({ prefabs: [definition] });
@@ -223,8 +223,8 @@ describe('T-03.2 — Duplicate Entity (nodeId) Detection', () => {
                 { kind: 'registry', prefabId: 'scn_test' },
                 [
                     {
-                        kind: 'add-actor',
-                        actor: makeActor('ent_existing', 'Duplicate'),
+                        kind: 'add-entity',
+                        entity: makeEntity('ent_existing', 'Duplicate'),
                     },
                 ],
             ),
@@ -236,11 +236,11 @@ describe('T-03.2 — Duplicate Entity (nodeId) Detection', () => {
 // Group 3: Duplicate Component ID Detection
 // ---------------------------------------------------------------------------
 describe('T-03.3 — Duplicate Component ID Detection', () => {
-    it('add-component override throws when component ID already exists on actor', () => {
+    it('add-component override throws when component ID already exists on entity', () => {
         // DETECTED: In applyScenePrefabOverrideOperation 'add-component' branch,
-        // there is an explicit check: actor.components.some(c => c.id === ...).
+        // there is an explicit check: entity.components.some(c => c.id === ...).
         const definition = makeDefinition('scn_test', [
-            makeActor('ent_root', 'Root', null, [
+            makeEntity('ent_root', 'Root', null, [
                 makeComponent('cmp_transform', 'Transform'),
             ]),
         ]);
@@ -263,7 +263,7 @@ describe('T-03.3 — Duplicate Component ID Detection', () => {
 
     it('error message includes the duplicate component ID', () => {
         const definition = makeDefinition('scn_test', [
-            makeActor('ent_root', 'Root', null, [
+            makeEntity('ent_root', 'Root', null, [
                 makeComponent('cmp_mesh', 'MeshRenderer'),
             ]),
         ]);
@@ -284,9 +284,9 @@ describe('T-03.3 — Duplicate Component ID Detection', () => {
         ).toThrow(/already contains component 'cmp_mesh'/);
     });
 
-    it('rejects duplicate component IDs within initial actor definition', () => {
+    it('rejects duplicate component IDs within initial entity definition', () => {
         const definition = makeDefinition('scn_test', [
-            makeActor('ent_root', 'Root', null, [
+            makeEntity('ent_root', 'Root', null, [
                 makeComponent('cmp_dup', 'Transform', { x: 1 }),
                 makeComponent('cmp_dup', 'Transform', { x: 2 }),
             ]),
@@ -296,9 +296,9 @@ describe('T-03.3 — Duplicate Component ID Detection', () => {
         expect(() => resolveScenePrefab(definition)).toThrow(/duplicate component 'cmp_dup'/);
     });
 
-    it('initial definition should reject actors with duplicate component IDs', () => {
+    it('initial definition should reject entities with duplicate component IDs', () => {
         const definition = makeDefinition('scn_test', [
-            makeActor('ent_root', 'Root', null, [
+            makeEntity('ent_root', 'Root', null, [
                 makeComponent('cmp_dup', 'Transform', { x: 1 }),
                 makeComponent('cmp_dup', 'Transform', { x: 2 }),
             ]),
@@ -320,12 +320,12 @@ describe('T-03.4 — Valid Unique IDs Pass', () => {
         const definition: ScenePrefabDefinition = {
             id: uid('scn'),
             kind: 'prefab',
-            actors: [
-                makeActor(uid('ent'), 'Actor-A', null, [
+            entities: [
+                makeEntity(uid('ent'), 'Entity-A', null, [
                     makeComponent(uid('cmp'), 'Transform'),
                     makeComponent(uid('cmp'), 'MeshRenderer'),
                 ]),
-                makeActor(uid('ent'), 'Actor-B', null, [
+                makeEntity(uid('ent'), 'Entity-B', null, [
                     makeComponent(uid('cmp'), 'Transform'),
                 ]),
             ],
@@ -333,7 +333,7 @@ describe('T-03.4 — Valid Unique IDs Pass', () => {
 
         const result = resolveScenePrefab(definition);
         expect(result.definition.kind).toBe('resolved');
-        expect(result.definition.actors).toHaveLength(2);
+        expect(result.definition.entities).toHaveLength(2);
     });
 
     it('registry holds multiple prefabs with distinct IDs', () => {
@@ -354,8 +354,8 @@ describe('T-03.4 — Valid Unique IDs Pass', () => {
         const base: ScenePrefabDefinition = {
             id: 'scn_base',
             kind: 'prefab',
-            actors: [
-                makeActor('ent_base_root', 'BaseRoot', null, [
+            entities: [
+                makeEntity('ent_base_root', 'BaseRoot', null, [
                     makeComponent('cmp_base_transform', 'Transform', { x: 0 }),
                 ]),
             ],
@@ -364,7 +364,7 @@ describe('T-03.4 — Valid Unique IDs Pass', () => {
         const variant: ScenePrefabDefinition = {
             id: 'scn_variant',
             kind: 'variant',
-            actors: [makeActor('ent_base_root', 'VariantRoot')],
+            entities: [makeEntity('ent_base_root', 'VariantRoot')],
             base: { kind: 'registry', prefabId: 'scn_base' },
         };
 
@@ -372,19 +372,19 @@ describe('T-03.4 — Valid Unique IDs Pass', () => {
         const result = wf.resolvePrefab({ kind: 'registry', prefabId: 'scn_variant' });
 
         expect(result.definition.kind).toBe('resolved');
-        expect(result.definition.actors[0]!.name).toBe('VariantRoot');
+        expect(result.definition.entities[0]!.name).toBe('VariantRoot');
         expect(result.definition.lineage).toEqual(['scn_base', 'scn_variant']);
     });
 
     it('nested instances produce unique scoped nodeIds', () => {
         const child = makeDefinition('scn_child', [
-            makeActor('ent_child_root', 'ChildRoot'),
+            makeEntity('ent_child_root', 'ChildRoot'),
         ]);
 
         const parent: ScenePrefabDefinition = {
             id: 'scn_parent',
             kind: 'prefab',
-            actors: [makeActor('ent_parent_root', 'ParentRoot')],
+            entities: [makeEntity('ent_parent_root', 'ParentRoot')],
             nested: [
                 {
                     instanceId: 'inst_001',
@@ -402,14 +402,14 @@ describe('T-03.4 — Valid Unique IDs Pass', () => {
         const wf = new ScenePrefabWorkflow({ prefabs: [child, parent] });
         const result = wf.resolvePrefab({ kind: 'registry', prefabId: 'scn_parent' });
 
-        const nodeIds = result.definition.actors.map((a) => a.nodeId);
+        const nodeIds = result.definition.entities.map((a) => a.nodeId);
         const uniqueNodeIds = new Set(nodeIds);
         expect(uniqueNodeIds.size).toBe(nodeIds.length);
     });
 
-    it('components with distinct IDs on the same actor resolve correctly', () => {
+    it('components with distinct IDs on the same entity resolve correctly', () => {
         const definition = makeDefinition('scn_test', [
-            makeActor('ent_root', 'Root', null, [
+            makeEntity('ent_root', 'Root', null, [
                 makeComponent('cmp_001', 'Transform'),
                 makeComponent('cmp_002', 'MeshRenderer'),
                 makeComponent('cmp_003', 'Rigidbody'),
@@ -417,7 +417,7 @@ describe('T-03.4 — Valid Unique IDs Pass', () => {
         ]);
 
         const result = resolveScenePrefab(definition);
-        const componentIds = result.definition.actors[0]!.components.map(
+        const componentIds = result.definition.entities[0]!.components.map(
             (c) => c.id,
         );
         expect(new Set(componentIds).size).toBe(3);
@@ -469,11 +469,11 @@ describe('T-03.5 — ID Format Validation', () => {
         // Documents current behavior: the only requirement is non-empty
         // after trimming (enforced by ensureScenePrefabNodeId).
         const definition = makeDefinition('scn_test', [
-            makeActor('arbitrary-node-id', 'Actor'),
+            makeEntity('arbitrary-node-id', 'Entity'),
         ]);
 
         const result = resolveScenePrefab(definition);
-        expect(result.definition.actors[0]!.nodeId).toBe('arbitrary-node-id');
+        expect(result.definition.entities[0]!.nodeId).toBe('arbitrary-node-id');
     });
 
     it('rejects empty or whitespace-only nodeId', () => {
@@ -482,7 +482,7 @@ describe('T-03.5 — ID Format Validation', () => {
             {
                 nodeId: '   ',
                 parentNodeId: null,
-                name: 'BadActor',
+                name: 'BadEntity',
                 layer: 0,
                 tag: 'default',
                 active: true,
@@ -500,15 +500,15 @@ describe('T-03.5 — ID Format Validation', () => {
     it('accepts components without IDs (ID is optional)', () => {
         // Components may omit the id field entirely — this is by design.
         const definition = makeDefinition('scn_test', [
-            makeActor('ent_root', 'Root', null, [
+            makeEntity('ent_root', 'Root', null, [
                 { type: 'Transform', data: { x: 0 } },
                 { type: 'MeshRenderer', data: { mesh: 'cube' } },
             ]),
         ]);
 
         const result = resolveScenePrefab(definition);
-        expect(result.definition.actors[0]!.components).toHaveLength(2);
-        expect(result.definition.actors[0]!.components[0]!.id).toBeUndefined();
+        expect(result.definition.entities[0]!.components).toHaveLength(2);
+        expect(result.definition.entities[0]!.components[0]!.id).toBeUndefined();
     });
 });
 
@@ -522,8 +522,8 @@ describe('T-03.6 — Regression: Cube.prefab / Cube-copy.prefab Incident', () =>
         const cube: ScenePrefabDefinition = {
             id: 'scn_cube_001',
             kind: 'prefab',
-            actors: [
-                makeActor('ent_cube_root', 'Cube', null, [
+            entities: [
+                makeEntity('ent_cube_root', 'Cube', null, [
                     makeComponent('cmp_cube_transform', 'Transform', { x: 0, y: 0, z: 0 }),
                     makeComponent('cmp_cube_mesh', 'MeshRenderer', { mesh: 'cube' }),
                 ]),
@@ -533,8 +533,8 @@ describe('T-03.6 — Regression: Cube.prefab / Cube-copy.prefab Incident', () =>
         const cubeCopy: ScenePrefabDefinition = {
             id: 'scn_cube_copy_002',
             kind: 'prefab',
-            actors: [
-                makeActor('ent_cube_copy_root', 'Cube-Copy', null, [
+            entities: [
+                makeEntity('ent_cube_copy_root', 'Cube-Copy', null, [
                     makeComponent('cmp_cube_copy_transform', 'Transform', { x: 5, y: 0, z: 0 }),
                     makeComponent('cmp_cube_copy_mesh', 'MeshRenderer', { mesh: 'cube' }),
                 ]),
@@ -546,8 +546,8 @@ describe('T-03.6 — Regression: Cube.prefab / Cube-copy.prefab Incident', () =>
         const resolvedCube = wf.resolvePrefab({ kind: 'registry', prefabId: 'scn_cube_001' });
         const resolvedCopy = wf.resolvePrefab({ kind: 'registry', prefabId: 'scn_cube_copy_002' });
 
-        expect(resolvedCube.definition.actors[0]!.name).toBe('Cube');
-        expect(resolvedCopy.definition.actors[0]!.name).toBe('Cube-Copy');
+        expect(resolvedCube.definition.entities[0]!.name).toBe('Cube');
+        expect(resolvedCopy.definition.entities[0]!.name).toBe('Cube-Copy');
 
         // Verify all IDs are distinct across both prefabs.
         const allPrefabIds = new Set([
@@ -557,16 +557,16 @@ describe('T-03.6 — Regression: Cube.prefab / Cube-copy.prefab Incident', () =>
         expect(allPrefabIds.size).toBe(2);
 
         const allNodeIds = new Set([
-            ...resolvedCube.definition.actors.map((a) => a.nodeId),
-            ...resolvedCopy.definition.actors.map((a) => a.nodeId),
+            ...resolvedCube.definition.entities.map((a) => a.nodeId),
+            ...resolvedCopy.definition.entities.map((a) => a.nodeId),
         ]);
         expect(allNodeIds.size).toBe(2);
 
         const allComponentIds = new Set([
-            ...resolvedCube.definition.actors.flatMap((a) =>
+            ...resolvedCube.definition.entities.flatMap((a) =>
                 a.components.map((c) => c.id),
             ),
-            ...resolvedCopy.definition.actors.flatMap((a) =>
+            ...resolvedCopy.definition.entities.flatMap((a) =>
                 a.components.map((c) => c.id),
             ),
         ]);
@@ -581,23 +581,23 @@ describe('T-03.6 — Regression: Cube.prefab / Cube-copy.prefab Incident', () =>
         const cube: ScenePrefabDefinition = {
             id: 'scn_cube',
             kind: 'prefab',
-            actors: [makeActor(sharedNodeId, 'Cube')],
+            entities: [makeEntity(sharedNodeId, 'Cube')],
         };
 
         const cubeCopy: ScenePrefabDefinition = {
             id: 'scn_cube_copy',
             kind: 'prefab',
             // Same nodeId as cube — this is the bug pattern.
-            actors: [makeActor(sharedNodeId, 'Cube-Copy')],
+            entities: [makeEntity(sharedNodeId, 'Cube-Copy')],
         };
 
         // Within a single prefab, duplicate nodeIds ARE caught.
         const combined: ScenePrefabDefinition = {
             id: 'scn_combined',
             kind: 'prefab',
-            actors: [
-                makeActor(sharedNodeId, 'Cube'),
-                makeActor(sharedNodeId, 'Cube-Copy'),
+            entities: [
+                makeEntity(sharedNodeId, 'Cube'),
+                makeEntity(sharedNodeId, 'Cube-Copy'),
             ],
         };
 
@@ -614,7 +614,7 @@ describe('T-03.6 — Regression: Cube.prefab / Cube-copy.prefab Incident', () =>
         const r2 = wf.resolvePrefab({ kind: 'registry', prefabId: 'scn_cube_copy' });
 
         // Both resolve independently — no cross-prefab nodeId validation.
-        expect(r1.definition.actors[0]!.nodeId).toBe(sharedNodeId);
-        expect(r2.definition.actors[0]!.nodeId).toBe(sharedNodeId);
+        expect(r1.definition.entities[0]!.nodeId).toBe(sharedNodeId);
+        expect(r2.definition.entities[0]!.nodeId).toBe(sharedNodeId);
     });
 });

@@ -9,7 +9,7 @@ import {
     getScenePrefabComponentSelectorKey,
     findScenePrefabComponentIndex,
     hasScenePrefabComposition,
-    cloneSceneActorSnapshot,
+    cloneSceneEntitySnapshot,
     cloneSceneComponentSnapshot,
     cloneScenePrefabDefinition,
     cloneScenePrefabOverrideOperation,
@@ -22,18 +22,18 @@ import type {
     SceneSerializedValue,
     ScenePrefabOverrideOperation,
     ScenePrefabReference,
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     SceneComponentSnapshot,
     ScenePrefabDefinition,
 } from '../types';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-const makeActor = (
+const makeEntity = (
     nodeId: string,
-    name = 'Actor',
+    name = 'Entity',
     parentNodeId: string | null = null,
-): SceneActorSnapshot => ({
+): SceneEntitySnapshot => ({
     nodeId,
     parentNodeId,
     name,
@@ -137,7 +137,7 @@ describe('isScenePrefabReference', () => {
     it('returns true for inline reference', () => {
         expect(isScenePrefabReference({
             kind: 'inline',
-            prefab: { id: 'p', kind: 'prefab', actors: [] },
+            prefab: { id: 'p', kind: 'prefab', entities: [] },
         })).toBe(true);
     });
 
@@ -350,7 +350,7 @@ describe('hasScenePrefabComposition', () => {
     it('returns true when base is set', () => {
         expect(hasScenePrefabComposition({
             id: 'p',
-            actors: [],
+            entities: [],
             base: { kind: 'registry', prefabId: 'base-prefab' },
         })).toBe(true);
     });
@@ -358,7 +358,7 @@ describe('hasScenePrefabComposition', () => {
     it('returns true when nested is non-empty', () => {
         expect(hasScenePrefabComposition({
             id: 'p',
-            actors: [],
+            entities: [],
             nested: [{ instanceId: 'i', reference: { kind: 'registry', prefabId: 'p' } }],
         })).toBe(true);
     });
@@ -366,7 +366,7 @@ describe('hasScenePrefabComposition', () => {
     it('returns true when overrides is non-empty', () => {
         expect(hasScenePrefabComposition({
             id: 'p',
-            actors: [],
+            entities: [],
             overrides: [{
                 kind: 'set-component-property',
                 nodeId: 'n',
@@ -378,21 +378,21 @@ describe('hasScenePrefabComposition', () => {
     });
 
     it('returns false for empty/undefined composition', () => {
-        expect(hasScenePrefabComposition({ id: 'p', actors: [] })).toBe(false);
-        expect(hasScenePrefabComposition({ id: 'p', actors: [], nested: [] })).toBe(false);
-        expect(hasScenePrefabComposition({ id: 'p', actors: [], overrides: [] })).toBe(false);
+        expect(hasScenePrefabComposition({ id: 'p', entities: [] })).toBe(false);
+        expect(hasScenePrefabComposition({ id: 'p', entities: [], nested: [] })).toBe(false);
+        expect(hasScenePrefabComposition({ id: 'p', entities: [], overrides: [] })).toBe(false);
     });
 });
 
 // ---------------------------------------------------------------------------
 // Clone functions
 // ---------------------------------------------------------------------------
-describe('cloneSceneActorSnapshot', () => {
-    it('deep-clones an actor', () => {
-        const actor: SceneActorSnapshot = {
+describe('cloneSceneEntitySnapshot', () => {
+    it('deep-clones an entity', () => {
+        const entity: SceneEntitySnapshot = {
             nodeId: 'a',
             parentNodeId: null,
-            name: 'Actor',
+            name: 'Entity',
             layer: 1,
             tag: 'hero',
             active: true,
@@ -400,10 +400,10 @@ describe('cloneSceneActorSnapshot', () => {
             pooled: false,
             components: [{ type: 'Transform', data: { position: [1, 2, 3] } }],
         };
-        const cloned = cloneSceneActorSnapshot(actor);
-        expect(cloned).toEqual(actor);
-        expect(cloned).not.toBe(actor);
-        expect(cloned.components[0]).not.toBe(actor.components[0]);
+        const cloned = cloneSceneEntitySnapshot(entity);
+        expect(cloned).toEqual(entity);
+        expect(cloned).not.toBe(entity);
+        expect(cloned.components[0]).not.toBe(entity.components[0]);
     });
 });
 
@@ -427,24 +427,24 @@ describe('cloneScenePrefabDefinition', () => {
         const def: ScenePrefabDefinition = {
             id: 'p',
             kind: 'prefab',
-            actors: [makeActor('root')],
+            entities: [makeEntity('root')],
         };
         const cloned = cloneScenePrefabDefinition(def);
         expect(cloned).toEqual(def);
         expect(cloned).not.toBe(def);
-        expect(cloned.actors[0]).not.toBe(def.actors[0]);
+        expect(cloned.entities[0]).not.toBe(def.entities[0]);
     });
 
     it('handles deeply nested definitions without infinite loops', () => {
         const inner: ScenePrefabDefinition = {
             id: 'inner',
             kind: 'prefab',
-            actors: [makeActor('root')],
+            entities: [makeEntity('root')],
         };
         const outer: ScenePrefabDefinition = {
             id: 'outer',
             kind: 'prefab',
-            actors: [makeActor('root')],
+            entities: [makeEntity('root')],
             base: { kind: 'inline', prefab: inner },
         };
         const cloned = cloneScenePrefabDefinition(outer);
@@ -464,23 +464,23 @@ describe('cloneScenePrefabOverrideOperation', () => {
         expect(cloned).not.toBe(op);
     };
 
-    it('clones add-actor', () => {
+    it('clones add-entity', () => {
         testClone({
-            kind: 'add-actor',
-            actor: makeActor('a'),
+            kind: 'add-entity',
+            entity: makeEntity('a'),
         });
     });
 
-    it('clones remove-actor', () => {
-        testClone({ kind: 'remove-actor', nodeId: 'a' });
+    it('clones remove-entity', () => {
+        testClone({ kind: 'remove-entity', nodeId: 'a' });
     });
 
-    it('clones reparent-actor', () => {
-        testClone({ kind: 'reparent-actor', nodeId: 'a', parentNodeId: 'b' });
+    it('clones reparent-entity', () => {
+        testClone({ kind: 'reparent-entity', nodeId: 'a', parentNodeId: 'b' });
     });
 
-    it('clones set-actor-field', () => {
-        testClone({ kind: 'set-actor-field', nodeId: 'a', field: 'name', value: 'New' });
+    it('clones set-entity-field', () => {
+        testClone({ kind: 'set-entity-field', nodeId: 'a', field: 'name', value: 'New' });
     });
 
     it('clones add-component', () => {
@@ -532,7 +532,7 @@ describe('cloneScenePrefabReference', () => {
     it('clones inline reference', () => {
         const ref: ScenePrefabReference = {
             kind: 'inline',
-            prefab: { id: 'p', kind: 'prefab', actors: [] },
+            prefab: { id: 'p', kind: 'prefab', entities: [] },
         };
         const cloned = cloneScenePrefabReference(ref);
         expect(cloned).toEqual(ref);

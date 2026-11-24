@@ -650,17 +650,17 @@ describe('gltf full pipeline', () => {
     // Prefab Definition
     // -----------------------------------------------------------------------
     describe('prefab definition', () => {
-        it('has actors for all 6 nodes in the hierarchy', async () => {
+        it('has entities for all 6 nodes in the hierarchy', async () => {
             const { prefab } = await importFullPipeline();
-            expect(prefab!.data.definition.actors).toHaveLength(6);
+            expect(prefab!.data.definition.entities).toHaveLength(6);
         });
 
         it('preserves the scene hierarchy with correct parent-child relationships', async () => {
             const { prefab } = await importFullPipeline();
-            const actors = prefab!.data.definition.actors;
-            const sceneRoot = actors.find((a) => a.name === 'SceneRoot');
-            const armature = actors.find((a) => a.name === 'Armature');
-            const skinnedMesh = actors.find((a) => a.name === 'SkinnedMesh');
+            const entities = prefab!.data.definition.entities;
+            const sceneRoot = entities.find((a) => a.name === 'SceneRoot');
+            const armature = entities.find((a) => a.name === 'Armature');
+            const skinnedMesh = entities.find((a) => a.name === 'SkinnedMesh');
 
             expect(sceneRoot).toBeDefined();
             expect(armature).toBeDefined();
@@ -671,19 +671,19 @@ describe('gltf full pipeline', () => {
             expect(skinnedMesh!.parentNodeId).toBe(sceneRoot!.nodeId);
         });
 
-        it('creates Transform components on every actor', async () => {
+        it('creates Transform components on every entity', async () => {
             const { prefab } = await importFullPipeline();
-            for (const actor of prefab!.data.definition.actors) {
-                const transform = actor.components.find((c) => c.type === 'Transform');
+            for (const entity of prefab!.data.definition.entities) {
+                const transform = entity.components.find((c) => c.type === 'Transform');
                 expect(transform).toBeDefined();
             }
         });
 
-        it('creates a MeshRenderer component on the SkinnedMesh actor with correct mesh and material references', async () => {
+        it('creates a MeshRenderer component on the SkinnedMesh entity with correct mesh and material references', async () => {
             const { prefab, mesh, material, skin } = await importFullPipeline();
-            const actors = prefab!.data.definition.actors;
-            const skinnedMeshActor = actors.find((a) => a.name === 'SkinnedMesh');
-            const meshRenderer = skinnedMeshActor!.components.find((c) => c.type === 'MeshRenderer');
+            const entities = prefab!.data.definition.entities;
+            const skinnedMeshEntity = entities.find((a) => a.name === 'SkinnedMesh');
+            const meshRenderer = skinnedMeshEntity!.components.find((c) => c.type === 'MeshRenderer');
 
             expect(meshRenderer).toBeDefined();
             expect(meshRenderer!.data).toMatchObject({
@@ -699,9 +699,9 @@ describe('gltf full pipeline', () => {
 
         it('creates an Animator component with the animation clip', async () => {
             const { prefab, animation } = await importFullPipeline();
-            const actors = prefab!.data.definition.actors;
-            // The Animator is typically placed on the first actor or the root
-            const allComponents = actors.flatMap((a) => a.components);
+            const entities = prefab!.data.definition.entities;
+            // The Animator is typically placed on the first entity or the root
+            const allComponents = entities.flatMap((a) => a.components);
             const animator = allComponents.find((c) => c.type === 'Animator');
 
             expect(animator).toBeDefined();

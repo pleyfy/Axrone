@@ -45,10 +45,10 @@ describe('Scene2D sprite batch cache', () => {
         const gl = scene.gl as any;
 
         await registerHeroTexture(scene);
-        const cameraActor = scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        const spriteActor = scene.createSpriteActor({ name: 'Hero' }, { textureId: 'hero' });
-        const spriteTransform = spriteActor.getComponent(Transform)!;
-        const spriteRenderer = spriteActor.getComponent(SpriteRenderer)!;
+        const cameraEntity = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        const spriteEntity = scene.createSpriteEntity({ name: 'Hero' }, { textureId: 'hero' });
+        const spriteTransform = spriteEntity.getComponent(Transform)!;
+        const spriteRenderer = spriteEntity.getComponent(SpriteRenderer)!;
 
         try {
             scene.renderNow();
@@ -92,7 +92,7 @@ describe('Scene2D sprite batch cache', () => {
             scene.renderNow();
             expect(scene.renderStats.planning.spriteBatchCacheHit).toBe(true);
 
-            const cameraTransform = cameraActor.getComponent(Transform)!;
+            const cameraTransform = cameraEntity.getComponent(Transform)!;
             cameraTransform.position = new Vec3(1, 0, 1);
             scene.renderNow();
             expect(scene.renderStats.planning.spriteBatchCacheHit).toBe(false);
@@ -101,7 +101,7 @@ describe('Scene2D sprite batch cache', () => {
             scene.renderNow();
             expect(scene.renderStats.planning.spriteBatchCacheHit).toBe(true);
 
-            const extraSprite = scene.createSpriteActor({ name: 'Extra' }, { textureId: 'hero' });
+            const extraSprite = scene.createSpriteEntity({ name: 'Extra' }, { textureId: 'hero' });
             scene.renderNow();
             expect(scene.renderStats.planning.spriteBatchCacheHit).toBe(false);
             scene.renderNow();
@@ -123,17 +123,17 @@ describe('Scene2D sprite batch cache', () => {
         const gl = scene.gl as any;
 
         await registerHeroTexture(scene);
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
 
-        const maskActor = scene.createMaskActor(
+        const maskEntity = scene.createMaskEntity(
             { name: 'Mask' },
             { size: [4, 4], shape: 'circle' }
         );
-        const maskedSprite = scene.createSpriteActor({ name: 'Masked' }, { textureId: 'hero' });
-        maskedSprite.setParent(maskActor);
+        const maskedSprite = scene.createSpriteEntity({ name: 'Masked' }, { textureId: 'hero' });
+        maskedSprite.setParent(maskEntity);
 
-        const maskTransform = maskActor.getComponent(Transform)!;
-        const mask = maskActor.getComponent(SpriteMask)!;
+        const maskTransform = maskEntity.getComponent(Transform)!;
+        const mask = maskEntity.getComponent(SpriteMask)!;
 
         try {
             scene.renderNow();
@@ -176,19 +176,19 @@ describe('Scene2D sprite batch cache', () => {
         const scene = new Scene2D(createSceneOptions(scheduler, canvas));
 
         await registerHeroTexture(scene);
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        const sprite = scene.createSpriteActor({ name: 'Hero' }, { textureId: 'hero' });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        const sprite = scene.createSpriteEntity({ name: 'Hero' }, { textureId: 'hero' });
 
         try {
             scene.renderNow();
             scene.renderNow();
             expect(scene.renderStats.planning.spriteBatchCacheHit).toBe(true);
 
-            const maskActor = scene.createMaskActor(
+            const maskEntity = scene.createMaskEntity(
                 { name: 'Mask' },
                 { size: [4, 4], shape: 'rect' }
             );
-            sprite.setParent(maskActor);
+            sprite.setParent(maskEntity);
 
             scene.renderNow();
             expect(scene.renderStats.planning.spriteBatchCacheHit).toBe(false);

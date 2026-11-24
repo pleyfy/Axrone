@@ -6,8 +6,8 @@
  * New code should import from `@axrone/scene-prefab` directly.
  */
 export type {
-    ScenePrefabActorField,
-    ScenePrefabActorFieldValue,
+    ScenePrefabEntityField,
+    ScenePrefabEntityFieldValue,
     ScenePrefabComponentId,
     ScenePrefabComponentSelector,
     ScenePrefabConflict,
@@ -38,7 +38,7 @@ export type {
     ScenePrefabResolver,
     SceneSerializedValue,
     SceneComponentSnapshot,
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     ScenePrefabInstantiateOptions,
 } from '@axrone/scene-prefab';
 export {

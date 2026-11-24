@@ -10,7 +10,7 @@ export interface WorldMetrics {
 export interface WorldMetricsSnapshot {
     readonly entityCount: number;
     readonly archetypeCount: number;
-    readonly actorCount: number;
+    readonly registeredEntityCount: number;
     readonly freeEntityCount: number;
     readonly componentTypes: readonly string[];
 }
@@ -100,7 +100,7 @@ export class WorldMetricsService {
 
         totalSize += 1000;
         totalSize += snapshot.entityCount * 50;
-        totalSize += snapshot.actorCount * 100;
+        totalSize += snapshot.registeredEntityCount * 100;
         totalSize += snapshot.freeEntityCount * 10;
         totalSize += snapshot.archetypeCount * 500;
         totalSize += snapshot.componentTypes.length * 20;

@@ -1,4 +1,4 @@
-import { Actor, type ActorConfig } from '@axrone/ecs-runtime';
+import { Entity, type EntityConfig } from '@axrone/ecs-runtime';
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
 import type { World } from '@axrone/ecs-runtime';
 import type { TextureFormat } from '@axrone/render-webgl2';
@@ -12,9 +12,9 @@ import type { MeshRendererConfig } from '@axrone/scene-runtime/scene-mesh-render
 import {
     Scene3DActorRuntime,
     type SceneProfilerProbe,
-    type SceneRenderableActorCreateOptions,
-    type SceneRenderableActorInstance,
-} from './scene-3d-actor-runtime';
+    type SceneRenderableEntityCreateOptions,
+    type SceneRenderableEntityInstance,
+} from './scene-3d-entity-runtime';
 
 /**
  * Base 3D scene facade.
@@ -25,37 +25,37 @@ import {
  * lean entry exports the lean-profile subclass from `./scene-lean`.
  */
 export class Scene<R extends ComponentRegistry = Record<string, never>> extends SceneAssetFacade<R> {
-    private readonly _actors3d: Scene3DActorRuntime<R>;
+    private readonly _entitys3d: Scene3DActorRuntime<R>;
 
     constructor(options: SceneOptions<R> = {}) {
         super(options);
-        this._actors3d = new Scene3DActorRuntime({
-            actors: this._kernel.actors,
+        this._entitys3d = new Scene3DActorRuntime({
+            entities: this._kernel.entities,
         });
     }
 
-    createCameraActor(
-        actorConfig: ActorConfig = {},
+    createCameraEntity(
+        entityConfig: EntityConfig = {},
         cameraConfig: CameraConfig = {}
-    ): Actor<World<SceneRegistry<R>>> {
+    ): EntityId<World<SceneRegistry<R>>> {
         this.assertNotDisposed();
-        return this._actors3d.createCameraActor(actorConfig, cameraConfig);
+        return this._entitys3d.createCameraEntity(entityConfig, cameraConfig);
     }
 
-    createRenderableActor(
-        actorConfig: ActorConfig = {},
+    createRenderableEntity(
+        entityConfig: EntityConfig = {},
         rendererConfig: MeshRendererConfig = {}
-    ): Actor<World<SceneRegistry<R>>> {
+    ): EntityId<World<SceneRegistry<R>>> {
         this.assertNotDisposed();
-        return this._actors3d.createRenderableActor(actorConfig, rendererConfig);
+        return this._entitys3d.createRenderableEntity(entityConfig, rendererConfig);
     }
 
-    createRenderableActors(
-        configs: readonly SceneRenderableActorCreateOptions[],
+    createRenderableEntities(
+        configs: readonly SceneRenderableEntityCreateOptions[],
         profiling?: SceneProfilerProbe
-    ): readonly SceneRenderableActorInstance<R>[] {
+    ): readonly SceneRenderableEntityInstance<R>[] {
         this.assertNotDisposed();
-        return this._actors3d.createRenderableActors(configs, profiling);
+        return this._entitys3d.createRenderableEntities(configs, profiling);
     }
 
     getSupportedCompressedTextureFormats(

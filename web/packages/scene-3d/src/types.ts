@@ -6,6 +6,6 @@ export type {
 } from '@axrone/scene-runtime/scene-profile-contract';
 export type {
     Scene3DActorRuntimeOptions,
-    SceneRenderableActorCreateOptions,
-    SceneRenderableActorInstance,
-} from './scene-3d-actor-runtime';
+    SceneRenderableEntityCreateOptions,
+    SceneRenderableEntityInstance,
+} from './scene-3d-entity-runtime';

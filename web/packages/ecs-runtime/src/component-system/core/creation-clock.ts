@@ -1,7 +1,7 @@
 /**
  * Shared creation timestamp for bulk creation windows.
  *
- * Actor/Component construction stamps `creationTime` from `performance.now()`
+ * Entity/Component construction stamps `creationTime` from `performance.now()`
  * per instance. A 50k-sprite scene pays 200k clock reads during setup; opening
  * a batch window answers every stamp inside the window from a single clock
  * read taken at window entry. Public semantics are unchanged — the field is

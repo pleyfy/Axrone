@@ -1,5 +1,5 @@
 import { Mat4, Vec4 } from '@axrone/numeric';
-import { Transform, type Actor } from '@axrone/ecs-runtime';
+import { Transform, type EntityId } from '@axrone/ecs-runtime';
 import type { SceneCameraFrameState } from '../camera-frame-state';
 import { LineRenderer } from '../components/line-renderer';
 import { TrailRenderer } from '../components/trail-renderer';
@@ -26,7 +26,7 @@ export interface SceneLineBatchRuntimeOptions {
 }
 
 export interface SceneLineBatchRuntimeRenderParams {
-    readonly actors: readonly Actor[];
+    readonly entities: readonly EntityId[];
     readonly cameraFrame: SceneCameraFrameState;
     readonly frameState: SceneRenderFrameState;
 }
@@ -46,12 +46,12 @@ const EMPTY_STATS: SceneLineBatchRuntimeRenderStats = Object.freeze({
 });
 
 interface LineSubject {
-    readonly actor: Actor;
+    readonly entity: EntityId;
     readonly renderer: LineRenderer;
 }
 
 interface TrailSubject {
-    readonly actor: Actor;
+    readonly entity: EntityId;
     readonly renderer: TrailRenderer;
 }
 
@@ -93,19 +93,19 @@ export class SceneLineBatchRuntime {
         this._lineSubjects.length = 0;
         this._trailSubjects.length = 0;
 
-        for (const actor of params.actors) {
-            if (!actor.active) {
+        for (const entity of params.entities) {
+            if (!entity.active) {
                 continue;
             }
 
-            const lineRenderer = actor.getComponent(LineRenderer);
+            const lineRenderer = entity.getComponent(LineRenderer);
             if (lineRenderer && lineRenderer.enabled && lineRenderer.positionCount >= 2) {
-                this._lineSubjects.push({ actor, renderer: lineRenderer });
+                this._lineSubjects.push({ entity, renderer: lineRenderer });
             }
 
-            const trailRenderer = actor.getComponent(TrailRenderer);
+            const trailRenderer = entity.getComponent(TrailRenderer);
             if (trailRenderer && trailRenderer.enabled && trailRenderer.pointCount >= 2) {
-                this._trailSubjects.push({ actor, renderer: trailRenderer });
+                this._trailSubjects.push({ entity, renderer: trailRenderer });
             }
         }
 
@@ -207,7 +207,7 @@ export class SceneLineBatchRuntime {
 
         const worldMatrix = renderer.useWorldSpace
             ? null
-            : (subject.actor.getComponent(Transform)?.worldMatrix ?? null);
+            : (subject.entity.getComponent(Transform)?.worldMatrix ?? null);
 
         const ribbon = buildLineRibbon({
             positions,
@@ -272,7 +272,7 @@ export class SceneLineBatchRuntime {
             gradientStops.push({ position: stop.position, color });
         }
 
-        const worldMatrix = subject.actor.getComponent(Transform)?.worldMatrix ?? null;
+        const worldMatrix = subject.entity.getComponent(Transform)?.worldMatrix ?? null;
 
         const ribbon = buildTrailRibbon({
             positions: positions as any,

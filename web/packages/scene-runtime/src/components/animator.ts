@@ -763,7 +763,7 @@ export class Animator extends Component {
     }
 
     private _ensureController(): AnimationController | null {
-        const instanceId = this.actor?.getComponent(PrefabNodeBinding)?.instanceId ?? null;
+        const instanceId = this.entity?.getComponent(PrefabNodeBinding)?.instanceId ?? null;
         if (this._controller && !this._controllerDirty && this._resolvedInstanceId === instanceId) {
             return this._controller;
         }
@@ -783,7 +783,7 @@ export class Animator extends Component {
                     console.warn(
                         `[Animator] _ensureController: Clips reference ${requiredNodeIds.length} target node(s) ` +
                         `[${requiredNodeIds.slice(0, 10).join(', ')}${requiredNodeIds.length > 10 ? '...' : ''}] ` +
-                        `but no PrefabNodeBinding matches were found in the actor hierarchy. ` +
+                        `but no PrefabNodeBinding matches were found in the entity hierarchy. ` +
                         `Verify that imported GLB bone nodes exist as scene entities with correct PrefabNodeBinding.nodeId.`,
                     );
                 }
@@ -1055,21 +1055,21 @@ export class Animator extends Component {
     }
 
     private _hasVisibleRendererInHierarchy(): boolean {
-        const rootActor = this.actor;
-        if (!rootActor) {
+        const rootEntity = this.entity;
+        if (!rootEntity) {
             return true;
         }
 
-        const stack = [rootActor];
+        const stack = [rootEntity];
         let hasRenderer = false;
 
         while (stack.length > 0) {
-            const actor = stack.pop();
-            if (!actor) {
+            const entity = stack.pop();
+            if (!entity) {
                 continue;
             }
 
-            const meshRenderer = actor.getComponent(MeshRenderer) as MeshRenderer | undefined;
+            const meshRenderer = entity.getComponent(MeshRenderer) as MeshRenderer | undefined;
             if (meshRenderer) {
                 hasRenderer = true;
                 if (meshRenderer.visible) {
@@ -1077,8 +1077,8 @@ export class Animator extends Component {
                 }
             }
 
-            for (let index = 0; index < actor.children.length; index += 1) {
-                stack.push(actor.children[index]!);
+            for (let index = 0; index < entity.children.length; index += 1) {
+                stack.push(entity.children[index]!);
             }
         }
 
@@ -1097,7 +1097,7 @@ export class Animator extends Component {
         for (let index = 0; index < events.length; index += 1) {
             const event = events[index]!;
             world?.emitSync?.('animation:notify', {
-                actorId: this.actor?.id,
+                entityUid: this.entity?.id,
                 entity: this.entity,
                 clipId: event.clipId,
                 layerId: event.layerId,
@@ -1126,7 +1126,7 @@ export class Animator extends Component {
         for (let index = 0; index < requests.length; index += 1) {
             const request = requests[index]!;
             world?.emitSync?.('animation:streaming-request', {
-                actorId: this.actor?.id,
+                entityUid: this.entity?.id,
                 entity: this.entity,
                 clipId: request.clipId,
                 chunkId: request.chunkId,
@@ -1222,15 +1222,15 @@ export class Animator extends Component {
     private _rebuildTargetMap(instanceId: string | null): void {
         this._resolvedTargets.clear();
         this._resolvedInstanceId = instanceId;
-        type TargetActor = {
+        type TargetEntity = {
             parent?: { getComponent: (type: unknown) => unknown } | null;
-            children: readonly TargetActor[];
+            children: readonly TargetEntity[];
             getComponent: (type: unknown) => unknown;
         };
         const collectTargets = (
-            actors: readonly TargetActor[],
+            entities: readonly TargetEntity[],
         ): Array<{
-            readonly actor: {
+            readonly entity: {
                 parent?: { getComponent: (type: unknown) => unknown } | null;
                 children: readonly unknown[];
                 getComponent: (type: unknown) => unknown;
@@ -1241,35 +1241,35 @@ export class Animator extends Component {
             readonly meshRenderer?: MeshRenderer;
         }> => {
             const targets: Array<{
-                readonly actor: TargetActor;
+                readonly entity: TargetEntity;
                 readonly nodeId: string;
                 readonly binding: PrefabNodeBinding;
                 readonly transform?: Transform;
                 readonly meshRenderer?: MeshRenderer;
             }> = [];
-            const stack = [...actors];
+            const stack = [...entities];
 
             while (stack.length > 0) {
-                const actor = stack.pop()!;
-                for (let childIndex = 0; childIndex < actor.children.length; childIndex += 1) {
-                    stack.push(actor.children[childIndex]!);
+                const entity = stack.pop()!;
+                for (let childIndex = 0; childIndex < entity.children.length; childIndex += 1) {
+                    stack.push(entity.children[childIndex]!);
                 }
 
-                const binding = actor.getComponent(PrefabNodeBinding) as PrefabNodeBinding | undefined;
+                const binding = entity.getComponent(PrefabNodeBinding) as PrefabNodeBinding | undefined;
                 if (!binding || binding.nodeId === null) {
                     continue;
                 }
                 if (instanceId && binding.instanceId !== instanceId) {
                     continue;
                 }
-                const transform = actor.getComponent(Transform) as Transform | undefined;
-                const meshRenderer = actor.getComponent(MeshRenderer) as MeshRenderer | undefined;
+                const transform = entity.getComponent(Transform) as Transform | undefined;
+                const meshRenderer = entity.getComponent(MeshRenderer) as MeshRenderer | undefined;
                 if (!transform && !meshRenderer) {
                     continue;
                 }
                 targets.push(
                     Object.freeze({
-                        actor,
+                        entity,
                         nodeId: binding.nodeId,
                         binding,
                         ...(transform ? { transform } : {}),
@@ -1280,11 +1280,11 @@ export class Animator extends Component {
 
             return targets;
         };
-        const rootActor = this.actor as TargetActor | undefined;
-        const allActors =
-            (this.world as { getAllActors?: () => readonly TargetActor[] } | undefined)
-                ?.getAllActors?.() ?? [];
-        const rootTargets = rootActor ? collectTargets([rootActor]) : [];
+        const rootEntity = this.entity as TargetEntity | undefined;
+        const allEntities =
+            (this.world as { getAllEntities?: () => readonly TargetEntity[] } | undefined)
+                ?.getAllEntities?.() ?? [];
+        const rootTargets = rootEntity ? collectTargets([rootEntity]) : [];
         const rootTargetNodeIds = new Set(rootTargets.map((target) => target.nodeId));
         const requiresInstanceFallback =
             Boolean(instanceId) &&
@@ -1292,7 +1292,7 @@ export class Animator extends Component {
             this._getRequiredTargetNodeIds().some((targetNodeId) => !rootTargetNodeIds.has(targetNodeId));
         const resolvedTargets =
             requiresInstanceFallback || rootTargets.length === 0
-                ? collectTargets(allActors)
+                ? collectTargets(allEntities)
                 : rootTargets;
 
         const resolvedNodeIds = new Set(
@@ -1301,7 +1301,7 @@ export class Animator extends Component {
 
         for (let targetIndex = 0; targetIndex < resolvedTargets.length; targetIndex += 1) {
             const target = resolvedTargets[targetIndex]!;
-            const parentBinding = target.actor.parent?.getComponent(PrefabNodeBinding) as
+            const parentBinding = target.entity.parent?.getComponent(PrefabNodeBinding) as
                 | PrefabNodeBinding
                 | undefined;
             const parentNodeId =
@@ -1323,8 +1323,8 @@ export class Animator extends Component {
         if (this._clipDefinitions.length > 0 && this._resolvedTargets.size === 0) {
             const requiredTargets = this._getRequiredTargetNodeIds();
             console.warn(
-                `[Animator] _rebuildTargetMap: Resolved 0 targets from actor hierarchy ` +
-                `(rootActor=${rootActor ? 'exists' : 'null'}, allActors=${Array.isArray(allActors) ? allActors.length : 0}). ` +
+                `[Animator] _rebuildTargetMap: Resolved 0 targets from entity hierarchy ` +
+                `(rootEntity=${rootEntity ? 'exists' : 'null'}, allEntities=${Array.isArray(allEntities) ? allEntities.length : 0}). ` +
                 `Clips require ${requiredTargets.length} target(s): ` +
                 `[${requiredTargets.slice(0, 10).join(', ')}${requiredTargets.length > 10 ? '...' : ''}]. ` +
                 `instanceId=${instanceId ?? 'null'}.`,

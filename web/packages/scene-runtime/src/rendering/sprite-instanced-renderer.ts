@@ -208,7 +208,7 @@ export interface SpriteInstancedRendererOptions {
  * geometry, UV rect and tint; the static quad/index buffers never change.
  *
  * This is a renderer execution path, not a second scene model: submissions
- * still come from the actor/component scan and existing sprite batching.
+ * still come from the entity/component scan and existing sprite batching.
  */
 export class SpriteInstancedRenderer {
     private readonly _gl: WebGL2RenderingContext;

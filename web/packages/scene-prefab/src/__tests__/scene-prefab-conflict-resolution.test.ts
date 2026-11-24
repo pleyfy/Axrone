@@ -8,15 +8,15 @@ import type {
     ScenePrefabOverrideOperation,
     ScenePrefabMergeOptions,
     ScenePrefabConflict,
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
 } from '../types';
 
-const makeActor = (
+const makeEntity = (
     nodeId: string,
     name: string,
     position: readonly [number, number, number],
     parentNodeId: string | null = null,
-): SceneActorSnapshot => ({
+): SceneEntitySnapshot => ({
     nodeId,
     parentNodeId,
     name,
@@ -36,9 +36,9 @@ const makeActor = (
 const baseDefinition: ScenePrefabDefinition = {
     id: 'prefab/base',
     kind: 'prefab',
-    actors: [
-        makeActor('root', 'Root', [0, 0, 0]),
-        makeActor('child', 'Child', [1, 0, 0], 'root'),
+    entities: [
+        makeEntity('root', 'Root', [0, 0, 0]),
+        makeEntity('child', 'Child', [1, 0, 0], 'root'),
     ],
 };
 
@@ -49,17 +49,17 @@ describe('scene-prefab conflict resolution', () => {
             const local: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/local',
-                actors: [
-                    makeActor('root', 'Root', [5, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [5, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
             const incoming: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/incoming',
-                actors: [
-                    makeActor('root', 'Root', [0, 0, 0]),
-                    makeActor('child', 'Child', [1, 10, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [0, 0, 0]),
+                    makeEntity('child', 'Child', [1, 10, 0], 'root'),
                 ],
             };
 
@@ -73,17 +73,17 @@ describe('scene-prefab conflict resolution', () => {
             const local: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/local',
-                actors: [
-                    makeActor('root', 'Root', [5, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [5, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
             const incoming: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/incoming',
-                actors: [
-                    makeActor('root', 'Root', [99, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [99, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
 
@@ -96,17 +96,17 @@ describe('scene-prefab conflict resolution', () => {
             const local: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/local',
-                actors: [
-                    makeActor('root', 'Root', [5, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [5, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
             const incoming: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/incoming',
-                actors: [
-                    makeActor('root', 'Root', [99, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [99, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
 
@@ -121,17 +121,17 @@ describe('scene-prefab conflict resolution', () => {
             const local: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/local',
-                actors: [
-                    makeActor('root', 'Root', [5, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [5, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
             const incoming: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/incoming',
-                actors: [
-                    makeActor('root', 'Root', [99, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [99, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
 
@@ -144,17 +144,17 @@ describe('scene-prefab conflict resolution', () => {
             const local: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/local',
-                actors: [
-                    makeActor('root', 'Root', [5, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [5, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
             const incoming: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/incoming',
-                actors: [
-                    makeActor('root', 'Root', [99, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [99, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
 
@@ -167,17 +167,17 @@ describe('scene-prefab conflict resolution', () => {
             const local: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/local',
-                actors: [
-                    makeActor('root', 'Root', [5, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [5, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
             const incoming: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/incoming',
-                actors: [
-                    makeActor('root', 'Root', [99, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [99, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
 
@@ -197,17 +197,17 @@ describe('scene-prefab conflict resolution', () => {
             const local: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/local',
-                actors: [
-                    makeActor('root', 'Root', [5, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [5, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
             const incoming: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/incoming',
-                actors: [
-                    makeActor('root', 'Root', [99, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [99, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
 
@@ -221,17 +221,17 @@ describe('scene-prefab conflict resolution', () => {
             const local: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/local',
-                actors: [
-                    makeActor('root', 'Root', [5, 0, 0]),
-                    makeActor('child', 'Child', [1, 7, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [5, 0, 0]),
+                    makeEntity('child', 'Child', [1, 7, 0], 'root'),
                 ],
             };
             const incoming: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/incoming',
-                actors: [
-                    makeActor('root', 'Root', [99, 0, 0]),
-                    makeActor('child', 'Child', [1, 10, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [99, 0, 0]),
+                    makeEntity('child', 'Child', [1, 10, 0], 'root'),
                 ],
             };
 
@@ -244,18 +244,18 @@ describe('scene-prefab conflict resolution', () => {
             expect(keys.some((key) => key.includes('child'))).toBe(true);
         });
 
-        it('merge completes without throwing for add-actor vs remove-actor on same nodeId', () => {
+        it('merge completes without throwing for add-entity vs remove-entity on same nodeId', () => {
             const local: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/local',
-                actors: [makeActor('root', 'Root', [0, 0, 0])],
+                entities: [makeEntity('root', 'Root', [0, 0, 0])],
             };
             const incoming: ScenePrefabDefinition = {
                 ...baseDefinition,
                 id: 'prefab/incoming',
-                actors: [
-                    makeActor('root', 'Root', [0, 0, 0]),
-                    makeActor('child', 'NewChild', [2, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [0, 0, 0]),
+                    makeEntity('child', 'NewChild', [2, 0, 0], 'root'),
                 ],
             };
 
@@ -273,38 +273,38 @@ describe('scene-prefab conflict resolution', () => {
             expect(result.targetPrefabId).toBe(baseDefinition.id);
         });
 
-        it('detects added actors', () => {
+        it('detects added entities', () => {
             const target: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
-                    ...baseDefinition.actors,
-                    makeActor('new-node', 'NewNode', [3, 0, 0], 'root'),
+                entities: [
+                    ...baseDefinition.entities,
+                    makeEntity('new-node', 'NewNode', [3, 0, 0], 'root'),
                 ],
             };
 
             const result = diffScenePrefabDefinitions(baseDefinition, target);
             expect(result.overrides.length).toBeGreaterThanOrEqual(1);
-            const addOps = result.overrides.filter((op) => op.kind === 'add-actor');
+            const addOps = result.overrides.filter((op) => op.kind === 'add-entity');
             expect(addOps.length).toBeGreaterThanOrEqual(1);
         });
 
-        it('detects removed actors', () => {
+        it('detects removed entities', () => {
             const target: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [baseDefinition.actors[0]!],
+                entities: [baseDefinition.entities[0]!],
             };
 
             const result = diffScenePrefabDefinitions(baseDefinition, target);
-            const removeOps = result.overrides.filter((op) => op.kind === 'remove-actor');
+            const removeOps = result.overrides.filter((op) => op.kind === 'remove-entity');
             expect(removeOps.length).toBeGreaterThanOrEqual(1);
         });
 
         it('detects property changes as set-component-property overrides', () => {
             const target: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
-                    makeActor('root', 'Root', [42, 0, 0]),
-                    makeActor('child', 'Child', [1, 0, 0], 'root'),
+                entities: [
+                    makeEntity('root', 'Root', [42, 0, 0]),
+                    makeEntity('child', 'Child', [1, 0, 0], 'root'),
                 ],
             };
 
@@ -315,37 +315,37 @@ describe('scene-prefab conflict resolution', () => {
             expect(setOps.length).toBeGreaterThanOrEqual(1);
         });
 
-        it('detects actor field changes as set-actor-field overrides', () => {
+        it('detects entity field changes as set-entity-field overrides', () => {
             const target: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
-                    { ...baseDefinition.actors[0]!, name: 'Renamed', layer: 5, tag: 'hero', active: false },
-                    baseDefinition.actors[1]!,
+                entities: [
+                    { ...baseDefinition.entities[0]!, name: 'Renamed', layer: 5, tag: 'hero', active: false },
+                    baseDefinition.entities[1]!,
                 ],
             };
 
             const result = diffScenePrefabDefinitions(baseDefinition, target);
-            const fieldOps = result.overrides.filter((op) => op.kind === 'set-actor-field');
+            const fieldOps = result.overrides.filter((op) => op.kind === 'set-entity-field');
 
-            expect(fieldOps.some((op) => op.kind === 'set-actor-field' && op.field === 'name')).toBe(true);
-            expect(fieldOps.some((op) => op.kind === 'set-actor-field' && op.field === 'layer')).toBe(true);
-            expect(fieldOps.some((op) => op.kind === 'set-actor-field' && op.field === 'tag')).toBe(true);
-            expect(fieldOps.some((op) => op.kind === 'set-actor-field' && op.field === 'active')).toBe(true);
+            expect(fieldOps.some((op) => op.kind === 'set-entity-field' && op.field === 'name')).toBe(true);
+            expect(fieldOps.some((op) => op.kind === 'set-entity-field' && op.field === 'layer')).toBe(true);
+            expect(fieldOps.some((op) => op.kind === 'set-entity-field' && op.field === 'tag')).toBe(true);
+            expect(fieldOps.some((op) => op.kind === 'set-entity-field' && op.field === 'active')).toBe(true);
         });
 
-        it('detects reparent as reparent-actor override', () => {
+        it('detects reparent as reparent-entity override', () => {
             const target: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
-                    baseDefinition.actors[0]!,
-                    { ...baseDefinition.actors[1]!, parentNodeId: null },
+                entities: [
+                    baseDefinition.entities[0]!,
+                    { ...baseDefinition.entities[1]!, parentNodeId: null },
                 ],
             };
 
             const result = diffScenePrefabDefinitions(baseDefinition, target);
-            const reparentOps = result.overrides.filter((op) => op.kind === 'reparent-actor');
+            const reparentOps = result.overrides.filter((op) => op.kind === 'reparent-entity');
             expect(reparentOps).toHaveLength(1);
-            if (reparentOps[0]!.kind === 'reparent-actor') {
+            if (reparentOps[0]!.kind === 'reparent-entity') {
                 expect(reparentOps[0]!.nodeId).toBe('child');
                 expect(reparentOps[0]!.parentNodeId).toBeNull();
             }
@@ -354,25 +354,25 @@ describe('scene-prefab conflict resolution', () => {
         it('detects component removal', () => {
             const baseWithComponents: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
+                entities: [
                     {
-                        ...baseDefinition.actors[0]!,
+                        ...baseDefinition.entities[0]!,
                         components: [
                             { type: 'Transform', data: { position: [0, 0, 0] } },
                             { type: 'Stats', id: 'stats-1', data: { hp: 100 } },
                         ],
                     },
-                    baseDefinition.actors[1]!,
+                    baseDefinition.entities[1]!,
                 ],
             };
             const target: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
+                entities: [
                     {
-                        ...baseDefinition.actors[0]!,
+                        ...baseDefinition.entities[0]!,
                         components: [{ type: 'Transform', data: { position: [0, 0, 0] } }],
                     },
-                    baseDefinition.actors[1]!,
+                    baseDefinition.entities[1]!,
                 ],
             };
 
@@ -384,15 +384,15 @@ describe('scene-prefab conflict resolution', () => {
         it('detects component addition', () => {
             const target: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
+                entities: [
                     {
-                        ...baseDefinition.actors[0]!,
+                        ...baseDefinition.entities[0]!,
                         components: [
-                            ...baseDefinition.actors[0]!.components,
+                            ...baseDefinition.entities[0]!.components,
                             { type: 'NewScript', id: 'new-1', data: { enabled: true } },
                         ],
                     },
-                    baseDefinition.actors[1]!,
+                    baseDefinition.entities[1]!,
                 ],
             };
 
@@ -404,22 +404,22 @@ describe('scene-prefab conflict resolution', () => {
         it('detects component type change as replace-component', () => {
             const baseWithComp: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
+                entities: [
                     {
-                        ...baseDefinition.actors[0]!,
+                        ...baseDefinition.entities[0]!,
                         components: [{ type: 'OldScript', id: 'cmp-1', data: { x: 1 } }],
                     },
-                    baseDefinition.actors[1]!,
+                    baseDefinition.entities[1]!,
                 ],
             };
             const target: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
+                entities: [
                     {
-                        ...baseDefinition.actors[0]!,
+                        ...baseDefinition.entities[0]!,
                         components: [{ type: 'NewScript', id: 'cmp-1', data: { y: 2 } }],
                     },
-                    baseDefinition.actors[1]!,
+                    baseDefinition.entities[1]!,
                 ],
             };
 
@@ -428,25 +428,25 @@ describe('scene-prefab conflict resolution', () => {
             expect(replaceOps).toHaveLength(1);
         });
 
-        it('topologically orders added actors (parent before child)', () => {
+        it('topologically orders added entities (parent before child)', () => {
             const target: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
-                    ...baseDefinition.actors,
-                    makeActor('parent-new', 'ParentNew', [0, 0, 0], 'root'),
-                    makeActor('child-new', 'ChildNew', [0, 0, 0], 'parent-new'),
+                entities: [
+                    ...baseDefinition.entities,
+                    makeEntity('parent-new', 'ParentNew', [0, 0, 0], 'root'),
+                    makeEntity('child-new', 'ChildNew', [0, 0, 0], 'parent-new'),
                 ],
             };
 
             const result = diffScenePrefabDefinitions(baseDefinition, target);
-            const addOps = result.overrides.filter((op) => op.kind === 'add-actor');
+            const addOps = result.overrides.filter((op) => op.kind === 'add-entity');
             expect(addOps.length).toBe(2);
 
             const parentIndex = addOps.findIndex(
-                (op) => op.kind === 'add-actor' && op.actor.nodeId === 'parent-new',
+                (op) => op.kind === 'add-entity' && op.entity.nodeId === 'parent-new',
             );
             const childIndex = addOps.findIndex(
-                (op) => op.kind === 'add-actor' && op.actor.nodeId === 'child-new',
+                (op) => op.kind === 'add-entity' && op.entity.nodeId === 'child-new',
             );
             expect(parentIndex).toBeLessThan(childIndex);
         });
@@ -454,22 +454,22 @@ describe('scene-prefab conflict resolution', () => {
         it('detects unset-component-property for removed keys in structured data', () => {
             const baseWithProps: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
+                entities: [
                     {
-                        ...baseDefinition.actors[0]!,
+                        ...baseDefinition.entities[0]!,
                         components: [{ type: 'Stats', id: 's', data: { hp: 100, mp: 50 } }],
                     },
-                    baseDefinition.actors[1]!,
+                    baseDefinition.entities[1]!,
                 ],
             };
             const target: ScenePrefabDefinition = {
                 ...baseDefinition,
-                actors: [
+                entities: [
                     {
-                        ...baseDefinition.actors[0]!,
+                        ...baseDefinition.entities[0]!,
                         components: [{ type: 'Stats', id: 's', data: { hp: 100 } }],
                     },
-                    baseDefinition.actors[1]!,
+                    baseDefinition.entities[1]!,
                 ],
             };
 

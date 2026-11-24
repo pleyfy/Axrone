@@ -1,6 +1,6 @@
 import { SystemManager, SystemPhase } from '@axrone/ecs-runtime';
 import { World } from '@axrone/ecs-runtime';
-import { Actor } from '@axrone/ecs-runtime';
+import { EntityId } from '@axrone/ecs-runtime';
 import { Component } from '@axrone/ecs-runtime';
 import { Transform } from '@axrone/ecs-runtime';
 import type { SystemId } from '@axrone/ecs-runtime';

@@ -1,6 +1,6 @@
 import { Mat4, Vec3 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { Entity } from '@axrone/ecs-runtime';
 import { Transform } from '@axrone/ecs-runtime';
 import type { RenderPrimitiveInstance } from '@axrone/render-core/types';
 import type { SceneCameraFrameState } from '../camera-frame-state';
@@ -8,14 +8,14 @@ import { MeshRenderer } from '../components/mesh-renderer';
 import { ScenePrimitiveCache, SceneRenderListCache } from '../rendering/render-cache';
 import type { SceneRenderItem } from '../rendering/render-item-collector';
 
-interface MockActorState {
+interface MockEntityState {
     active: boolean;
     revision: number;
     transform: Transform | null;
     renderer: MeshRenderer | null;
 }
 
-const createMockActor = (state: MockActorState): Actor =>
+const createMockEntity = (state: MockEntityState): EntityId =>
     ({
         get active() {
             return state.active;
@@ -38,7 +38,7 @@ const createMockActor = (state: MockActorState): Actor =>
             }
             return undefined;
         },
-    }) as unknown as Actor;
+    }) as unknown as EntityId;
 
 const createCameraFrame = (): SceneCameraFrameState =>
     ({
@@ -54,14 +54,14 @@ describe('SceneRenderListCache', () => {
     const setup = () => {
         const transform = new Transform();
         const renderer = new MeshRenderer({ meshId: 'mesh:cube', passId: 'main' });
-        const state: MockActorState = {
+        const state: MockEntityState = {
             active: true,
             revision: 0,
             transform,
             renderer,
         };
-        const actor = createMockActor(state);
-        const actors = [actor];
+        const entity = createMockEntity(state);
+        const entities = [entity];
         const cameraFrame = createCameraFrame();
         const renderPass = { id: 'main' };
         const collect = vi.fn<() => readonly SceneRenderItem[]>(() => [{ transform, renderer }]);
@@ -71,7 +71,7 @@ describe('SceneRenderListCache', () => {
             cache.resolve({
                 rendererPassId: 'main',
                 renderPass,
-                actors,
+                entities,
                 cameraFrame,
                 viewportWidth: 800,
                 viewportHeight: 600,
@@ -84,8 +84,8 @@ describe('SceneRenderListCache', () => {
             transform,
             renderer,
             state,
-            actor,
-            actors,
+            entity,
+            entities,
             cameraFrame,
             renderPass,
             collect,
@@ -94,7 +94,7 @@ describe('SceneRenderListCache', () => {
         };
     };
 
-    it('hits for unchanged actors, camera and registry revisions without collecting again', () => {
+    it('hits for unchanged entities, camera and registry revisions without collecting again', () => {
         const { collect, resolve } = setup();
 
         const first = resolve();
@@ -118,24 +118,24 @@ describe('SceneRenderListCache', () => {
         expect(collect).toHaveBeenCalledTimes(2);
     });
 
-    it('misses when an actor becomes inactive and when its components change', () => {
-        const { actor, state, collect, resolve } = setup();
+    it('misses when an entity becomes inactive and when its components change', () => {
+        const { entity, state, collect, resolve } = setup();
 
         resolve();
-        actor.active = false;
+        entity.active = false;
         expect(resolve().hit).toBe(false);
 
         // Re-activating must invalidate again even though the component set is
-        // the same — the cached list was collected while the actor was hidden.
-        actor.active = true;
+        // the same — the cached list was collected while the entity was hidden.
+        entity.active = true;
         expect(resolve().hit).toBe(false);
         expect(collect).toHaveBeenCalledTimes(3);
 
-        // Stable again — same actor, same revisions.
+        // Stable again — same entity, same revisions.
         expect(resolve().hit).toBe(true);
         expect(collect).toHaveBeenCalledTimes(3);
 
-        // Component add/remove bumps the actor revision on a real Actor.
+        // Component add/remove bumps the entity revision on a real Entity.
         state.renderer = new MeshRenderer({ meshId: 'mesh:next', passId: 'main' });
         state.revision += 1;
         expect(resolve().hit).toBe(false);
@@ -152,7 +152,7 @@ describe('SceneRenderListCache', () => {
     });
 
     it('misses when the viewport, material registry or mesh registry revision changes', () => {
-        const { actors, cameraFrame, renderPass, cache, collect, resolve } = setup();
+        const { entities, cameraFrame, renderPass, cache, collect, resolve } = setup();
 
         resolve();
         expect(resolve({ materialRevision: 2 }).hit).toBe(false);
@@ -162,7 +162,7 @@ describe('SceneRenderListCache', () => {
         const viewportResult = cache.resolve({
             rendererPassId: 'main',
             renderPass,
-            actors,
+            entities,
             cameraFrame,
             viewportWidth: 1024,
             viewportHeight: 600,
@@ -174,26 +174,26 @@ describe('SceneRenderListCache', () => {
         expect(collect).toHaveBeenCalledTimes(4);
     });
 
-    it('misses when the actors array identity or length changes', () => {
-        const { actor, actors, cameraFrame, collect, resolve } = setup();
+    it('misses when the entities array identity or length changes', () => {
+        const { entity, entities, cameraFrame, collect, resolve } = setup();
 
         resolve();
-        actors.push(actor);
+        entities.push(entity);
         expect(resolve().hit).toBe(false);
         expect(collect).toHaveBeenCalledTimes(2);
 
-        const replacement = [...actors];
+        const replacement = [...entities];
         replacement.pop();
         expect(createListCacheResolve(replacement, cameraFrame, collect).hit).toBe(false);
     });
 
     it('treats a re-registered render pass as a cache miss', () => {
-        const { actors, cameraFrame, collect } = setup();
+        const { entities, cameraFrame, collect } = setup();
         const cache = new SceneRenderListCache();
         const params = (renderPass: object) => ({
             rendererPassId: 'main',
             renderPass,
-            actors,
+            entities,
             cameraFrame,
             viewportWidth: 800,
             viewportHeight: 600,
@@ -208,14 +208,14 @@ describe('SceneRenderListCache', () => {
 });
 
 const createListCacheResolve = (
-    actors: readonly Actor[],
+    entities: readonly EntityId[],
     cameraFrame: SceneCameraFrameState,
     collect: () => readonly SceneRenderItem[]
 ) =>
     new SceneRenderListCache().resolve({
         rendererPassId: 'main',
         renderPass: { id: 'main' },
-        actors,
+        entities,
         cameraFrame,
         viewportWidth: 800,
         viewportHeight: 600,

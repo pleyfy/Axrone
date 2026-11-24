@@ -104,7 +104,7 @@ export const createDemoScene = (container: HTMLElement): PlaygroundSceneHandle =
 		registerWireMaterial(`playground/demo/${id}-wire`);
 	}
 
-	const camera = scene.createCameraActor({ name: 'StudioCamera' }, { primary: true, fieldOfView: 48 });
+	const camera = scene.createCameraEntity({ name: 'StudioCamera' }, { primary: true, fieldOfView: 48 });
 	const orbit = camera.addComponent(OrbitCameraController, {
 		target: [0, 0.95, 0],
 		distance: 9.8,
@@ -131,27 +131,27 @@ export const createDemoScene = (container: HTMLElement): PlaygroundSceneHandle =
 	const axes = createAxesOverlay(scene, shaders.solid, { prefix: 'playground/demo', length: 5 });
 	axes.setVisible(false);
 
-	const platformActor = scene.createRenderableActor(
+	const platformEntity = scene.createRenderableEntity(
 		{ name: 'StudioPlatform' },
 		{ meshId: 'playground/demo/platform', materialId: 'playground/demo/platform-fill' },
 	);
-	const cubeActor = scene.createRenderableActor(
+	const cubeEntity = scene.createRenderableEntity(
 		{ name: 'ClayCube' },
 		{ meshId: 'playground/demo/box', materialId: 'playground/demo/cube-fill' },
 	);
-	const sphereActor = scene.createRenderableActor(
+	const sphereEntity = scene.createRenderableEntity(
 		{ name: 'GlazedSphere' },
 		{ meshId: 'playground/demo/sphere', materialId: 'playground/demo/sphere-fill' },
 	);
-	const cylinderActor = scene.createRenderableActor(
+	const cylinderEntity = scene.createRenderableEntity(
 		{ name: 'BrassCylinder' },
 		{ meshId: 'playground/demo/cylinder', materialId: 'playground/demo/cylinder-fill' },
 	);
 
-	const platformTransform = platformActor.requireComponent(Transform);
-	const cubeTransform = cubeActor.requireComponent(Transform);
-	const sphereTransform = sphereActor.requireComponent(Transform);
-	const cylinderTransform = cylinderActor.requireComponent(Transform);
+	const platformTransform = platformEntity.requireComponent(Transform);
+	const cubeTransform = cubeEntity.requireComponent(Transform);
+	const sphereTransform = sphereEntity.requireComponent(Transform);
+	const cylinderTransform = cylinderEntity.requireComponent(Transform);
 
 	platformTransform.position = new Vec3(0, DEMO_PLATFORM_TOP * 0.5, 0);
 	cubeTransform.position = new Vec3(-2.15, DEMO_PLATFORM_TOP + 0.75, 0.15);
@@ -189,10 +189,10 @@ export const createDemoScene = (container: HTMLElement): PlaygroundSceneHandle =
 	cylinderShadow.transform.position.x = cylinderTransform.position.x;
 	cylinderShadow.transform.position.z = cylinderTransform.position.z;
 
-	const boxRenderer = cubeActor.getComponent(MeshRenderer);
-	const sphereRenderer = sphereActor.getComponent(MeshRenderer);
-	const cylinderRenderer = cylinderActor.getComponent(MeshRenderer);
-	const platformRenderer = platformActor.getComponent(MeshRenderer);
+	const boxRenderer = cubeEntity.getComponent(MeshRenderer);
+	const sphereRenderer = sphereEntity.getComponent(MeshRenderer);
+	const cylinderRenderer = cylinderEntity.getComponent(MeshRenderer);
+	const platformRenderer = platformEntity.getComponent(MeshRenderer);
 	if (!boxRenderer || !sphereRenderer || !cylinderRenderer || !platformRenderer) {
 		throw new Error('Studio scene renderers were not created correctly.');
 	}

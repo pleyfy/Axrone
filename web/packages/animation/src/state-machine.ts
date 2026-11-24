@@ -348,6 +348,13 @@ export const ANIMATION_NESTED_STATE_SEPARATOR = '/';
 /** Maximum number of group states between the root machine and a playable leaf. */
 export const ANIMATION_MAX_STATE_NESTING_DEPTH = 4;
 
+/**
+ * How many extra transition re-checks a single behaviour dispatch may trigger when its
+ * actions write parameters. Bounded so two states that pulse each other's entry trigger
+ * cannot spin the loop.
+ */
+const ANIMATION_BEHAVIOUR_TRANSITION_PASSES = 3;
+
 const EMPTY_TRANSITION_DEFINITIONS: readonly AnimationTransitionDefinition[] = Object.freeze([]);
 const EMPTY_BEHAVIOURS: readonly AnimationCompiledStateBehaviour[] = Object.freeze([]);
 const EMPTY_OWNERS: readonly AnimationCompiledStateOwner[] = Object.freeze([]);
@@ -972,7 +979,8 @@ const runStateBehaviourPhase = (
     normalizedTime: number,
     timers: Float32Array | undefined,
     out: AnimationStateSignal[] | undefined
-): void => {
+): boolean => {
+    let mutatedParameters = false;
     const behaviours = owner.behaviours;
     for (let index = 0; index < behaviours.length; index += 1) {
         const behaviour = behaviours[index]!;
@@ -995,9 +1003,11 @@ const runStateBehaviourPhase = (
             switch (action.kind) {
                 case 'writeParameter':
                     parameters.set(String(action.parameter), action.value);
+                    mutatedParameters = true;
                     break;
                 case 'pulseTrigger':
                     parameters.setTrigger(String(action.parameter));
+                    mutatedParameters = true;
                     break;
                 case 'emitSignal':
                     if (out) {
@@ -1017,6 +1027,43 @@ const runStateBehaviourPhase = (
             }
         }
     }
+    return mutatedParameters;
+};
+
+/**
+ * Exits the superseded owner chain inward-out and enters the new one outward-in,
+ * skipping the prefix both chains share so a sibling swap inside a group state
+ * never disturbs the group itself.
+ */
+const dispatchChainSwitch = (
+    previous: readonly AnimationCompiledStateOwner[],
+    next: readonly AnimationCompiledStateOwner[],
+    parameters: AnimationParameterStore,
+    layerId: string,
+    normalizedTime: number,
+    timers: Float32Array | undefined,
+    out: AnimationStateSignal[] | undefined
+): boolean => {
+    let common = 0;
+    while (
+        common < previous.length &&
+        common < next.length &&
+        previous[common]!.stateId === next[common]!.stateId
+    ) {
+        common += 1;
+    }
+    let mutatedParameters = false;
+    for (let index = previous.length - 1; index >= common; index -= 1) {
+        mutatedParameters =
+            runStateBehaviourPhase(previous[index]!, 'exit', parameters, layerId, normalizedTime, timers, out) ||
+            mutatedParameters;
+    }
+    for (let index = common; index < next.length; index += 1) {
+        mutatedParameters =
+            runStateBehaviourPhase(next[index]!, 'enter', parameters, layerId, normalizedTime, timers, out) ||
+            mutatedParameters;
+    }
+    return mutatedParameters;
 };
 
 /**
@@ -1025,6 +1072,11 @@ const runStateBehaviourPhase = (
  * while a transition runs, so `exit` for the superseded chain always precedes
  * `enter` for the new one, and `update` follows both. Group states own the same
  * lifecycle as their leaves: entering a leaf enters every group above it.
+ *
+ * Behaviours may write parameters or pulse triggers. Those side effects are fed
+ * back into the layer before the step ends, so a trigger a behaviour pulses is
+ * consumed by the transition that watches it in the same step rather than one
+ * step late.
  */
 export const dispatchLayerStateBehaviours = (
     machine: AnimationCompiledStateMachine,
@@ -1052,25 +1104,70 @@ export const dispatchLayerStateBehaviours = (
     }
 
     const normalizedTime = designatedNormalizedTime(runtime);
+    let mutatedParameters = false;
     if (switched) {
-        const previous = previousOwners ?? EMPTY_OWNERS;
-        let common = 0;
-        while (
-            common < previous.length &&
-            common < nextOwners.length &&
-            previous[common]!.stateId === nextOwners[common]!.stateId
-        ) {
-            common += 1;
+        let previous = previousOwners ?? EMPTY_OWNERS;
+        if (previousOwners === undefined) {
+            // A fresh runtime is designated on the entry chain before its first
+            // dispatch. When a transition supersedes that chain inside the very
+            // first step, the entry chain still has to be entered before it can
+            // be exited, otherwise its `exit` behaviours are silently dropped.
+            const entryOwners = machine.states[machine.entryStateIndex]?.ownerChain ?? EMPTY_OWNERS;
+            if (entryOwners !== nextOwners) {
+                for (let index = 0; index < entryOwners.length; index += 1) {
+                    mutatedParameters =
+                        runStateBehaviourPhase(
+                            entryOwners[index]!,
+                            'enter',
+                            parameters,
+                            layerId,
+                            runtime.currentNormalizedTime,
+                            timers,
+                            out
+                        ) || mutatedParameters;
+                }
+                previous = entryOwners;
+            }
         }
-        for (let index = previous.length - 1; index >= common; index -= 1) {
-            runStateBehaviourPhase(previous[index]!, 'exit', parameters, layerId, normalizedTime, timers, out);
-        }
-        for (let index = common; index < nextOwners.length; index += 1) {
-            runStateBehaviourPhase(nextOwners[index]!, 'enter', parameters, layerId, normalizedTime, timers, out);
-        }
+        mutatedParameters =
+            dispatchChainSwitch(previous, nextOwners, parameters, layerId, normalizedTime, timers, out) ||
+            mutatedParameters;
     }
     for (let index = 0; index < nextOwners.length; index += 1) {
-        runStateBehaviourPhase(nextOwners[index]!, 'update', parameters, layerId, normalizedTime, timers, out);
+        mutatedParameters =
+            runStateBehaviourPhase(nextOwners[index]!, 'update', parameters, layerId, normalizedTime, timers, out) ||
+            mutatedParameters;
+    }
+
+    if (!mutatedParameters) {
+        return;
+    }
+    // Zero delta keeps this a pure condition re-check: no time advances, so
+    // exitTime gates cannot be crossed by the extra pass itself. Only the switch
+    // half of the lifecycle is dispatched again - `update` already ran this step.
+    for (let pass = 0; pass < ANIMATION_BEHAVIOUR_TRANSITION_PASSES; pass += 1) {
+        const designatedBefore = designatedStateIndex(runtime);
+        updateLayerRuntime(machine, runtime, parameters, 0);
+        const designatedAfter = designatedStateIndex(runtime);
+        if (designatedAfter === designatedBefore) {
+            return;
+        }
+        const chainedOwners = machine.states[designatedAfter]?.ownerChain ?? EMPTY_OWNERS;
+        const superseded = runtime.dispatchedOwners ?? EMPTY_OWNERS;
+        runtime.dispatchedOwners = chainedOwners;
+        if (
+            !dispatchChainSwitch(
+                superseded,
+                chainedOwners,
+                parameters,
+                layerId,
+                designatedNormalizedTime(runtime),
+                timers,
+                out
+            )
+        ) {
+            return;
+        }
     }
 };
 

@@ -1,14 +1,14 @@
 import type {
-    ActorId,
+    EntityUid,
     ComponentId,
     ComponentRegistry,
-    Entity,
+    EntityId,
     QueryResult,
     System,
     SystemId,
     SystemQuery,
 } from '@axrone/ecs-runtime';
-import { Actor, World } from '@axrone/ecs-runtime';
+import { Entity, World } from '@axrone/ecs-runtime';
 
 export const createWorld = <R extends ComponentRegistry>(registry: R): World<R> => {
     return new World(registry);
@@ -24,14 +24,14 @@ export const createSystem = <R extends ComponentRegistry, Q extends SystemQuery<
     return { id, query, execute, priority, enabled };
 };
 
-export const createActor = (world: World<any>, name?: string): Actor => {
-    return new Actor(world, { name });
+export const createEntity = (world: World<any>, name?: string): Entity => {
+    return new Entity(world, { name });
 };
 
-export const createEntity = (id: number): Entity => id as Entity;
+export const createEntityId = (id: number): EntityId => id as EntityId;
 
 export const createSystemId = <T extends string>(id: T): SystemId<T> => id as SystemId<T>;
 
 export const createComponentId = <T extends string>(id: T): ComponentId<T> => id as ComponentId<T>;
 
-export const createActorId = <T extends string>(id: T): ActorId<T> => id as ActorId<T>;
+export const createEntityUid = <T extends string>(id: T): EntityUid<T> => id as EntityUid<T>;

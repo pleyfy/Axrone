@@ -26,7 +26,7 @@ const LOCAL_GLTF_GROUND_MATERIAL_ID = 'local-glb-viewer.ground-material';
 const LOCAL_GLTF_GROUND_MESH_ID = 'local-glb-viewer.ground-mesh';
 const LOCAL_GLTF_WHITE_TEXTURE_ID = 'local-glb-viewer.white-texture';
 
-type SceneActor = ReturnType<Scene['createActor']>;
+type SceneEntity = ReturnType<Scene['createEntity']>;
 
 interface SceneBounds {
     readonly min: Vec3;
@@ -497,10 +497,10 @@ const extractAnimatorClipEntries = (animator: Animator): readonly { id: string; 
 };
 
 const collectAnimatorRuntimes = (
-    actors: readonly SceneActor[]
+    entities: readonly SceneEntity[]
 ): readonly AnimatorRuntime[] =>
-    actors
-        .map((actor) => actor.getComponent(Animator))
+    entities
+        .map((entity) => entity.getComponent(Animator))
         .filter((animator): animator is Animator => animator !== undefined)
         .map((animator) => {
             const clipIds = new Set(extractAnimatorClipEntries(animator).map((clip) => clip.id));
@@ -538,8 +538,8 @@ const collectClipEntries = (
     return [...entries.values()].sort((left, right) => left.id.localeCompare(right.id));
 };
 
-const computeActorsBounds = (
-    actors: readonly SceneActor[],
+const computeEntitiesBounds = (
+    entities: readonly SceneEntity[],
     database: AssetDatabase<GltfAssetSchemaLike>
 ): SceneBounds | null => {
     let minX = Number.POSITIVE_INFINITY;
@@ -550,9 +550,9 @@ const computeActorsBounds = (
     let maxZ = Number.NEGATIVE_INFINITY;
     let found = false;
 
-    for (const actor of actors) {
-        const renderer = actor.getComponent(MeshRenderer);
-        const transform = actor.getComponent(Transform);
+    for (const entity of entities) {
+        const renderer = entity.getComponent(MeshRenderer);
+        const transform = entity.getComponent(Transform);
         if (!renderer?.meshId || !transform) {
             continue;
         }
@@ -599,11 +599,11 @@ const computeActorsBounds = (
     };
 };
 
-const collectImportedRootTransforms = (actors: readonly SceneActor[]): readonly Transform[] => {
+const collectImportedRootTransforms = (entities: readonly SceneEntity[]): readonly Transform[] => {
     const roots: Transform[] = [];
 
-    for (const actor of actors) {
-        const transform = actor.getComponent(Transform);
+    for (const entity of entities) {
+        const transform = entity.getComponent(Transform);
         if (!transform || transform.parent) {
             continue;
         }
@@ -616,12 +616,12 @@ const collectImportedRootTransforms = (actors: readonly SceneActor[]): readonly 
 
 const createImportedModelContainer = (
     scene: Scene,
-    actors: readonly SceneActor[]
-): SceneActor => {
-    const container = scene.createActor({ name: 'UploadedModelRoot' });
+    entities: readonly SceneEntity[]
+): SceneEntity => {
+    const container = scene.createEntity({ name: 'UploadedModelRoot' });
     const containerTransform = container.requireComponent(Transform);
 
-    for (const rootTransform of collectImportedRootTransforms(actors)) {
+    for (const rootTransform of collectImportedRootTransforms(entities)) {
         rootTransform.parent = containerTransform;
     }
 
@@ -629,12 +629,12 @@ const createImportedModelContainer = (
 };
 
 const fitImportedModelToViewer = (
-    actors: readonly SceneActor[],
-    container: SceneActor,
+    entities: readonly SceneEntity[],
+    container: SceneEntity,
     database: AssetDatabase<GltfAssetSchemaLike>
 ): SceneBounds | null => {
     const containerTransform = container.requireComponent(Transform);
-    const initialBounds = computeActorsBounds(actors, database);
+    const initialBounds = computeEntitiesBounds(entities, database);
 
     if (!initialBounds) {
         containerTransform.position = Vec3.ZERO.clone();
@@ -646,7 +646,7 @@ const fitImportedModelToViewer = (
         containerTransform.scale = new Vec3(scale, scale, scale);
     }
 
-    const scaledBounds = computeActorsBounds(actors, database);
+    const scaledBounds = computeEntitiesBounds(entities, database);
     if (!scaledBounds) {
         return null;
     }
@@ -657,7 +657,7 @@ const fitImportedModelToViewer = (
         -scaledBounds.center.z
     );
 
-    return computeActorsBounds(actors, database);
+    return computeEntitiesBounds(entities, database);
 };
 
 const registerGroundAssets = (scene: Scene): void => {
@@ -724,7 +724,7 @@ void main() {
 
 const createGround = (scene: Scene): void => {
     registerGroundAssets(scene);
-    const ground = scene.createRenderableActor(
+    const ground = scene.createRenderableEntity(
         { name: 'GroundPlane' },
         {
             meshId: LOCAL_GLTF_GROUND_MESH_ID,
@@ -735,7 +735,7 @@ const createGround = (scene: Scene): void => {
 };
 
 const createLighting = (scene: Scene): void => {
-    const keyLight = scene.createActor({ name: 'ViewerKeyLight' });
+    const keyLight = scene.createEntity({ name: 'ViewerKeyLight' });
     keyLight.addComponent(DirectionalLight, {
         color: [1, 0.97, 0.93],
         intensity: 1.35,
@@ -794,7 +794,7 @@ const createViewerStage = async (sceneHost: HTMLElement): Promise<ViewerStage> =
     createLighting(scene);
     await registerViewerTextures(scene);
 
-    const camera = scene.createCameraActor(
+    const camera = scene.createCameraEntity(
         { name: 'ViewerCamera' },
         { primary: true, fieldOfView: 46, near: 0.1, far: 1000 }
     );
@@ -842,9 +842,9 @@ const frameImportedScene = (
     stage: ViewerStage,
     load: LoadGltfSceneIntoSceneResult
 ): SceneBounds | null => {
-    const container = createImportedModelContainer(stage.scene, load.actors as readonly SceneActor[]);
+    const container = createImportedModelContainer(stage.scene, load.entities as readonly SceneEntity[]);
     const fittedBounds = fitImportedModelToViewer(
-        load.actors as readonly SceneActor[],
+        load.entities as readonly SceneEntity[],
         container,
         stage.database
     );
@@ -892,8 +892,8 @@ const loadFileIntoStage = async (
         { clearExisting: false, namePrefix: 'Upload ' }
     );
 
-    for (const actor of load.actors) {
-        const importedCamera = actor.getComponent(Camera);
+    for (const entity of load.entities) {
+        const importedCamera = entity.getComponent(Camera);
         if (importedCamera) {
             importedCamera.primary = false;
         }
@@ -902,7 +902,7 @@ const loadFileIntoStage = async (
     neutralizeImportedMaterials(stage.scene, load);
     frameImportedScene(stage, load);
 
-    const animators = collectAnimatorRuntimes(load.actors as readonly SceneActor[]);
+    const animators = collectAnimatorRuntimes(load.entities as readonly SceneEntity[]);
     const clips = collectClipEntries(animators);
 
     return {
@@ -1042,7 +1042,7 @@ const localGlbViewerExample: SceneExample = {
                 syncClipUi(loaded.clips);
                 panel.setSelectedClip(selectedClipId);
                 panel.setSummary(
-                    `Loaded ${loaded.load.actors.length} actors, ${loaded.load.prefab.data.materialKeys.length} material(s), and ${loaded.clips.length} clip(s).`
+                    `Loaded ${loaded.load.entities.length} entities, ${loaded.load.prefab.data.materialKeys.length} material(s), and ${loaded.clips.length} clip(s).`
                 );
                 panel.setStatus(
                     loaded.clips.length > 0

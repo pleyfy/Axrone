@@ -64,7 +64,7 @@ const DEFAULT_BOX_SIZE = Object.freeze(new Vec3(10, 10, 10));
  *     boxSize: [5, 5, 5],
  *     intensity: 1,
  * });
- * actor.addComponent(ReflectionProbe, probe);
+ * entity.addComponent(ReflectionProbe, probe);
  * ```
  */
 @script({

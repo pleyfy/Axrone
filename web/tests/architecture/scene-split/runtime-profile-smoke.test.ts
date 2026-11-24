@@ -99,8 +99,8 @@ describe('runtime profile smoke', () => {
                 expect.arrayContaining(['Hierarchy', 'Transform', 'PrefabNodeBinding'])
             );
             expect(coreScene.getRegisteredComponentNames()).not.toContain('Camera');
-            expect(() => coreScene.createActor({ name: 'Core Actor' })).not.toThrow();
-            expect(() => coreScene.createCameraActor({ name: 'Core Camera' })).toThrow(
+            expect(() => coreScene.createEntity({ name: 'Core Entity' })).not.toThrow();
+            expect(() => coreScene.createCameraEntity({ name: 'Core Camera' })).toThrow(
                 SceneCapabilityError
             );
 
@@ -109,13 +109,13 @@ describe('runtime profile smoke', () => {
             );
             expect(scene2D.getRegisteredComponentNames()).not.toContain('MeshRenderer');
             expect(scene2D.getRegisteredComponentNames()).not.toContain('Terrain');
-            expect(() => scene2D.createActor({ name: 'Scene2D Actor' })).not.toThrow();
+            expect(() => scene2D.createEntity({ name: 'Scene2D Entity' })).not.toThrow();
 
             expect(scene3D.getRegisteredComponentNames()).toEqual(
                 expect.arrayContaining(['Hierarchy', 'Transform', 'PrefabNodeBinding', 'Camera', 'MeshRenderer', 'Terrain'])
             );
             expect(scene3D.getRegisteredComponentNames()).not.toContain('Animator');
-            expect(() => scene3D.createCameraActor({ name: 'Scene3D Camera' })).not.toThrow();
+            expect(() => scene3D.createCameraEntity({ name: 'Scene3D Camera' })).not.toThrow();
 
             expect(fullScene.getRegisteredComponentNames()).toEqual(
                 expect.arrayContaining([
@@ -128,7 +128,7 @@ describe('runtime profile smoke', () => {
                     'DirectionalLight',
                 ])
             );
-            expect(() => fullScene.createCameraActor({ name: 'Full Camera' })).not.toThrow();
+            expect(() => fullScene.createCameraEntity({ name: 'Full Camera' })).not.toThrow();
         } finally {
             fullScene.dispose();
             scene3D.dispose();

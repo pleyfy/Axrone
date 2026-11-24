@@ -1,6 +1,6 @@
-import { Actor, ActorError, ComponentError } from '@axrone/ecs-runtime/actor';
+import { Entity, EntityLifecycleError, ComponentError } from '@axrone/ecs-runtime/entity';
 import { Component, Transform, World, script } from '@axrone/ecs-runtime';
-import { createActor } from './factory-helpers';
+import { createEntity } from './factory-helpers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hierarchy } from '../component-system/components/hierarchy';
 
@@ -67,9 +67,9 @@ class ErrorComponent extends Component {
     }
 }
 
-describe('Actor', () => {
+describe('Entity', () => {
     let world: World<any>;
-    let actor: Actor;
+    let entity: EntityId;
     let registry: any;
 
     beforeEach(() => {
@@ -81,13 +81,13 @@ describe('Actor', () => {
             Transform,
         };
         world = new World(registry);
-        actor = createActor(world);
+        entity = createEntity(world);
     });
 
     afterEach(() => {
         try {
-            if (actor && !actor.isDestroyed) {
-                actor.destroy();
+            if (entity && !entity.isDestroyed) {
+                entity.destroy();
             }
         } catch (error) {}
         try {
@@ -99,21 +99,21 @@ describe('Actor', () => {
 
     describe('initialization', () => {
         it('should initialize with correct default values', () => {
-            expect(actor.id).toBeDefined();
-            expect(actor.entity).toBeDefined();
-            expect(actor.world).toBe(world);
-            expect(actor.state).toBe('active');
-            expect(actor.active).toBe(true);
-            expect(actor.name).toBe('Actor');
-            expect(actor.layer).toBe(0);
-            expect(actor.tag).toBe('Default');
-            expect(actor.isDestroyed).toBe(false);
-            expect(actor.componentCount).toBe(2);
+            expect(entity.id).toBeDefined();
+            expect(entity.entityId).toBeDefined();
+            expect(entity.world).toBe(world);
+            expect(entity.state).toBe('active');
+            expect(entity.active).toBe(true);
+            expect(entity.name).toBe('Entity');
+            expect(entity.layer).toBe(0);
+            expect(entity.tag).toBe('Default');
+            expect(entity.isDestroyed).toBe(false);
+            expect(entity.componentCount).toBe(2);
         });
 
         it('should initialize with custom configuration', () => {
-            const customActor = new Actor(world, {
-                name: 'CustomActor',
+            const customEntity = new Entity(world, {
+                name: 'CustomEntity',
                 layer: 5 as any,
                 tag: 'custom' as any,
                 active: false,
@@ -121,33 +121,33 @@ describe('Actor', () => {
                 autoStart: false,
             });
 
-            expect(customActor.name).toBe('CustomActor');
-            expect(customActor.layer).toBe(5);
-            expect(customActor.tag).toBe('custom');
-            expect(customActor.active).toBe(false);
-            expect(customActor.state).toBe('active');
+            expect(customEntity.name).toBe('CustomEntity');
+            expect(customEntity.layer).toBe(5);
+            expect(customEntity.tag).toBe('custom');
+            expect(customEntity.active).toBe(false);
+            expect(customEntity.state).toBe('active');
 
-            customActor.destroy();
+            customEntity.destroy();
         });
 
         it('should generate unique IDs', () => {
-            const actor1 = createActor(world);
-            const actor2 = createActor(world);
+            const entity1 = createEntity(world);
+            const entity2 = createEntity(world);
 
-            expect(actor1.id).not.toBe(actor2.id);
+            expect(entity1.id).not.toBe(entity2.id);
 
-            actor1.destroy();
-            actor2.destroy();
+            entity1.destroy();
+            entity2.destroy();
         });
 
         it('should throw error with invalid world', () => {
             expect(() => {
-                new Actor(null as any);
-            }).toThrow(ActorError);
+                new Entity(null as any);
+            }).toThrow(EntityLifecycleError);
         });
 
         it('should initialize preloaded components through the fast path', () => {
-            const preloadedActor = Actor.createWithComponents(world, { autoStart: false }, [
+            const preloadedEntity = Entity.createWithComponents(world, { autoStart: false }, [
                 {
                     componentType: Transform,
                     component: new Transform(),
@@ -158,32 +158,32 @@ describe('Actor', () => {
                 },
             ]);
 
-            expect(preloadedActor.getComponent(Transform)).toBeInstanceOf(Transform);
-            expect(preloadedActor.getComponent(TestComponent)?.value).toBe(1);
-            expect(preloadedActor.getComponent(TestComponent)?.name).toBe('preloaded');
+            expect(preloadedEntity.getComponent(Transform)).toBeInstanceOf(Transform);
+            expect(preloadedEntity.getComponent(TestComponent)?.value).toBe(1);
+            expect(preloadedEntity.getComponent(TestComponent)?.name).toBe('preloaded');
 
-            preloadedActor.start();
+            preloadedEntity.start();
 
-            expect(preloadedActor.getComponent(TestComponent)?.value).toBe(2);
+            expect(preloadedEntity.getComponent(TestComponent)?.value).toBe(2);
 
-            preloadedActor.destroy();
+            preloadedEntity.destroy();
         });
     });
 
     describe('component management', () => {
         it('should add components correctly', () => {
-            const component = actor.addComponent(TestComponent, 10, 'test');
+            const component = entity.addComponent(TestComponent, 10, 'test');
 
             expect(component).toBeInstanceOf(TestComponent);
             expect(component.value).toBe(2);
             expect(component.name).toBe('test');
-            expect(actor.hasComponent(TestComponent)).toBe(true);
-            expect(actor.componentCount).toBe(3);
+            expect(entity.hasComponent(TestComponent)).toBe(true);
+            expect(entity.componentCount).toBe(3);
         });
 
         it('should get components correctly', () => {
-            const addedComponent = actor.addComponent(TestComponent, 5, 'test');
-            const retrievedComponent = actor.getComponent(TestComponent);
+            const addedComponent = entity.addComponent(TestComponent, 5, 'test');
+            const retrievedComponent = entity.getComponent(TestComponent);
 
             expect(retrievedComponent).toBe(addedComponent);
             expect(retrievedComponent?.value).toBe(2);
@@ -191,13 +191,13 @@ describe('Actor', () => {
         });
 
         it('should return undefined for non-existent components', () => {
-            expect(actor.getComponent(TestComponent)).toBeUndefined();
-            expect(actor.hasComponent(TestComponent)).toBe(false);
+            expect(entity.getComponent(TestComponent)).toBeUndefined();
+            expect(entity.hasComponent(TestComponent)).toBe(false);
         });
 
         it('should require components correctly', () => {
-            actor.addComponent(TestComponent, 15, 'required');
-            const component = actor.requireComponent(TestComponent);
+            entity.addComponent(TestComponent, 15, 'required');
+            const component = entity.requireComponent(TestComponent);
 
             expect(component).toBeInstanceOf(TestComponent);
             expect(component.value).toBe(2);
@@ -205,59 +205,59 @@ describe('Actor', () => {
 
         it('should throw error when requiring non-existent component', () => {
             expect(() => {
-                actor.requireComponent(TestComponent);
+                entity.requireComponent(TestComponent);
             }).toThrow(ComponentError);
         });
 
         it('should remove components correctly', () => {
-            actor.addComponent(TestComponent, 20, 'remove');
-            expect(actor.hasComponent(TestComponent)).toBe(true);
+            entity.addComponent(TestComponent, 20, 'remove');
+            expect(entity.hasComponent(TestComponent)).toBe(true);
 
-            const removed = actor.removeComponent(TestComponent);
+            const removed = entity.removeComponent(TestComponent);
             expect(removed).toBe(true);
-            expect(actor.hasComponent(TestComponent)).toBe(false);
-            expect(actor.componentCount).toBe(2);
+            expect(entity.hasComponent(TestComponent)).toBe(false);
+            expect(entity.componentCount).toBe(2);
         });
 
         it('should return false when removing non-existent component', () => {
-            const removed = actor.removeComponent(TestComponent);
+            const removed = entity.removeComponent(TestComponent);
             expect(removed).toBe(false);
         });
 
         it('should get all components correctly', () => {
-            actor.addComponent(TestComponent, 1, 'first');
-            actor.addComponent(AsyncComponent);
+            entity.addComponent(TestComponent, 1, 'first');
+            entity.addComponent(AsyncComponent);
 
-            const components = actor.getAllComponents();
+            const components = entity.getAllComponents();
             expect(components).toHaveLength(4);
             expect(components.some((c) => c instanceof TestComponent)).toBe(true);
             expect(components.some((c) => c instanceof AsyncComponent)).toBe(true);
         });
 
         it('should prevent duplicate components of same type', () => {
-            actor.addComponent(TestComponent, 1, 'first');
+            entity.addComponent(TestComponent, 1, 'first');
 
             expect(() => {
-                actor.addComponent(TestComponent, 2, 'second');
+                entity.addComponent(TestComponent, 2, 'second');
             }).toThrow(ComponentError);
         });
 
         it('should maintain single instance of component type', () => {
-            actor.addComponent(TestComponent, 1, 'first');
+            entity.addComponent(TestComponent, 1, 'first');
 
-            const component = actor.getComponent(TestComponent);
+            const component = entity.getComponent(TestComponent);
             expect(component?.value).toBe(2);
             expect(component?.name).toBe('first');
-            expect(actor.componentCount).toBe(3);
+            expect(entity.componentCount).toBe(3);
         });
     });
 
     describe('component dependencies', () => {
         it('should handle component dependencies correctly', () => {
-            actor.addComponent(TestComponent, 100, 'dependency');
-            const dependent = actor.addComponent(DependentComponent);
+            entity.addComponent(TestComponent, 100, 'dependency');
+            const dependent = entity.addComponent(DependentComponent);
 
-            actor.start();
+            entity.start();
 
             expect(dependent.dependency).toBeInstanceOf(TestComponent);
             expect(dependent.dependency?.value).toBe(2);
@@ -265,15 +265,15 @@ describe('Actor', () => {
 
         it('should throw error when dependency is missing', () => {
             expect(() => {
-                actor.addComponent(DependentComponent);
+                entity.addComponent(DependentComponent);
             }).toThrow();
         });
 
         it('should respect component priorities', () => {
-            const testComp = actor.addComponent(TestComponent, 0, 'test');
-            const depComp = actor.addComponent(DependentComponent);
+            const testComp = entity.addComponent(TestComponent, 0, 'test');
+            const depComp = entity.addComponent(DependentComponent);
 
-            actor.start();
+            entity.start();
 
             expect(testComp.value).toBe(2);
             expect(depComp.dependency).toBe(testComp);
@@ -282,25 +282,25 @@ describe('Actor', () => {
 
     describe('lifecycle management', () => {
         it('should transition through lifecycle states correctly', () => {
-            const component = actor.addComponent(TestComponent, 0, 'lifecycle');
+            const component = entity.addComponent(TestComponent, 0, 'lifecycle');
 
-            expect(actor.state).toBe('active');
+            expect(entity.state).toBe('active');
             expect(component.value).toBe(2);
 
-            actor.start();
+            entity.start();
 
-            expect(actor.state).toBe('active');
+            expect(entity.state).toBe('active');
             expect(component.value).toBe(2);
         });
 
         it('should handle async components correctly', async () => {
-            const asyncComp = actor.addComponent(AsyncComponent);
+            const asyncComp = entity.addComponent(AsyncComponent);
 
             await new Promise((resolve) => setTimeout(resolve, 20));
 
             expect(asyncComp.initialized).toBe(true);
 
-            actor.start();
+            entity.start();
 
             await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -308,117 +308,117 @@ describe('Actor', () => {
         });
 
         it('should handle component lifecycle errors gracefully', () => {
-            const errorComp = actor.addComponent(ErrorComponent);
+            const errorComp = entity.addComponent(ErrorComponent);
             errorComp.shouldThrowInStart = true;
 
-            expect(() => actor.start()).not.toThrow();
-            expect(actor.state).toBe('active');
+            expect(() => entity.start()).not.toThrow();
+            expect(entity.state).toBe('active');
         });
 
         it('should update components correctly', () => {
-            const component = actor.addComponent(TestComponent, 0, 'update');
-            actor.start();
+            const component = entity.addComponent(TestComponent, 0, 'update');
+            entity.start();
 
             const initialValue = component.value;
-            actor.update(0.016);
+            entity.update(0.016);
 
             expect(component.value).toBeCloseTo(initialValue + 0.016, 5);
         });
 
-        it('should not update inactive actors', () => {
-            const component = actor.addComponent(TestComponent, 0, 'inactive');
-            actor.start();
+        it('should not update inactive entities', () => {
+            const component = entity.addComponent(TestComponent, 0, 'inactive');
+            entity.start();
 
-            actor.active = false;
+            entity.active = false;
             const initialValue = component.value;
-            actor.update(0.016);
+            entity.update(0.016);
 
             expect(component.value).toBe(initialValue);
         });
 
-        it('should destroy actor correctly', () => {
-            const component = actor.addComponent(TestComponent, 0, 'destroy');
-            actor.start();
+        it('should destroy entity correctly', () => {
+            const component = entity.addComponent(TestComponent, 0, 'destroy');
+            entity.start();
 
-            expect(actor.isDestroyed).toBe(false);
+            expect(entity.isDestroyed).toBe(false);
 
-            actor.destroy();
+            entity.destroy();
 
-            expect(actor.state).toBe('destroyed');
-            expect(actor.isDestroyed).toBe(true);
-            expect(actor.componentCount).toBe(0);
+            expect(entity.state).toBe('destroyed');
+            expect(entity.isDestroyed).toBe(true);
+            expect(entity.componentCount).toBe(0);
         });
 
         it('should handle multiple destroy calls', () => {
-            actor.start();
-            actor.destroy();
+            entity.start();
+            entity.destroy();
 
-            expect(() => actor.destroy()).not.toThrow();
-            expect(actor.state).toBe('destroyed');
+            expect(() => entity.destroy()).not.toThrow();
+            expect(entity.state).toBe('destroyed');
         });
     });
 
     describe('state management', () => {
         it('should set and get active state correctly', () => {
-            actor.start();
+            entity.start();
 
-            expect(actor.active).toBe(true);
+            expect(entity.active).toBe(true);
 
-            actor.active = false;
-            expect(actor.active).toBe(false);
-            expect(actor.state).toBe('inactive');
+            entity.active = false;
+            expect(entity.active).toBe(false);
+            expect(entity.state).toBe('inactive');
 
-            actor.active = true;
-            expect(actor.active).toBe(true);
-            expect(actor.state).toBe('active');
+            entity.active = true;
+            expect(entity.active).toBe(true);
+            expect(entity.state).toBe('active');
         });
 
-        it('should prevent state changes on destroyed actor', () => {
-            actor.destroy();
+        it('should prevent state changes on destroyed entity', () => {
+            entity.destroy();
 
             expect(() => {
-                actor.active = true;
-            }).toThrow(ActorError);
+                entity.active = true;
+            }).toThrow(EntityLifecycleError);
         });
 
         it('should set name correctly', () => {
-            expect(actor.name).toBe('Actor');
+            expect(entity.name).toBe('Entity');
 
-            actor.name = 'NewName';
-            expect(actor.name).toBe('NewName');
+            entity.name = 'NewName';
+            expect(entity.name).toBe('NewName');
         });
 
         it('should set layer correctly', () => {
-            expect(actor.layer).toBe(0);
+            expect(entity.layer).toBe(0);
 
-            actor.layer = 5 as any;
-            expect(actor.layer).toBe(5);
+            entity.layer = 5 as any;
+            expect(entity.layer).toBe(5);
         });
 
         it('should set tag correctly', () => {
-            expect(actor.tag).toBe('Default');
+            expect(entity.tag).toBe('Default');
 
-            actor.tag = 'newtag' as any;
-            expect(actor.tag).toBe('newtag');
+            entity.tag = 'newtag' as any;
+            expect(entity.tag).toBe('newtag');
         });
     });
 
     describe('component queries', () => {
         it('should get all components correctly', () => {
-            actor.addComponent(TestComponent, 10, 'first');
-            actor.addComponent(AsyncComponent);
+            entity.addComponent(TestComponent, 10, 'first');
+            entity.addComponent(AsyncComponent);
 
-            const allComponents = actor.getAllComponents();
+            const allComponents = entity.getAllComponents();
             expect(allComponents).toHaveLength(4);
             expect(allComponents.some((c) => c instanceof TestComponent)).toBe(true);
             expect(allComponents.some((c) => c instanceof AsyncComponent)).toBe(true);
         });
 
         it('should filter components manually', () => {
-            actor.addComponent(TestComponent, 15, 'findme');
-            actor.addComponent(AsyncComponent);
+            entity.addComponent(TestComponent, 15, 'findme');
+            entity.addComponent(AsyncComponent);
 
-            const allComponents = actor.getAllComponents();
+            const allComponents = entity.getAllComponents();
             const testComponents = allComponents.filter((c) => c instanceof TestComponent);
             expect(testComponents).toHaveLength(1);
             expect((testComponents[0] as TestComponent).value).toBe(2);
@@ -427,27 +427,27 @@ describe('Actor', () => {
 
     describe('properties', () => {
         it('should set and get properties correctly', () => {
-            actor.name = 'TestActor';
-            actor.layer = 3 as any;
-            actor.tag = 'testtag' as any;
+            entity.name = 'TestEntity';
+            entity.layer = 3 as any;
+            entity.tag = 'testtag' as any;
 
-            expect(actor.name).toBe('TestActor');
-            expect(actor.layer).toBe(3);
-            expect(actor.tag).toBe('testtag');
+            expect(entity.name).toBe('TestEntity');
+            expect(entity.layer).toBe(3);
+            expect(entity.tag).toBe('testtag');
         });
 
         it('should validate property values', () => {
             expect(() => {
-                actor.name = '';
-            }).toThrow(ActorError);
+                entity.name = '';
+            }).toThrow(EntityLifecycleError);
 
             expect(() => {
-                actor.layer = -1 as any;
-            }).toThrow(ActorError);
+                entity.layer = -1 as any;
+            }).toThrow(EntityLifecycleError);
 
             expect(() => {
-                actor.tag = '' as any;
-            }).toThrow(ActorError);
+                entity.tag = '' as any;
+            }).toThrow(EntityLifecycleError);
         });
     });
 
@@ -458,10 +458,10 @@ describe('Actor', () => {
                 on: vi.fn().mockReturnValue(() => {}),
             };
 
-            (actor as any)._eventBus = mockEventBus;
+            (entity as any)._eventBus = mockEventBus;
 
             const handler = vi.fn();
-            const unsubscribe = actor.on('test-event', handler);
+            const unsubscribe = entity.on('test-event', handler);
 
             expect(mockEventBus.on).toHaveBeenCalledWith('test-event', handler);
             expect(typeof unsubscribe).toBe('function');
@@ -476,9 +476,9 @@ describe('Actor', () => {
                 on: vi.fn().mockReturnValue(mockUnsubscribe),
             };
 
-            (actor as any)._eventBus = mockEventBus;
+            (entity as any)._eventBus = mockEventBus;
 
-            const unsubscribe = actor.on('test-event', handler);
+            const unsubscribe = entity.on('test-event', handler);
 
             expect(mockEventBus.on).toHaveBeenCalledWith('test-event', handler);
             expect(typeof unsubscribe).toBe('function');
@@ -489,8 +489,8 @@ describe('Actor', () => {
         it('should add and execute cleanup tasks', async () => {
             const cleanupTask = vi.fn();
 
-            actor.addCleanupTask(cleanupTask);
-            await actor.destroy();
+            entity.addCleanupTask(cleanupTask);
+            await entity.destroy();
 
             expect(cleanupTask).toHaveBeenCalled();
         });
@@ -498,47 +498,47 @@ describe('Actor', () => {
         it('should execute cleanup tasks on destroy', () => {
             const cleanupTask = vi.fn();
 
-            actor.addCleanupTask(cleanupTask);
-            actor.destroy();
+            entity.addCleanupTask(cleanupTask);
+            entity.destroy();
 
             expect(cleanupTask).toHaveBeenCalled();
         });
 
         it('should provide debug information', () => {
-            actor.name = 'DebugActor';
-            actor.addComponent(TestComponent, 40, 'debug');
+            entity.name = 'DebugEntity';
+            entity.addComponent(TestComponent, 40, 'debug');
 
-            const debugStr = actor.toString();
+            const debugStr = entity.toString();
 
-            expect(debugStr).toContain('Actor');
-            expect(debugStr).toContain(actor.id);
+            expect(debugStr).toContain('Entity');
+            expect(debugStr).toContain(entity.id);
             expect(debugStr).toContain('TestComponent');
         });
 
         it('should provide string representation', () => {
-            actor.name = 'StringActor';
+            entity.name = 'StringEntity';
 
-            const str = actor.toString();
+            const str = entity.toString();
 
-            expect(str).toContain('Actor');
-            expect(str).toContain(actor.id);
+            expect(str).toContain('Entity');
+            expect(str).toContain(entity.id);
             expect(str).toContain('active');
         });
     });
 
     describe('performance and metrics', () => {
         it('should track creation time', () => {
-            expect(actor.creationTime).toBeDefined();
-            expect(typeof actor.creationTime).toBe('number');
-            expect(actor.creationTime).toBeGreaterThan(0);
+            expect(entity.creationTime).toBeDefined();
+            expect(typeof entity.creationTime).toBe('number');
+            expect(entity.creationTime).toBeGreaterThan(0);
         });
 
         it('should handle rapid component operations', () => {
             const startTime = performance.now();
 
             for (let i = 0; i < 5; i++) {
-                actor.addComponent(TestComponent, i, `component_${i}`);
-                actor.removeComponent(TestComponent);
+                entity.addComponent(TestComponent, i, `component_${i}`);
+                entity.removeComponent(TestComponent);
             }
 
             const endTime = performance.now();
@@ -548,63 +548,63 @@ describe('Actor', () => {
         it('should handle many components efficiently', () => {
             const startTime = performance.now();
 
-            actor.addComponent(TestComponent, 1, 'test1');
-            actor.addComponent(AsyncComponent);
-            actor.addComponent(ErrorComponent);
+            entity.addComponent(TestComponent, 1, 'test1');
+            entity.addComponent(AsyncComponent);
+            entity.addComponent(ErrorComponent);
 
             const endTime = performance.now();
             expect(endTime - startTime).toBeLessThan(50);
-            expect(actor.componentCount).toBe(5);
+            expect(entity.componentCount).toBe(5);
         });
 
         it('should track creation time', () => {
-            expect(actor.creationTime).toBeDefined();
-            expect(typeof actor.creationTime).toBe('number');
-            expect(actor.creationTime).toBeGreaterThan(0);
+            expect(entity.creationTime).toBeDefined();
+            expect(typeof entity.creationTime).toBe('number');
+            expect(entity.creationTime).toBeGreaterThan(0);
         });
     });
 
     describe('edge cases', () => {
         it('should handle null and undefined values gracefully', () => {
             expect(() => {
-                actor.name = null as any;
-            }).toThrow(ActorError);
+                entity.name = null as any;
+            }).toThrow(EntityLifecycleError);
         });
 
         it('should handle extreme layer values', () => {
-            actor.layer = Number.MAX_SAFE_INTEGER as any;
-            expect(actor.layer).toBe(Number.MAX_SAFE_INTEGER);
+            entity.layer = Number.MAX_SAFE_INTEGER as any;
+            expect(entity.layer).toBe(Number.MAX_SAFE_INTEGER);
 
             expect(() => {
-                actor.layer = Number.MIN_SAFE_INTEGER as any;
-            }).toThrow(ActorError);
+                entity.layer = Number.MIN_SAFE_INTEGER as any;
+            }).toThrow(EntityLifecycleError);
         });
 
         it('should handle multiple start calls', () => {
-            actor.start();
-            actor.start();
-            actor.start();
+            entity.start();
+            entity.start();
+            entity.start();
 
-            expect(actor.state).toBe('active');
+            expect(entity.state).toBe('active');
         });
 
         it('should handle component limit correctly', () => {
-            const limitedActor = new Actor(world, { maxComponents: 2 });
+            const limitedEntity = new Entity(world, { maxComponents: 2 });
 
-            limitedActor.addComponent(TestComponent);
+            limitedEntity.addComponent(TestComponent);
 
             expect(() => {
-                limitedActor.addComponent(AsyncComponent);
+                limitedEntity.addComponent(AsyncComponent);
             }).toThrow(ComponentError);
 
-            limitedActor.destroy();
+            limitedEntity.destroy();
         });
     });
 
     // ─── fixedUpdate ─────────────────────────────────────────────────
 
     describe('fixedUpdate', () => {
-        it('calls fixedUpdate on enabled components of active actor', () => {
+        it('calls fixedUpdate on enabled components of active entity', () => {
             const fixedUpdateSpy = vi.fn();
             class FixedComp extends Component {
                 fixedUpdate(dt: number) {
@@ -613,13 +613,13 @@ describe('Actor', () => {
             }
             world.registerComponentType(FixedComp);
 
-            const comp = actor.addComponent(FixedComp);
-            actor.fixedUpdate(0.02);
+            const comp = entity.addComponent(FixedComp);
+            entity.fixedUpdate(0.02);
 
             expect(fixedUpdateSpy).toHaveBeenCalledWith(0.02);
         });
 
-        it('skips inactive actors', () => {
+        it('skips inactive entities', () => {
             const fixedUpdateSpy = vi.fn();
             class FixedComp2 extends Component {
                 fixedUpdate(dt: number) {
@@ -628,14 +628,14 @@ describe('Actor', () => {
             }
             world.registerComponentType(FixedComp2);
 
-            actor.addComponent(FixedComp2);
-            actor.active = false;
-            actor.fixedUpdate(0.02);
+            entity.addComponent(FixedComp2);
+            entity.active = false;
+            entity.fixedUpdate(0.02);
 
             expect(fixedUpdateSpy).not.toHaveBeenCalled();
         });
 
-        it('skips destroyed actors', () => {
+        it('skips destroyed entities', () => {
             const fixedUpdateSpy = vi.fn();
             class FixedComp3 extends Component {
                 fixedUpdate(dt: number) {
@@ -644,9 +644,9 @@ describe('Actor', () => {
             }
             world.registerComponentType(FixedComp3);
 
-            actor.addComponent(FixedComp3);
-            actor.destroy();
-            actor.fixedUpdate(0.02);
+            entity.addComponent(FixedComp3);
+            entity.destroy();
+            entity.fixedUpdate(0.02);
 
             expect(fixedUpdateSpy).not.toHaveBeenCalled();
         });
@@ -664,13 +664,13 @@ describe('Actor', () => {
             }
             world.registerComponentType(LateComp);
 
-            actor.addComponent(LateComp);
-            actor.lateUpdate(0.016);
+            entity.addComponent(LateComp);
+            entity.lateUpdate(0.016);
 
             expect(lateUpdateSpy).toHaveBeenCalledWith(0.016);
         });
 
-        it('skips inactive actors', () => {
+        it('skips inactive entities', () => {
             const lateUpdateSpy = vi.fn();
             class LateComp2 extends Component {
                 lateUpdate(dt: number) {
@@ -679,9 +679,9 @@ describe('Actor', () => {
             }
             world.registerComponentType(LateComp2);
 
-            actor.addComponent(LateComp2);
-            actor.active = false;
-            actor.lateUpdate(0.016);
+            entity.addComponent(LateComp2);
+            entity.active = false;
+            entity.lateUpdate(0.016);
 
             expect(lateUpdateSpy).not.toHaveBeenCalled();
         });
@@ -691,33 +691,33 @@ describe('Actor', () => {
 
     describe('hierarchy delegation', () => {
         it('setParent delegates to Hierarchy component', () => {
-            const childActor = createActor(world);
-            actor.setParent(childActor);
+            const childEntity = createEntity(world);
+            entity.setParent(childEntity);
 
             // Verify through the parent getter
-            expect(actor.parent).toBe(childActor);
+            expect(entity.parent).toBe(childEntity);
 
-            childActor.destroy();
+            childEntity.destroy();
         });
 
         it('setParent with undefined removes parent', () => {
-            const parentActor = createActor(world);
-            actor.setParent(parentActor);
-            expect(actor.parent).toBe(parentActor);
+            const parentEntity = createEntity(world);
+            entity.setParent(parentEntity);
+            expect(entity.parent).toBe(parentEntity);
 
-            actor.setParent(undefined);
-            expect(actor.parent).toBeUndefined();
+            entity.setParent(undefined);
+            expect(entity.parent).toBeUndefined();
 
-            parentActor.destroy();
+            parentEntity.destroy();
         });
 
         it('parent getter returns undefined when no hierarchy', () => {
-            // Default actor has Hierarchy, so parent should be undefined (no parent set)
-            expect(actor.parent).toBeUndefined();
+            // Default entity has Hierarchy, so parent should be undefined (no parent set)
+            expect(entity.parent).toBeUndefined();
         });
 
         it('children getter returns array', () => {
-            expect(Array.isArray(actor.children)).toBe(true);
+            expect(Array.isArray(entity.children)).toBe(true);
         });
     });
 
@@ -725,12 +725,12 @@ describe('Actor', () => {
 
     describe('addComponent edge cases', () => {
         it('throws ComponentError for invalid component type', () => {
-            expect(() => actor.addComponent(null as any)).toThrow(ComponentError);
+            expect(() => entity.addComponent(null as any)).toThrow(ComponentError);
         });
 
-        it('throws ComponentError on destroyed actor', () => {
-            actor.destroy();
-            expect(() => actor.addComponent(TestComponent)).toThrow(ActorError);
+        it('throws ComponentError on destroyed entity', () => {
+            entity.destroy();
+            expect(() => entity.addComponent(TestComponent)).toThrow(EntityLifecycleError);
         });
     });
 
@@ -744,10 +744,10 @@ describe('Actor', () => {
             }
             world.registerComponentType(DependsOnTest);
 
-            actor.addComponent(TestComponent, 100, 'dep');
-            actor.addComponent(DependsOnTest);
+            entity.addComponent(TestComponent, 100, 'dep');
+            entity.addComponent(DependsOnTest);
 
-            expect(() => actor.removeComponent(TestComponent)).toThrow(ComponentError);
+            expect(() => entity.removeComponent(TestComponent)).toThrow(ComponentError);
         });
     });
 
@@ -763,25 +763,25 @@ describe('Actor', () => {
             }
             world.registerComponentType(DestroyComp);
 
-            actor.addComponent(DestroyComp);
-            actor.destroy();
+            entity.addComponent(DestroyComp);
+            entity.destroy();
 
             expect(onDestroySpy).toHaveBeenCalled();
         });
 
         it('runs cleanup tasks', () => {
             const cleanup = vi.fn();
-            actor.addCleanupTask(cleanup);
-            actor.destroy();
+            entity.addCleanupTask(cleanup);
+            entity.destroy();
 
             expect(cleanup).toHaveBeenCalled();
         });
 
-        it('unregisters actor and destroys entity', () => {
-            const entity = actor.entity;
-            actor.destroy();
+        it('unregisters entity and destroys entity', () => {
+            const entityId = entity.entityId;
+            entity.destroy();
 
-            expect(world.getActor(entity)).toBeUndefined();
+            expect(world.getEntity(entityId)).toBeUndefined();
         });
     });
 
@@ -793,39 +793,39 @@ describe('Actor', () => {
                 emit: vi.fn(),
                 on: vi.fn().mockReturnValue(() => {}),
             };
-            (actor as any)._eventBus = mockEventBus;
+            (entity as any)._eventBus = mockEventBus;
 
-            actor.destroy(true);
+            entity.destroy(true);
 
             expect(mockEventBus.emit).toHaveBeenCalledWith(
-                'actor:destroying',
+                'entity:destroying',
                 expect.objectContaining({ immediate: true })
             );
         });
     });
 
-    // ─── Property setters on destroyed actor ─────────────────────────
+    // ─── Property setters on destroyed entity ─────────────────────────
 
-    describe('property setters on destroyed actor', () => {
-        it('name setter throws ActorError', () => {
-            actor.destroy();
+    describe('property setters on destroyed entity', () => {
+        it('name setter throws EntityLifecycleError', () => {
+            entity.destroy();
             expect(() => {
-                actor.name = 'New';
-            }).toThrow(ActorError);
+                entity.name = 'New';
+            }).toThrow(EntityLifecycleError);
         });
 
-        it('layer setter throws ActorError', () => {
-            actor.destroy();
+        it('layer setter throws EntityLifecycleError', () => {
+            entity.destroy();
             expect(() => {
-                actor.layer = 5;
-            }).toThrow(ActorError);
+                entity.layer = 5;
+            }).toThrow(EntityLifecycleError);
         });
 
-        it('tag setter throws ActorError', () => {
-            actor.destroy();
+        it('tag setter throws EntityLifecycleError', () => {
+            entity.destroy();
             expect(() => {
-                actor.tag = 'new';
-            }).toThrow(ActorError);
+                entity.tag = 'new';
+            }).toThrow(EntityLifecycleError);
         });
     });
 
@@ -834,9 +834,9 @@ describe('Actor', () => {
     describe('on() without event bus', () => {
         it('returns no-op disposer and warns', () => {
             const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-            (actor as any)._eventBus = null;
+            (entity as any)._eventBus = null;
 
-            const dispose = actor.on('test', () => {});
+            const dispose = entity.on('test', () => {});
             expect(typeof dispose).toBe('function');
             expect(() => dispose()).not.toThrow();
             expect(warnSpy).toHaveBeenCalled();
@@ -848,11 +848,11 @@ describe('Actor', () => {
     // ─── toString ────────────────────────────────────────────────────
 
     describe('toString', () => {
-        it('includes actor id, component names, and state', () => {
-            actor.addComponent(TestComponent, 10, 'test');
-            const str = actor.toString();
+        it('includes entity id, component names, and state', () => {
+            entity.addComponent(TestComponent, 10, 'test');
+            const str = entity.toString();
 
-            expect(str).toContain(actor.id);
+            expect(str).toContain(entity.id);
             expect(str).toContain('TestComponent');
             expect(str).toContain('active');
         });
@@ -860,23 +860,23 @@ describe('Actor', () => {
 
     describe('revision tracking', () => {
         it('increments when components or active state change', () => {
-            const initial = actor.revision;
+            const initial = entity.revision;
 
-            const component = actor.addComponent(TestComponent, 10, 'revision');
-            const afterAdd = actor.revision;
+            const component = entity.addComponent(TestComponent, 10, 'revision');
+            const afterAdd = entity.revision;
             expect(afterAdd).toBeGreaterThan(initial);
 
-            actor.removeComponent(TestComponent);
-            expect(actor.revision).toBeGreaterThan(afterAdd);
+            entity.removeComponent(TestComponent);
+            expect(entity.revision).toBeGreaterThan(afterAdd);
 
-            const afterRemove = actor.revision;
-            actor.active = false;
-            expect(actor.revision).toBeGreaterThan(afterRemove);
+            const afterRemove = entity.revision;
+            entity.active = false;
+            expect(entity.revision).toBeGreaterThan(afterRemove);
 
-            actor.active = false;
-            const afterSameActive = actor.revision;
-            actor.active = true;
-            expect(actor.revision).toBeGreaterThan(afterSameActive);
+            entity.active = false;
+            const afterSameActive = entity.revision;
+            entity.active = true;
+            expect(entity.revision).toBeGreaterThan(afterSameActive);
 
             expect(component).toBeDefined();
         });

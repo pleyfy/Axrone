@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Component, script } from '@axrone/ecs-runtime';
 import { World } from '@axrone/ecs-runtime';
-import { Actor } from '@axrone/ecs-runtime/actor';
+import { EntityId } from '@axrone/ecs-runtime/entity';
 import { Transform } from '@axrone/ecs-runtime';
-import { createActor } from './factory-helpers';
+import { createEntity } from './factory-helpers';
 
 /**
  * T-04: Component Lifecycle Integration Test
@@ -133,7 +133,7 @@ class PriorityThirdComponent extends Component {
 
 describe('T-04: Component Lifecycle Integration', () => {
     let world: World<any>;
-    let actor: Actor;
+    let entity: EntityId;
 
     beforeEach(() => {
         const registry = {
@@ -149,13 +149,13 @@ describe('T-04: Component Lifecycle Integration', () => {
             PriorityThirdComponent,
         };
         world = new World(registry);
-        actor = createActor(world, 'LifecycleTestActor');
+        entity = createEntity(world, 'LifecycleTestEntity');
     });
 
     afterEach(() => {
         try {
-            if (actor && !actor.isDestroyed) {
-                actor.destroy();
+            if (entity && !entity.isDestroyed) {
+                entity.destroy();
             }
         } catch {
             // already destroyed
@@ -173,9 +173,9 @@ describe('T-04: Component Lifecycle Integration', () => {
 
     describe('Lifecycle method ordering', () => {
         it('should call onLoad → start → onEnable → update → lateUpdate → fixedUpdate → onDisable → onDestroy', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
+            const recorder = entity.addComponent(LifecycleRecorder);
 
-            // addComponent on an already-started actor triggers onLoad + start + onEnable
+            // addComponent on an already-started entity triggers onLoad + start + onEnable
             expect(recorder.log).toContain('onLoad');
             expect(recorder.log).toContain('start');
             expect(recorder.log).toContain('onEnable');
@@ -187,9 +187,9 @@ describe('T-04: Component Lifecycle Integration', () => {
             expect(onLoadIdx).toBeLessThan(startIdx);
             expect(startIdx).toBeLessThan(enableIdx);
 
-            actor.update(0.016);
-            actor.lateUpdate(0.016);
-            actor.fixedUpdate(0.02);
+            entity.update(0.016);
+            entity.lateUpdate(0.016);
+            entity.fixedUpdate(0.02);
 
             expect(recorder.log).toContain('update:0.016');
             expect(recorder.log).toContain('lateUpdate:0.016');
@@ -201,7 +201,7 @@ describe('T-04: Component Lifecycle Integration', () => {
 
             expect(updateIdx).toBeLessThan(lateIdx);
 
-            actor.destroy();
+            entity.destroy();
 
             expect(recorder.log).toContain('onDisable');
             expect(recorder.log).toContain('onDestroy');
@@ -214,12 +214,12 @@ describe('T-04: Component Lifecycle Integration', () => {
         });
 
         it('should call fixedUpdate → update → lateUpdate when driven in frame order', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
-            actor.start();
+            const recorder = entity.addComponent(LifecycleRecorder);
+            entity.start();
 
-            actor.fixedUpdate(0.02);
-            actor.update(0.016);
-            actor.lateUpdate(0.016);
+            entity.fixedUpdate(0.02);
+            entity.update(0.016);
+            entity.lateUpdate(0.016);
 
             const fixedIdx = recorder.log.indexOf('fixedUpdate:0.02');
             const updateIdx = recorder.log.indexOf('update:0.016');
@@ -234,34 +234,34 @@ describe('T-04: Component Lifecycle Integration', () => {
 
     describe('onEnable / onDisable', () => {
         it('should call onEnable when component is first activated', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
+            const recorder = entity.addComponent(LifecycleRecorder);
             expect(recorder.log).toContain('onEnable');
         });
 
-        it('should call onDisable when actor is deactivated', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
-            actor.start();
+        it('should call onDisable when entity is deactivated', () => {
+            const recorder = entity.addComponent(LifecycleRecorder);
+            entity.start();
 
-            actor.active = false;
+            entity.active = false;
             expect(recorder.log).toContain('onDisable');
         });
 
-        it('should call onEnable again when actor is reactivated', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
-            actor.start();
+        it('should call onEnable again when entity is reactivated', () => {
+            const recorder = entity.addComponent(LifecycleRecorder);
+            entity.start();
 
-            actor.active = false;
-            actor.active = true;
+            entity.active = false;
+            entity.active = true;
 
             const enableCount = recorder.log.filter((e) => e === 'onEnable').length;
             expect(enableCount).toBeGreaterThanOrEqual(2);
         });
 
-        it('should call onDisable then onDestroy on actor destroy', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
-            actor.start();
+        it('should call onDisable then onDestroy on entity destroy', () => {
+            const recorder = entity.addComponent(LifecycleRecorder);
+            entity.start();
 
-            actor.destroy();
+            entity.destroy();
 
             const disableIdx = recorder.log.indexOf('onDisable');
             const destroyIdx = recorder.log.indexOf('onDestroy');
@@ -275,23 +275,23 @@ describe('T-04: Component Lifecycle Integration', () => {
     // ─── 3. onDestroy ────────────────────────────────────────────────────────
 
     describe('onDestroy', () => {
-        it('should call onDestroy exactly once when actor is destroyed', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
-            actor.start();
+        it('should call onDestroy exactly once when entity is destroyed', () => {
+            const recorder = entity.addComponent(LifecycleRecorder);
+            entity.start();
 
-            actor.destroy();
+            entity.destroy();
 
             const destroyCount = recorder.log.filter((e) => e === 'onDestroy').length;
             expect(destroyCount).toBe(1);
         });
 
         it('should not call update after onDestroy', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
-            actor.start();
-            actor.destroy();
+            const recorder = entity.addComponent(LifecycleRecorder);
+            entity.start();
+            entity.destroy();
 
             const updateCountBefore = recorder.log.filter((e) => e.startsWith('update:')).length;
-            // No further updates can happen after destroy — actor is gone
+            // No further updates can happen after destroy — entity is gone
             expect(recorder.log.filter((e) => e.startsWith('update:')).length).toBe(updateCountBefore);
         });
     });
@@ -302,12 +302,12 @@ describe('T-04: Component Lifecycle Integration', () => {
         it('should execute higher-priority components first during update', () => {
             resetPriorityLog();
 
-            actor.addComponent(PriorityThirdComponent);
-            actor.addComponent(PriorityFirstComponent);
-            actor.addComponent(PrioritySecondComponent);
+            entity.addComponent(PriorityThirdComponent);
+            entity.addComponent(PriorityFirstComponent);
+            entity.addComponent(PrioritySecondComponent);
 
-            actor.start();
-            actor.update(0.016);
+            entity.start();
+            entity.update(0.016);
 
             expect(priorityLog).toEqual(['first', 'second', 'third']);
         });
@@ -315,13 +315,13 @@ describe('T-04: Component Lifecycle Integration', () => {
         it('should maintain priority order across multiple frames', () => {
             resetPriorityLog();
 
-            actor.addComponent(PriorityThirdComponent);
-            actor.addComponent(PriorityFirstComponent);
-            actor.addComponent(PrioritySecondComponent);
+            entity.addComponent(PriorityThirdComponent);
+            entity.addComponent(PriorityFirstComponent);
+            entity.addComponent(PrioritySecondComponent);
 
-            actor.start();
-            actor.update(0.016);
-            actor.update(0.016);
+            entity.start();
+            entity.update(0.016);
+            entity.update(0.016);
 
             // 2 frames × 3 components = 6 entries
             expect(priorityLog).toHaveLength(6);
@@ -340,73 +340,73 @@ describe('T-04: Component Lifecycle Integration', () => {
 
     describe('Disabled components', () => {
         it('should not call update on a disabled component', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
-            actor.start();
+            const recorder = entity.addComponent(LifecycleRecorder);
+            entity.start();
 
             // Disable via component-level enabled setter
             recorder.enabled = false;
 
-            actor.update(0.016);
+            entity.update(0.016);
 
             const updateEvents = recorder.log.filter((e) => e.startsWith('update:'));
             expect(updateEvents).toHaveLength(0);
         });
 
         it('should not call lateUpdate on a disabled component', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
-            actor.start();
+            const recorder = entity.addComponent(LifecycleRecorder);
+            entity.start();
 
             recorder.enabled = false;
-            actor.lateUpdate(0.016);
+            entity.lateUpdate(0.016);
 
             const lateEvents = recorder.log.filter((e) => e.startsWith('lateUpdate:'));
             expect(lateEvents).toHaveLength(0);
         });
 
         it('should resume update after re-enabling', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
-            actor.start();
+            const recorder = entity.addComponent(LifecycleRecorder);
+            entity.start();
 
             recorder.enabled = false;
-            actor.update(0.016);
+            entity.update(0.016);
 
             recorder.enabled = true;
-            actor.update(0.033);
+            entity.update(0.033);
 
             const updateEvents = recorder.log.filter((e) => e.startsWith('update:'));
             expect(updateEvents).toHaveLength(1);
             expect(updateEvents[0]).toBe('update:0.033');
         });
 
-        it('should not call update when actor is inactive', () => {
-            const recorder = actor.addComponent(LifecycleRecorder);
-            actor.start();
+        it('should not call update when entity is inactive', () => {
+            const recorder = entity.addComponent(LifecycleRecorder);
+            entity.start();
 
-            actor.active = false;
-            actor.update(0.016);
+            entity.active = false;
+            entity.update(0.016);
 
             const updateEvents = recorder.log.filter((e) => e.startsWith('update:'));
             expect(updateEvents).toHaveLength(0);
         });
     });
 
-    // ─── 6. Multiple components on same actor ────────────────────────────────
+    // ─── 6. Multiple components on same entity ────────────────────────────────
 
-    describe('Multiple components on same actor', () => {
+    describe('Multiple components on same entity', () => {
         it('should deliver lifecycle calls to all components', () => {
-            const alpha = actor.addComponent(AlphaComponent);
-            const beta = actor.addComponent(BetaComponent);
-            const gamma = actor.addComponent(GammaComponent);
+            const alpha = entity.addComponent(AlphaComponent);
+            const beta = entity.addComponent(BetaComponent);
+            const gamma = entity.addComponent(GammaComponent);
 
-            actor.start();
-            actor.update(0.016);
+            entity.start();
+            entity.update(0.016);
 
             expect(alpha.updated).toBe(true);
             expect(beta.updated).toBe(true);
             expect(gamma.updated).toBe(true);
         });
 
-        it('should call onDestroy on all components when actor is destroyed', () => {
+        it('should call onDestroy on all components when entity is destroyed', () => {
             const logA: string[] = [];
             const logB: string[] = [];
 
@@ -424,25 +424,25 @@ describe('T-04: Component Lifecycle Integration', () => {
             world.registerComponentType(DestroyTrackerA);
             world.registerComponentType(DestroyTrackerB);
 
-            actor.addComponent(DestroyTrackerA);
-            actor.addComponent(DestroyTrackerB);
-            actor.start();
+            entity.addComponent(DestroyTrackerA);
+            entity.addComponent(DestroyTrackerB);
+            entity.start();
 
-            actor.destroy();
+            entity.destroy();
 
             expect(logA).toContain('destroyed');
             expect(logB).toContain('destroyed');
         });
 
         it('should isolate enable/disable state per component', () => {
-            const alpha = actor.addComponent(AlphaComponent);
-            const beta = actor.addComponent(BetaComponent);
+            const alpha = entity.addComponent(AlphaComponent);
+            const beta = entity.addComponent(BetaComponent);
 
-            actor.start();
+            entity.start();
 
             alpha.enabled = false;
 
-            actor.update(0.016);
+            entity.update(0.016);
 
             // Alpha was disabled — its update should NOT have run
             expect(alpha.updated).toBe(false);
@@ -467,14 +467,14 @@ describe('T-04: Component Lifecycle Integration', () => {
             expect(comp.state).toBe('destroyed');
         });
 
-        it('should clean up actor-level event subscriptions when actor is destroyed', () => {
-            const comp = actor.addComponent(EventSubscribingComponent);
-            actor.start();
+        it('should clean up entity-level event subscriptions when entity is destroyed', () => {
+            const comp = entity.addComponent(EventSubscribingComponent);
+            entity.start();
 
-            actor.destroy();
+            entity.destroy();
 
-            // Actor-level subscriptions are cleared by actor.destroy()
-            expect(actor.isDestroyed).toBe(true);
+            // Entity-level subscriptions are cleared by entity.destroy()
+            expect(entity.isDestroyed).toBe(true);
         });
     });
 
@@ -514,16 +514,16 @@ describe('T-04: Component Lifecycle Integration', () => {
             expect(order).toEqual([1, 2, 3]);
         });
 
-        it('should invoke actor-level cleanup tasks on actor destroy', () => {
-            let actorCleanupCalled = false;
-            actor.addCleanupTask(() => {
-                actorCleanupCalled = true;
+        it('should invoke entity-level cleanup tasks on entity destroy', () => {
+            let entityCleanupCalled = false;
+            entity.addCleanupTask(() => {
+                entityCleanupCalled = true;
             });
 
-            actor.start();
-            actor.destroy();
+            entity.start();
+            entity.destroy();
 
-            expect(actorCleanupCalled).toBe(true);
+            expect(entityCleanupCalled).toBe(true);
         });
     });
 

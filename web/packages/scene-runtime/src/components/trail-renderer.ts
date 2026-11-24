@@ -95,7 +95,7 @@ interface TrailPoint {
  *     startWidth: 0.5,
  *     endWidth: 0,
  * });
- * actor.addComponent(TrailRenderer, trail);
+ * entity.addComponent(TrailRenderer, trail);
  * ```
  */
 @script({
@@ -428,7 +428,7 @@ export class TrailRenderer extends Component {
         this._pruneExpiredPoints();
 
         if (this._autodestruct && !this._emitting && this._pointCount === 0) {
-            this.actor?.destroy();
+            this.entity?.destroy();
         }
     }
 

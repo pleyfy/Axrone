@@ -1,25 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { Actor } from '@axrone/ecs-runtime';
+import { Entity } from '@axrone/ecs-runtime';
 import { World } from '@axrone/ecs-runtime';
 import { createSceneRegistry } from '@axrone/scene-3d';
 import { MeshRenderer } from '@axrone/scene-3d';
 import { SceneRenderItemCollector } from '@axrone/scene-3d';
 
 describe('SceneRenderItemCollector', () => {
-    it('filters actors by pass and renderability and sorts by render order', () => {
+    it('filters entities by pass and renderability and sorts by render order', () => {
         const world = new World(createSceneRegistry());
         const collector = new SceneRenderItemCollector();
 
-        const actorA = new Actor(world);
-        actorA.addComponent(MeshRenderer, { passId: 'main', renderOrder: 10 });
+        const entityA = new Entity(world);
+        entityA.addComponent(MeshRenderer, { passId: 'main', renderOrder: 10 });
 
-        const actorB = new Actor(world);
-        actorB.addComponent(MeshRenderer, { passId: 'overlay', renderOrder: 0 });
+        const entityB = new Entity(world);
+        entityB.addComponent(MeshRenderer, { passId: 'overlay', renderOrder: 0 });
 
-        const actorC = new Actor(world);
-        actorC.addComponent(MeshRenderer, { passId: 'main', renderOrder: 1 });
+        const entityC = new Entity(world);
+        entityC.addComponent(MeshRenderer, { passId: 'main', renderOrder: 1 });
 
-        const items = collector.collect(world.getAllActors(), 'main');
+        const items = collector.collect(world.getAllEntities(), 'main');
 
         expect(items).toHaveLength(2);
         expect(items.map((item) => item.renderer.renderOrder)).toEqual([1, 10]);
@@ -29,12 +29,12 @@ describe('SceneRenderItemCollector', () => {
         const world = new World(createSceneRegistry());
         const collector = new SceneRenderItemCollector();
 
-        const actor = new Actor(world);
-        actor.addComponent(MeshRenderer, { passId: 'main', renderOrder: 0 });
+        const entity = new Entity(world);
+        entity.addComponent(MeshRenderer, { passId: 'main', renderOrder: 0 });
 
-        const first = collector.collect(world.getAllActors(), 'main');
+        const first = collector.collect(world.getAllEntities(), 'main');
         const firstItem = first[0];
-        const second = collector.collect(world.getAllActors(), 'main');
+        const second = collector.collect(world.getAllEntities(), 'main');
         const secondItem = second[0];
 
         expect(second).toBe(first);

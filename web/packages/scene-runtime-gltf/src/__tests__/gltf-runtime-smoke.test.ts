@@ -533,21 +533,21 @@ describe('glTF runtime smoke', () => {
                 namePrefix: 'A ',
             });
             const secondInstance = scene.instantiatePrefab(firstLoad.prefab.data.definition, { namePrefix: 'B ' });
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             camera.requireComponent(Transform).position = new Vec3(0, 0, 5);
 
-            const firstRootActor = firstLoad.actors.find((actor) => actor.name === 'A Joint Root');
-            const firstMeshActor = firstLoad.actors.find((actor) => actor.name === 'A Mesh Root');
-            const secondRootActor = secondInstance.find((actor) => actor.name === 'B Joint Root');
-            const secondMeshActor = secondInstance.find((actor) => actor.name === 'B Mesh Root');
-            const firstAnimator = firstRootActor?.getComponent(Animator) ?? null;
+            const firstRootEntity = firstLoad.entities.find((entity) => entity.name === 'A Joint Root');
+            const firstMeshEntity = firstLoad.entities.find((entity) => entity.name === 'A Mesh Root');
+            const secondRootEntity = secondInstance.find((entity) => entity.name === 'B Joint Root');
+            const secondMeshEntity = secondInstance.find((entity) => entity.name === 'B Mesh Root');
+            const firstAnimator = firstRootEntity?.getComponent(Animator) ?? null;
 
             expect(firstLoad.snapshot.materials[0]?.shaderId).toBe('gltf/pbr');
-            expect(firstMeshActor?.getComponent(MeshRenderer)?.skin).toMatchObject({
+            expect(firstMeshEntity?.getComponent(MeshRenderer)?.skin).toMatchObject({
                 jointNodeIds: ['node/0'],
                 skeletonNodeId: 'node/0',
             });
-            expect(firstMeshActor?.getComponent(MeshRenderer)?.materialId).toBe(firstLoad.prefab.data.materialKeys[0]);
+            expect(firstMeshEntity?.getComponent(MeshRenderer)?.materialId).toBe(firstLoad.prefab.data.materialKeys[0]);
 
             expect(firstAnimator?.clipId).toBe('Move');
             expect(firstAnimator?.serialize()).toMatchObject({
@@ -564,23 +564,23 @@ describe('glTF runtime smoke', () => {
                 ],
             });
             firstAnimator?.seek(0.75);
-            expect(firstMeshActor?.requireComponent(Transform).position.x).toBeCloseTo(0.75, 5);
+            expect(firstMeshEntity?.requireComponent(Transform).position.x).toBeCloseTo(0.75, 5);
             firstAnimator?.seek(0);
             firstAnimator?.play();
 
-            secondRootActor?.requireComponent(Animator).pause();
+            secondRootEntity?.requireComponent(Animator).pause();
 
             scene.start(0);
             scheduler.flush(250);
             scheduler.flush(500);
             scheduler.flush(750);
 
-            expect(firstMeshActor?.requireComponent(Transform).position.x).toBeCloseTo(0.75, 5);
-            expect(secondMeshActor?.requireComponent(Transform).position.x).toBeCloseTo(0, 5);
+            expect(firstMeshEntity?.requireComponent(Transform).position.x).toBeCloseTo(0.75, 5);
+            expect(secondMeshEntity?.requireComponent(Transform).position.x).toBeCloseTo(0, 5);
 
             scheduler.flush(1000);
 
-            expect(firstMeshActor?.requireComponent(Transform).position.x).toBeCloseTo(0, 5);
+            expect(firstMeshEntity?.requireComponent(Transform).position.x).toBeCloseTo(0, 5);
             expect(gl.vertexAttribIPointer).toHaveBeenCalledWith(9, 4, gl.UNSIGNED_SHORT, 36, 12);
 
             const skinningCall = (gl.uniform1i as unknown as {
@@ -625,12 +625,12 @@ describe('glTF runtime smoke', () => {
 
         try {
             const load = await loadGltfSceneIntoScene(scene, database, receipt.primary.reference);
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             camera.requireComponent(Transform).position = new Vec3(0, 0, 5);
 
-            const rootActor = load.actors.find((actor) => actor.name === 'Morph Root');
-            const renderer = rootActor?.getComponent(MeshRenderer) ?? null;
-            const animator = rootActor?.getComponent(Animator) ?? null;
+            const rootEntity = load.entities.find((entity) => entity.name === 'Morph Root');
+            const renderer = rootEntity?.getComponent(MeshRenderer) ?? null;
+            const animator = rootEntity?.getComponent(Animator) ?? null;
 
             expect(renderer?.morphWeights).toEqual(new Float32Array([0]));
             expect(animator?.clipId).toBe('Morph');
@@ -743,11 +743,11 @@ describe('glTF runtime smoke', () => {
             const load = await loadGltfSceneIntoScene(scene, database, receipt.primary.reference, {
                 namePrefix: 'Meta ',
             });
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             camera.requireComponent(Transform).position = new Vec3(0, 0, 5);
 
-            const rootActor = load.actors.find((actor) => actor.name === 'Meta Joint Root');
-            const animator = rootActor?.getComponent(Animator) ?? null;
+            const rootEntity = load.entities.find((entity) => entity.name === 'Meta Joint Root');
+            const animator = rootEntity?.getComponent(Animator) ?? null;
 
             expect(load.scene.animationController).toMatchObject({
                 parameters: [
@@ -818,7 +818,7 @@ describe('glTF runtime smoke', () => {
             scene.start(0);
             scheduler.flush(500);
 
-            expect(rootActor?.requireComponent(Transform).position.x).toBeGreaterThan(0);
+            expect(rootEntity?.requireComponent(Transform).position.x).toBeGreaterThan(0);
         } finally {
             scene.dispose();
         }

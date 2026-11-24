@@ -1,5 +1,5 @@
 import type { Brand } from '@axrone/utility';
-import type { Entity, ActorId } from '../types/core';
+import type { EntityId, EntityUid } from '../types/core';
 import type { ComponentType, ComponentMetadata } from '../types/component';
 import type { World } from './world';
 import { Component, getComponentMetadata } from './component';
@@ -16,33 +16,33 @@ export interface EventBus<T extends string = string> {
     on(eventType: T, handler: (data: unknown) => void): () => void;
 }
 
-export type ActorState = 'initializing' | 'active' | 'inactive' | 'destroying' | 'destroyed';
-export type ActorLayer = Brand<number, 'ActorLayer'>;
-export type ActorTag = Brand<string, 'ActorTag'>;
+export type EntityState = 'initializing' | 'active' | 'inactive' | 'destroying' | 'destroyed';
+export type EntityLayer = Brand<number, 'EntityLayer'>;
+export type EntityTag = Brand<string, 'EntityTag'>;
 
-export class ActorError extends Error {
+export class EntityLifecycleError extends Error {
     constructor(
         message: string,
-        public readonly actorId: ActorId,
+        public readonly entityUid: EntityUid,
         public readonly operation: string,
         public readonly cause?: Error
     ) {
-        super(`[Actor:${actorId}] ${operation}: ${message}`);
-        this.name = 'ActorError';
+        super(`[EntityId:${entityUid}] ${operation}: ${message}`);
+        this.name = 'EntityLifecycleError';
         if (cause) {
             this.stack += `\nCaused by: ${cause.stack}`;
         }
     }
 }
 
-export class ComponentError extends ActorError {
+export class ComponentError extends EntityLifecycleError {
     constructor(
         message: string,
-        actorId: ActorId,
+        entityUid: EntityUid,
         public readonly componentType: string,
         cause?: Error
     ) {
-        super(message, actorId, `Component[${componentType}]`, cause);
+        super(message, entityUid, `Component[${componentType}]`, cause);
         this.name = 'ComponentError';
     }
 }
@@ -52,10 +52,10 @@ type ComponentTuple<T extends readonly ComponentType[]> = {
     readonly [K in keyof T]: ComponentInstance<T[K]>;
 };
 
-export interface ActorConfig {
+export interface EntityConfig {
     readonly name?: string;
-    readonly layer?: ActorLayer;
-    readonly tag?: ActorTag;
+    readonly layer?: EntityLayer;
+    readonly tag?: EntityTag;
     readonly active?: boolean;
     readonly persistent?: boolean;
     readonly pooled?: boolean;
@@ -68,14 +68,14 @@ export interface ActorConfig {
  * A fully constructed component plus its registry name, for the preloaded
  * component paths (`createWithComponents`, `createManyWithComponents`).
  */
-export interface ActorComponentEntry {
+export interface EntityComponentEntry {
     readonly componentType: ComponentType<Component>;
     readonly component: Component;
     readonly componentName?: string;
     readonly metadata?: ComponentMetadata;
 }
 
-type ActorPreloadedComponentEntry = ActorComponentEntry;
+type EntityPreloadedComponentEntry = EntityComponentEntry;
 
 const FINALIZE_FLAG_ON_LOAD = 1;
 const FINALIZE_FLAG_START = 2;
@@ -85,7 +85,7 @@ const FINALIZE_FLAG_EMIT = 8;
 /**
  * Scratch arrays for the preloaded-components finalize pass. Creating one
  * record object per attached component meant ~150k short-lived objects for a
- * 50k-actor bulk build; parallel scratch arrays reused across actors collapse
+ * 50k-entity bulk build; parallel scratch arrays reused across entities collapse
  * that to zero. Lifecycle hooks can attach components re-entrantly, so the
  * scratch is guarded and a nested call falls back to its own arrays.
  */
@@ -94,54 +94,54 @@ const finalizeFlagsScratch: number[] = [];
 const finalizeNamesScratch: string[] = [];
 let finalizeScratchInUse = false;
 
-interface ActorInternalConfig extends ActorConfig {
-    readonly entity?: Entity;
+interface EntityInternalConfig extends EntityConfig {
+    readonly entityId?: EntityId;
     readonly skipCoreComponents?: boolean;
-    readonly preloadedComponents?: readonly ActorPreloadedComponentEntry[];
+    readonly preloadedComponents?: readonly EntityPreloadedComponentEntry[];
 }
 
-export class Actor<
+export class Entity<
     TWorld extends World<any> = World<any>,
     TComponents extends readonly ComponentType[] = readonly ComponentType[],
 > {
     private static readonly _componentMetadataMap = new WeakMap<ComponentType, ComponentMetadata>();
-    private static _nextActorId = 1;
+    private static _nextEntityUid = 1;
 
-    public readonly entity: Entity;
+    public readonly entityId: EntityId;
     public readonly world: TWorld;
     public readonly creationTime: number;
 
     /**
-     * Actor id is materialized on first read. Bulk creation assigns the global
+     * Entity id is materialized on first read. Bulk creation assigns the global
      * sequence eagerly (uniqueness) but skips the template string unless
-     * someone asks — 50k-sprite scenes that never read actor ids during setup
+     * someone asks — 50k-sprite scenes that never read entity ids during setup
      * allocate nothing. The value is identical either way.
      */
-    private _idValue: ActorId | null = null;
+    private _idValue: EntityUid | null = null;
     private readonly _idSequence: number;
     private readonly _nameAtCreation: string;
 
-    get id(): ActorId {
+    get id(): EntityUid {
         if (this._idValue === null) {
-            this._idValue = `${this._nameAtCreation}_${String(this.entity)}_${String(
+            this._idValue = `${this._nameAtCreation}_${String(this.entityId)}_${String(
                 this._idSequence
-            )}` as ActorId;
+            )}` as EntityUid;
         }
         return this._idValue;
     }
 
-    private _state: ActorState = 'initializing';
+    private _state: EntityState = 'initializing';
     private _name: string;
     private _active: boolean;
-    private _layer: ActorLayer;
-    private _tag: ActorTag;
+    private _layer: EntityLayer;
+    private _tag: EntityTag;
     private _persistent: boolean;
     private _pooled: boolean;
 
     private readonly _components = new Map<ComponentType, Component>();
     /**
      * Dependency bookkeeping is lazily allocated: scenes that declare no
-     * component dependencies never pay a Map per actor.
+     * component dependencies never pay a Map per entity.
      */
     private _componentDependencies: Map<ComponentType, Set<ComponentType>> | null = null;
     private readonly _componentPriorities = new Map<ComponentType, number>();
@@ -160,8 +160,8 @@ export class Actor<
     /** Monotonic revision for render-cache invalidation; not serialized. */
     private _revision = 0;
     /**
-     * The world's render-mutation clock. Cached per actor so attaching a
-     * component and bumping on actor-level changes cost one field access
+     * The world's render-mutation clock. Cached per entity so attaching a
+     * component and bumping on entity-level changes cost one field access
      * instead of a world lookup.
      */
     private readonly _renderClock: RenderMutationClock | null;
@@ -175,26 +175,26 @@ export class Actor<
     private _cleanupTasks: Set<() => void> | null = null;
     private _updateFrame = 0;
 
-    constructor(world: TWorld, config: ActorConfig = {}) {
+    constructor(world: TWorld, config: EntityConfig = {}) {
         if (!world || typeof world !== 'object') {
-            throw new ActorError('Invalid world instance provided', '' as ActorId, 'constructor');
+            throw new EntityLifecycleError('Invalid world instance provided', '' as EntityUid, 'constructor');
         }
 
-        const internalConfig = config as ActorInternalConfig;
+        const internalConfig = config as EntityInternalConfig;
 
         this.world = world;
         this._renderClock =
             (world as unknown as { renderMutationClock?: RenderMutationClock })
                 .renderMutationClock ?? null;
-        this.entity = internalConfig.entity ?? world.createEntity();
+        this.entityId = internalConfig.entityId ?? world.createEntity();
         this.creationTime = getCreationTimestamp();
 
-        this._name = config.name ?? 'Actor';
+        this._name = config.name ?? 'Entity';
         this._nameAtCreation = this._name;
-        this._idSequence = Actor._nextActorId++;
+        this._idSequence = Entity._nextEntityUid++;
         this._active = config.active ?? true;
-        this._layer = (config.layer ?? 0) as ActorLayer;
-        this._tag = (config.tag ?? 'Default') as ActorTag;
+        this._layer = (config.layer ?? 0) as EntityLayer;
+        this._tag = (config.tag ?? 'Default') as EntityTag;
         this._persistent = config.persistent ?? false;
         this._pooled = config.pooled ?? false;
         this._maxComponents = (config.maxComponents ?? 64) + 1;
@@ -202,7 +202,7 @@ export class Actor<
         this._eventBus = (world as any).eventBus || null;
 
         try {
-            world.registerActor(this.entity, this);
+            world.registerEntity(this.entityId, this);
 
             if (internalConfig.preloadedComponents?.length) {
                 this._initializePreloadedComponents(internalConfig.preloadedComponents);
@@ -219,8 +219,8 @@ export class Actor<
             }
         } catch (error) {
             this._state = 'destroyed';
-            throw new ActorError(
-                'Failed to initialize actor',
+            throw new EntityLifecycleError(
+                'Failed to initialize entity',
                 this.id,
                 'constructor',
                 error instanceof Error ? error : new Error(String(error))
@@ -232,20 +232,20 @@ export class Actor<
         componentType: ComponentType<T>,
         metadata: ComponentMetadata
     ): void {
-        Actor._componentMetadataMap.set(componentType, metadata);
+        Entity._componentMetadataMap.set(componentType, metadata);
     }
 
     static getComponentMetadata<T extends Component>(
         componentType: ComponentType<T>
     ): ComponentMetadata | undefined {
-        return Actor._componentMetadataMap.get(componentType);
+        return Entity._componentMetadataMap.get(componentType);
     }
 
     static createWithComponents<TWorld extends World<any> = World<any>>(
         world: TWorld,
-        config: ActorConfig,
-        components: readonly ActorPreloadedComponentEntry[]
-    ): Actor<TWorld> {
+        config: EntityConfig,
+        components: readonly EntityPreloadedComponentEntry[]
+    ): Entity<TWorld> {
         const componentMap: Record<string, Component> = {};
 
         for (const entry of components) {
@@ -253,23 +253,23 @@ export class Actor<
                 entry.component;
         }
 
-        const entity = world.createEntityWithComponents(componentMap);
+        const entityId = world.createEntityWithComponents(componentMap);
 
-        return new Actor(world, {
+        return new Entity(world, {
             ...config,
-            entity,
+            entityId,
             skipCoreComponents: true,
             preloadedComponents: components,
-        } as ActorConfig) as Actor<TWorld>;
+        } as EntityConfig) as Entity<TWorld>;
     }
 
     /**
-     * Creates many actors whose component sets share one signature, resolving
+     * Creates many entities whose component sets share one signature, resolving
      * that signature's archetype once for the whole batch.
      *
-     * Semantics match creating each actor with `createWithComponents`: the
+     * Semantics match creating each entity with `createWithComponents`: the
      * components are the caller's own instances (so lifecycle, identity and
-     * per-actor configuration are preserved), `EntityCreated` fires per actor,
+     * per-entity configuration are preserved), `EntityCreated` fires per entity,
      * and the `…Added` events that `addComponent` would emit are emitted
      * afterwards for components that have subscribers.
      *
@@ -278,14 +278,14 @@ export class Actor<
      */
     static createManyWithComponents<TWorld extends World<any> = World<any>>(
         world: TWorld,
-        configs: readonly ActorConfig[],
-        componentsPerActor: readonly (readonly ActorComponentEntry[])[]
-    ): Actor<TWorld>[] {
+        configs: readonly EntityConfig[],
+        componentsPerEntity: readonly (readonly EntityComponentEntry[])[]
+    ): Entity<TWorld>[] {
         const count = configs.length;
-        if (componentsPerActor.length !== count) {
-            throw new ActorError(
-                'Bulk actor creation requires one component set per actor config',
-                '' as ActorId,
+        if (componentsPerEntity.length !== count) {
+            throw new EntityLifecycleError(
+                'Bulk entity creation requires one component set per entity config',
+                '' as EntityUid,
                 'createManyWithComponents'
             );
         }
@@ -294,12 +294,12 @@ export class Actor<
         }
 
         // Announce component attachment only when someone observes the events;
-        // otherwise the whole batch stays free of per-actor payload work and
-        // free of a names array per actor (50k arrays in a bulk sprite build).
-        const resolveName = (entry: ActorComponentEntry): string =>
+        // otherwise the whole batch stays free of per-entity payload work and
+        // free of a names array per entity (50k arrays in a bulk sprite build).
+        const resolveName = (entry: EntityComponentEntry): string =>
             entry.componentName ?? getComponentTypeName(entry.componentType);
 
-        const firstEntries = componentsPerActor[0]!;
+        const firstEntries = componentsPerEntity[0]!;
         let announceComponents = false;
         for (let index = 0; index < firstEntries.length; index += 1) {
             if (world.hasEventSubscribers(`${resolveName(firstEntries[index]!)}Added`)) {
@@ -313,7 +313,7 @@ export class Actor<
             ? new Array<string[]>(count)
             : null;
         for (let index = 0; index < count; index += 1) {
-            const entries = componentsPerActor[index]!;
+            const entries = componentsPerEntity[index]!;
             const map: Record<string, Component> = {};
             if (componentNames !== null) {
                 const names = new Array<string>(entries.length);
@@ -333,34 +333,34 @@ export class Actor<
             componentMaps[index] = map;
         }
 
-        const entities = world.createEntitiesWithComponentsBulk(componentMaps);
-        const actors = new Array<Actor<TWorld>>(count);
+        const entityIds = world.createEntitiesWithComponentsBulk(componentMaps);
+        const entities = new Array<Entity<TWorld>>(count);
 
         for (let index = 0; index < count; index += 1) {
-            const entries = componentsPerActor[index]!;
-            const actor = new Actor(world, {
+            const entries = componentsPerEntity[index]!;
+            const entity = new Entity(world, {
                 ...configs[index],
-                entity: entities[index],
+                entityId: entityIds[index],
                 skipCoreComponents: true,
                 preloadedComponents: entries,
-            } as ActorConfig) as Actor<TWorld>;
-            actors[index] = actor;
+            } as EntityConfig) as Entity<TWorld>;
+            entities[index] = entity;
 
             if (announceComponents) {
                 world.notifyComponentsAttached(
-                    entities[index]!,
-                    actor,
+                    entityIds[index]!,
+                    entity,
                     componentNames![index]!,
                     entries
                 );
             }
         }
 
-        return actors;
+        return entities;
     }
 
     /**
-     * Monotonic render-relevant revision. Incremented when the actor or its
+     * Monotonic render-relevant revision. Incremented when the entity or its
      * component set changes in a way that can affect rendering.
      */
     get revision(): number {
@@ -382,17 +382,17 @@ export class Actor<
 
     set name(value: string) {
         if (this._destroyed) {
-            throw new ActorError('Cannot modify destroyed actor', this.id, 'setName');
+            throw new EntityLifecycleError('Cannot modify destroyed entity', this.id, 'setName');
         }
 
         if (!value || typeof value !== 'string' || value.trim().length === 0) {
-            throw new ActorError('Actor name must be a non-empty string', this.id, 'setName');
+            throw new EntityLifecycleError('Entity name must be a non-empty string', this.id, 'setName');
         }
 
         const oldName = this._name;
         this._name = value.trim();
 
-        this._emitEvent('actor:nameChanged', { oldName, newName: this._name });
+        this._emitEvent('entity:nameChanged', { oldName, newName: this._name });
     }
 
     get active(): boolean {
@@ -401,7 +401,7 @@ export class Actor<
 
     set active(value: boolean) {
         if (this._destroyed) {
-            throw new ActorError('Cannot modify destroyed actor', this.id, 'setActive');
+            throw new EntityLifecycleError('Cannot modify destroyed entity', this.id, 'setActive');
         }
 
         const wasActive = this._active;
@@ -438,11 +438,11 @@ export class Actor<
                     }
                 }
 
-                this._emitEvent('actor:activeChanged', { active: value, wasActive });
+                this._emitEvent('entity:activeChanged', { active: value, wasActive });
             } catch (error) {
                 this._active = wasActive;
                 this._state = wasActive ? 'active' : 'inactive';
-                throw new ActorError(
+                throw new EntityLifecycleError(
                     'Failed to change active state',
                     this.id,
                     'setActive',
@@ -452,47 +452,47 @@ export class Actor<
         }
     }
 
-    get layer(): ActorLayer {
+    get layer(): EntityLayer {
         return this._layer;
     }
 
-    set layer(value: ActorLayer | number) {
+    set layer(value: EntityLayer | number) {
         if (this._destroyed) {
-            throw new ActorError('Cannot modify destroyed actor', this.id, 'setLayer');
+            throw new EntityLifecycleError('Cannot modify destroyed entity', this.id, 'setLayer');
         }
 
         if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-            throw new ActorError('Layer must be a non-negative integer', this.id, 'setLayer');
+            throw new EntityLifecycleError('Layer must be a non-negative integer', this.id, 'setLayer');
         }
 
         const oldLayer = this._layer;
-        this._layer = value as ActorLayer;
+        this._layer = value as EntityLayer;
 
         this._indexChangeHandler?.('layer', oldLayer as number, this._layer as number);
-        this._emitEvent('actor:layerChanged', { oldLayer, newLayer: this._layer });
+        this._emitEvent('entity:layerChanged', { oldLayer, newLayer: this._layer });
     }
 
-    get tag(): ActorTag {
+    get tag(): EntityTag {
         return this._tag;
     }
 
-    set tag(value: ActorTag | string) {
+    set tag(value: EntityTag | string) {
         if (this._destroyed) {
-            throw new ActorError('Cannot modify destroyed actor', this.id, 'setTag');
+            throw new EntityLifecycleError('Cannot modify destroyed entity', this.id, 'setTag');
         }
 
         if (!value || typeof value !== 'string') {
-            throw new ActorError('Tag must be a non-empty string', this.id, 'setTag');
+            throw new EntityLifecycleError('Tag must be a non-empty string', this.id, 'setTag');
         }
 
         const oldTag = this._tag;
-        this._tag = value as ActorTag;
+        this._tag = value as EntityTag;
 
         this._indexChangeHandler?.('tag', oldTag as string, this._tag as string);
-        this._emitEvent('actor:tagChanged', { oldTag, newTag: this._tag });
+        this._emitEvent('entity:tagChanged', { oldTag, newTag: this._tag });
     }
 
-    get state(): ActorState {
+    get state(): EntityState {
         return this._state;
     }
 
@@ -504,12 +504,12 @@ export class Actor<
         return this._components.size;
     }
 
-    get parent(): Actor | undefined {
-        return this._getHierarchyComponent()?.parentActor;
+    get parent(): Entity | undefined {
+        return this._getHierarchyComponent()?.parentEntity;
     }
 
-    get children(): readonly Actor[] {
-        return this._getHierarchyComponent()?.childActors ?? [];
+    get children(): readonly Entity[] {
+        return this._getHierarchyComponent()?.childEntities ?? [];
     }
 
     get persistent(): boolean {
@@ -524,7 +524,7 @@ export class Actor<
         return this._started;
     }
 
-    setParent(parent?: Actor): void {
+    setParent(parent?: Entity): void {
         this._validateNotDestroyed('setParent');
 
         const hierarchy = this._getHierarchyComponent();
@@ -586,8 +586,8 @@ export class Actor<
 
             const component = new componentType(...args);
 
-            (component as any).entity = this.entity;
-            (component as any).actor = this;
+            (component as any).entityId = this.entityId;
+            (component as any).entity = this;
             (component as any).world = this.world;
             component.setRenderMutationClock(this._renderClock);
 
@@ -596,7 +596,7 @@ export class Actor<
             this._invalidateSortedComponents();
             this._touchRevision();
 
-            this.world.addComponent(this.entity, componentName as any, component);
+            this.world.addComponent(this.entityId, componentName as any, component);
 
             this._executeComponentLifecycle(component, 'onLoad');
 
@@ -608,7 +608,7 @@ export class Actor<
                 this._executeComponentLifecycle(component, 'onEnable');
             }
 
-            this._emitEvent('actor:componentAdded', {
+            this._emitEvent('entity:componentAdded', {
                 componentType: componentName,
                 component,
             });
@@ -648,9 +648,9 @@ export class Actor<
             this._invalidateSortedComponents();
             this._touchRevision();
 
-            this.world.removeComponent(this.entity, getComponentTypeName(componentType) as any);
+            this.world.removeComponent(this.entityId, getComponentTypeName(componentType) as any);
 
-            this._emitEvent('actor:componentRemoved', {
+            this._emitEvent('entity:componentRemoved', {
                 componentType: getComponentTypeName(componentType),
                 component,
             });
@@ -717,11 +717,11 @@ export class Actor<
                 }
             }
 
-            this._emitEvent('actor:started', { actor: this });
+            this._emitEvent('entity:started', { entity: this });
         } catch (error) {
             this._started = false;
-            throw new ActorError(
-                'Failed to start actor',
+            throw new EntityLifecycleError(
+                'Failed to start entity',
                 this.id,
                 'start',
                 error instanceof Error ? error : new Error(String(error))
@@ -750,8 +750,8 @@ export class Actor<
             }
         } catch (error) {
             console.error(
-                new ActorError(
-                    'Actor update failed',
+                new EntityLifecycleError(
+                    'Entity update failed',
                     this.id,
                     'update',
                     error instanceof Error ? error : new Error(String(error))
@@ -779,8 +779,8 @@ export class Actor<
             }
         } catch (error) {
             console.error(
-                new ActorError(
-                    'Actor fixed update failed',
+                new EntityLifecycleError(
+                    'Entity fixed update failed',
                     this.id,
                     'fixedUpdate',
                     error instanceof Error ? error : new Error(String(error))
@@ -808,8 +808,8 @@ export class Actor<
             }
         } catch (error) {
             console.error(
-                new ActorError(
-                    'Actor late update failed',
+                new EntityLifecycleError(
+                    'Entity late update failed',
                     this.id,
                     'lateUpdate',
                     error instanceof Error ? error : new Error(String(error))
@@ -827,7 +827,7 @@ export class Actor<
             this._state = 'destroying';
             this._touchRevision();
 
-            this._emitEvent('actor:destroying', { actor: this, immediate });
+            this._emitEvent('entity:destroying', { entity: this, immediate });
 
             const sortedTypes = this._resolveSortedComponents();
             const sortedComponentList = this._sortedComponentList!;
@@ -883,17 +883,17 @@ export class Actor<
             this._cleanupTasks = null;
             this._eventSubscriptions = null;
 
-            this.world.unregisterActor(this.entity);
-            this.world.destroyEntity(this.entity);
+            this.world.unregisterEntity(this.entityId);
+            this.world.destroyEntity(this.entityId);
 
             this._destroyed = true;
             this._state = 'destroyed';
 
-            this._emitEvent('actor:destroyed', { actor: this });
+            this._emitEvent('entity:destroyed', { entity: this });
         } catch (error) {
             console.error(
-                new ActorError(
-                    'Actor destruction failed',
+                new EntityLifecycleError(
+                    'Entity destruction failed',
                     this.id,
                     'destroy',
                     error instanceof Error ? error : new Error(String(error))
@@ -931,7 +931,7 @@ export class Actor<
         }
     }
 
-    private _initializePreloadedComponents(entries: readonly ActorPreloadedComponentEntry[]): void {
+    private _initializePreloadedComponents(entries: readonly EntityPreloadedComponentEntry[]): void {
         const emitComponentAdded = !!(this._eventBus && typeof this._eventBus.emit === 'function');
         const usingScratch = !finalizeScratchInUse;
         let finalizeComponents = finalizeComponentsScratch;
@@ -967,8 +967,8 @@ export class Actor<
                     );
                 }
 
-                (entry.component as any).entity = this.entity;
-                (entry.component as any).actor = this;
+                (entry.component as any).entityId = this.entityId;
+                (entry.component as any).entity = this;
                 (entry.component as any).world = this.world;
                 entry.component.setRenderMutationClock(this._renderClock);
 
@@ -1011,7 +1011,7 @@ export class Actor<
                 }
 
                 if ((flags & FINALIZE_FLAG_EMIT) !== 0) {
-                    this._emitEvent('actor:componentAdded', {
+                    this._emitEvent('entity:componentAdded', {
                         componentType: finalizeNames[index]!,
                         component,
                     });
@@ -1029,8 +1029,8 @@ export class Actor<
 
     private _validateNotDestroyed(operation: string): void {
         if (this._destroyed) {
-            throw new ActorError(
-                `Cannot perform ${operation} on destroyed actor`,
+            throw new EntityLifecycleError(
+                `Cannot perform ${operation} on destroyed entity`,
                 this.id,
                 operation
             );
@@ -1080,7 +1080,7 @@ export class Actor<
      * insertion order already canonical — is a single allocation-free pass
      * over the component Map; destructuring iteration avoids materializing
      * entry tuples and the ordering check replaces a comparator sort per
-     * actor.
+     * entity.
      */
     private _resolveSortedComponents(): ComponentType[] {
         const cached = this._sortedComponentTypes;
@@ -1245,8 +1245,8 @@ export class Actor<
         try {
             if (this._eventBus && typeof this._eventBus.emit === 'function') {
                 this._eventBus.emit(eventType, {
-                    actorId: this.id,
-                    entity: this.entity,
+                    entityUid: this.id,
+                    entity: this.entityId,
                     timestamp: performance.now(),
                     ...data,
                 });
@@ -1294,6 +1294,6 @@ export class Actor<
 
     toString(): string {
         const componentNames = Array.from(this._components.keys()).map((type) => type.name);
-        return `Actor(${this.id}) [${componentNames.join(', ')}] - ${this._state}`;
+        return `Entity(${this.id}) [${componentNames.join(', ')}] - ${this._state}`;
     }
 }

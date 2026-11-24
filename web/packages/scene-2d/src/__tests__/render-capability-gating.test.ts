@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Actor, Hierarchy, Transform } from '@axrone/ecs-runtime';
+import { Entity, Hierarchy, Transform } from '@axrone/ecs-runtime';
 import { MeshRenderer } from '@axrone/scene-runtime/scene-3d-support';
 import { createSceneOptions, installWebGL2Constants, ManualScheduler } from './test-harness';
 
@@ -32,7 +32,7 @@ const registerTexture = (
 
 const countComponentLookups = (scene: InstanceType<typeof Scene2D>): Map<string, number> => {
     const counts = new Map<string, number>();
-    const spy = vi.spyOn(Actor.prototype as any, 'getComponent');
+    const spy = vi.spyOn(EntityId.prototype as any, 'getComponent');
 
     try {
         scene.renderNow();
@@ -72,13 +72,13 @@ describe('Scene2D render capability gating', () => {
 
         try {
             await registerTexture(scene, 'hero');
-            scene.createCameraActor(
+            scene.createCameraEntity(
                 { name: 'Camera' },
                 { primary: true, orthographic: true, orthographicSize: 100 }
             );
-            scene.createSpriteActors(
+            scene.createSpriteEntities(
                 Array.from({ length: SPRITE_COUNT }, (_, index) => ({
-                    actorConfig: { name: `Hero${index}` },
+                    entityConfig: { name: `Hero${index}` },
                     spriteConfig: { textureId: 'hero' },
                 }))
             );
@@ -106,13 +106,13 @@ describe('Scene2D render capability gating', () => {
 
         try {
             await registerTexture(scene, 'hero');
-            scene.createCameraActor(
+            scene.createCameraEntity(
                 { name: 'Camera' },
                 { primary: true, orthographic: true, orthographicSize: 100 }
             );
-            scene.createSpriteActors(
+            scene.createSpriteEntities(
                 Array.from({ length: SPRITE_COUNT }, (_, index) => ({
-                    actorConfig: { name: `Hero${index}` },
+                    entityConfig: { name: `Hero${index}` },
                     spriteConfig: { textureId: 'hero' },
                 }))
             );
@@ -120,7 +120,7 @@ describe('Scene2D render capability gating', () => {
             const counts = countComponentLookups(scene);
 
             // MeshRenderer is registered, so the render-list collector scans
-            // every actor for an enabled mesh renderer (none are attached).
+            // every entity for an enabled mesh renderer (none are attached).
             expect(counts.get('MeshRenderer') ?? 0).toBeGreaterThanOrEqual(SPRITE_COUNT);
             expect(scene.renderStats.drawCalls).toBe(1);
         } finally {
@@ -135,13 +135,13 @@ describe('Scene2D render capability gating', () => {
 
         try {
             await registerTexture(scene, 'hero');
-            scene.createCameraActor(
+            scene.createCameraEntity(
                 { name: 'Camera' },
                 { primary: true, orthographic: true, orthographicSize: 100 }
             );
-            scene.createSpriteActors(
+            scene.createSpriteEntities(
                 Array.from({ length: SPRITE_COUNT }, (_, index) => ({
-                    actorConfig: { name: `Hero${index}` },
+                    entityConfig: { name: `Hero${index}` },
                     spriteConfig: {
                         textureId: 'hero',
                         ...(index === 0
@@ -176,13 +176,13 @@ describe('Scene2D render capability gating', () => {
         const scene = new Scene2D(createSceneOptions(scheduler, canvas));
 
         try {
-            const parentActor = scene.createSpriteActor({ name: 'Parent' }, { textureId: 'hero' });
-            const childActor = scene.createSpriteActor({ name: 'Child' }, { textureId: 'hero' });
-            const parentTransform = parentActor.getComponent(Transform)!;
-            const childTransform = childActor.getComponent(Transform)!;
+            const parentEntity = scene.createSpriteEntity({ name: 'Parent' }, { textureId: 'hero' });
+            const childEntity = scene.createSpriteEntity({ name: 'Child' }, { textureId: 'hero' });
+            const parentTransform = parentEntity.getComponent(Transform)!;
+            const childTransform = childEntity.getComponent(Transform)!;
 
-            const parentHierarchy = parentActor.getComponent(Hierarchy)!;
-            const childHierarchy = childActor.getComponent(Hierarchy)!;
+            const parentHierarchy = parentEntity.getComponent(Hierarchy)!;
+            const childHierarchy = childEntity.getComponent(Hierarchy)!;
             childHierarchy.setParent(parentHierarchy);
 
             // Warm the transform hierarchy cache on both transforms.
@@ -192,16 +192,16 @@ describe('Scene2D render capability gating', () => {
             expect(childTransform.worldPosition.x).toBeCloseTo(3);
             expect(childTransform.worldPosition.y).toBeCloseTo(4);
 
-            // A component-set change bumps the actor revision and must
+            // A component-set change bumps the entity revision and must
             // invalidate the cached hierarchy reference, not corrupt it.
-            childActor.removeComponent(SpriteRenderer);
+            childEntity.removeComponent(SpriteRenderer);
             expect(childTransform.parent).toBe(parentTransform);
 
             parentTransform.setLocalTRS2D(-2, 1, 0, 1, 1);
             expect(childTransform.worldPosition.x).toBeCloseTo(-2);
             expect(childTransform.worldPosition.y).toBeCloseTo(1);
 
-            expect(childActor.removeComponent(Hierarchy)).toBe(true);
+            expect(childEntity.removeComponent(Hierarchy)).toBe(true);
             expect(childTransform.parent).toBeUndefined();
         } finally {
             scene.dispose();

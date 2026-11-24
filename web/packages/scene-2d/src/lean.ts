@@ -2,7 +2,7 @@
  * Lean `@axrone/scene-2d` entry point.
  *
  * Exposes only the 2D scene facade surface a render-only consumer needs:
- * `Scene2D`, the sprite-actor runtime, the camera and sprite renderer
+ * `Scene2D`, the sprite-entity runtime, the camera and sprite renderer
  * components, and the accompanying config and resource types.
  *
  * The root entry (`@axrone/scene-2d`) keeps every existing export. This
@@ -13,7 +13,7 @@
  */
 
 export { Scene2D } from './scene-2d-lean';
-export type { Scene2DBulkSpriteConfig } from './scene-2d-actor-runtime';
+export type { Scene2DBulkSpriteConfig } from './scene-2d-entity-runtime';
 export { Camera, type CameraConfig } from '@axrone/scene-runtime/scene-camera';
 export {
     SpriteRenderer,

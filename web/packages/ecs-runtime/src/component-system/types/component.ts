@@ -16,7 +16,7 @@ export type ComponentMetadata = {
 export interface IComponentPool<T> {
     readonly dense: T[];
     readonly sparse: (number | undefined)[];
-    readonly entities: import('./core').Entity[];
+    readonly entities: import('./core').EntityId[];
     size: number;
     capacity: number;
     grow(): void;

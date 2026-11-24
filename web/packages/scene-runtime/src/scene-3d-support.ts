@@ -1,5 +1,5 @@
-export type { SceneActorLifecycleRunnerOptions } from './actor-lifecycle-runner';
-export { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
+export type { SceneEntityLifecycleRunnerOptions } from './entity-lifecycle-runner';
+export { SceneEntityLifecycleRunner } from './entity-lifecycle-runner';
 
 export type { SceneComponentTypeResolver } from './component-catalog';
 export {

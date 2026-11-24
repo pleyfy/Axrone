@@ -53,7 +53,7 @@ export class EntityStore<TEntity extends number = number, TArchetypeId extends s
         return archetypeId;
     }
 
-    getAllEntities(): readonly TEntity[] {
+    getAllEntityIds(): readonly TEntity[] {
         return Array.from(this._entityArchetypes.keys());
     }
 

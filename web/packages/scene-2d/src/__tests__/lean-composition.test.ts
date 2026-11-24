@@ -79,14 +79,14 @@ describe('scene-2d root vs lean composition', () => {
         }
     });
 
-    it('keeps animated/mask actor creation on the root entry', () => {
+    it('keeps animated/mask entity creation on the root entry', () => {
         const scene = new root.Scene2D(createOptions());
 
         try {
-            const animated = scene.createAnimatedSpriteActor({ name: 'Animated' });
+            const animated = scene.createAnimatedSpriteEntity({ name: 'Animated' });
             expect(animated.getComponent(root.SpriteAnimator)).toBeDefined();
 
-            const masked = scene.createMaskActor({ name: 'Masked' });
+            const masked = scene.createMaskEntity({ name: 'Masked' });
             expect(masked.getComponent(root.SpriteMask)).toBeDefined();
         } finally {
             scene.dispose();
@@ -97,14 +97,14 @@ describe('scene-2d root vs lean composition', () => {
         const scene = new lean.Scene2D(createOptions());
 
         try {
-            expect(() => scene.createAnimatedSpriteActor({ name: 'Animated' })).toThrow(
+            expect(() => scene.createAnimatedSpriteEntity({ name: 'Animated' })).toThrow(
                 SceneCapabilityError
             );
-            expect(() => scene.createMaskActor({ name: 'Masked' })).toThrow(
+            expect(() => scene.createMaskEntity({ name: 'Masked' })).toThrow(
                 SceneCapabilityError
             );
-            // Sprite actors remain available on the lean surface.
-            expect(() => scene.createSpriteActor({ name: 'Sprite' })).not.toThrow();
+            // Sprite entities remain available on the lean surface.
+            expect(() => scene.createSpriteEntity({ name: 'Sprite' })).not.toThrow();
         } finally {
             scene.dispose();
         }

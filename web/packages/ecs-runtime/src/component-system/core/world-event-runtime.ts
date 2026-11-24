@@ -57,7 +57,7 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
      * Per bridged event, a probe reporting whether the observable it feeds has
      * any observers. The bridge itself is always subscribed; this probe lets
      * structural mutations treat "bridge only, nobody listening" as no
-     * subscriber at all, so a 50k-actor build does not pay one payload and
+     * subscriber at all, so a 50k-entity build does not pay one payload and
      * dispatch per component for observables nobody reads.
      */
     private readonly _bridgeLiveness = new Map<string, () => boolean>();
@@ -236,7 +236,7 @@ export class WorldEventRuntime<R extends ComponentRegistry> {
      * this to skip building payloads for events nobody observes — the common
      * case while bulk-creating a large scene. Negative answers are cached and
      * invalidated on subscription changes, which keeps 200k probes during a
-     * 50k-actor build down to a set lookup.
+     * 50k-entity build down to a set lookup.
      */
     hasSubscribers(event: EventKey<ECSEventMap<R>>): boolean {
         const listenerCount = this._eventBus.listenerCount(event);

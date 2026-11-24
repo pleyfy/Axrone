@@ -9,7 +9,7 @@ import { Scene2D as Scene2DBase } from './scene-2d';
 
 /**
  * Root 2D scene: 2D built-in profile, full runtime composition (2D physics
- * bridge and the full render batch set) and the animated/mask actor factories.
+ * bridge and the full render batch set) and the animated/mask entity factories.
  * This is the behavior-preserving subclass the root `@axrone/scene-2d` entry
  * has always exported.
  */

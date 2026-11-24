@@ -118,7 +118,7 @@ describe('createGltfAssetDisposers', () => {
             sceneIndex: 0,
             definition: {
                 id: 'def-0',
-                actors: [],
+                entities: [],
             },
             rootNodeIds: [],
             nodeIds: [],

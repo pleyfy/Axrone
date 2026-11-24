@@ -1,18 +1,18 @@
 import type { AnimationClipStreamingRequest } from '@axrone/animation/streaming';
-import type { Actor, Entity } from '@axrone/ecs-runtime';
+import type { EntityId, EntityId } from '@axrone/ecs-runtime';
 import { isRecord } from '@axrone/utility';
 import { Animator } from './components/animator';
 
 export interface AnimationStreamingBridgeWorld {
     readonly on?: (event: string, handler: (data: Record<string, unknown>) => void) => () => void;
     readonly emitSync?: (event: string, data: Record<string, unknown>) => boolean;
-    readonly getActor?: (entity: Entity) => Actor | undefined;
-    readonly getAllActors?: () => readonly Actor[];
+    readonly getEntity?: (entity: EntityId) => EntityId | undefined;
+    readonly getAllEntities?: () => readonly EntityId[];
 }
 
 export interface AnimationStreamingRequestEvent extends AnimationClipStreamingRequest {
-    readonly entity?: Entity;
-    readonly actorId?: string;
+    readonly entity?: EntityId;
+    readonly entityUid?: string;
 }
 
 export interface AnimationStreamingChunkResolveResult {
@@ -21,29 +21,29 @@ export interface AnimationStreamingChunkResolveResult {
 }
 
 export interface ResolvedAnimationStreamingChunk {
-    readonly actor?: Actor;
-    readonly actorId?: string;
+    readonly entity?: EntityId;
+    readonly entityUid?: string;
     readonly animator: Animator;
-    readonly entity: Entity;
+    readonly entity: EntityId;
     readonly request: AnimationStreamingRequestEvent;
     readonly bytes: Uint8Array;
     readonly mimeType?: string;
 }
 
 export interface FailedAnimationStreamingChunk {
-    readonly actor?: Actor;
-    readonly actorId?: string;
-    readonly animator?: Animator;
     readonly entity?: Entity;
+    readonly entityUid?: string;
+    readonly animator?: Animator;
+    readonly entityId?: EntityId;
     readonly request: AnimationStreamingRequestEvent;
     readonly error: Error;
 }
 
 export interface AnimationStreamingResolveContext {
     readonly world: AnimationStreamingBridgeWorld;
-    readonly actor?: Actor;
+    readonly entity?: EntityId;
     readonly animator: Animator;
-    readonly entity: Entity;
+    readonly entity: EntityId;
     readonly request: AnimationStreamingRequestEvent;
     readonly signal: AbortSignal;
 }
@@ -135,7 +135,7 @@ const getGlobalFetch = (): AnimationStreamingFetch | undefined => {
 const cloneRequest = (request: AnimationStreamingRequestEvent): AnimationStreamingRequestEvent =>
     Object.freeze({
         ...(request.entity !== undefined ? { entity: request.entity } : {}),
-        ...(typeof request.actorId === 'string' ? { actorId: request.actorId } : {}),
+        ...(typeof request.entityUid === 'string' ? { entityUid: request.entityUid } : {}),
         clipId: request.clipId,
         chunkId: request.chunkId,
         uri: request.uri,
@@ -179,8 +179,8 @@ const parseStreamingRequestEvent = (value: unknown): AnimationStreamingRequestEv
         ...(typeof value.mimeType === 'string' ? { mimeType: value.mimeType } : {}),
         ...(isFiniteNumber(value.byteOffset) ? { byteOffset: Math.max(0, Math.trunc(value.byteOffset)) } : {}),
         ...(isFiniteNumber(value.byteLength) ? { byteLength: Math.max(0, Math.trunc(value.byteLength)) } : {}),
-        ...(value.entity !== undefined ? { entity: value.entity as Entity } : {}),
-        ...(typeof value.actorId === 'string' ? { actorId: value.actorId } : {}),
+        ...(value.entity !== undefined ? { entity: value.entity as EntityId } : {}),
+        ...(typeof value.entityUid === 'string' ? { entityUid: value.entityUid } : {}),
     });
 };
 
@@ -336,15 +336,15 @@ export class AnimationStreamingBridge {
 
         const task = Promise.resolve()
             .then(async () => {
-                const actor = this._resolveActor(request);
-                const animator = actor?.getComponent(Animator);
-                const entity = actor?.entity ?? request.entity;
+                const entity = this._resolveEntity(request);
+                const animator = entity?.getComponent(Animator);
+                const entityId = entity?.entityId ?? (request as any).entityId ?? request.entity;
 
-                if (!animator || entity === undefined) {
+                if (!animator || entityId === undefined) {
                     const error = new Error(
                         `Animation streaming request '${request.chunkId}' could not resolve an Animator instance`
                     );
-                    await this._handleFailure(request, error, actor, animator, entity);
+                    await this._handleFailure(request, error, entity, animator, entityId);
                     return;
                 }
 
@@ -353,9 +353,9 @@ export class AnimationStreamingBridge {
                         request,
                         Object.freeze({
                             world: this._world,
-                            actor,
-                            animator,
                             entity,
+                            animator,
+                            entityId,
                             request,
                             signal: controller.signal,
                         })
@@ -373,15 +373,15 @@ export class AnimationStreamingBridge {
 
                     const chunk = normalizeResolvedChunk(resolved, request);
                     const payload = Object.freeze({
-                        actor,
-                        animator,
                         entity,
+                        animator,
+                        entityId,
                         request,
                         bytes: chunk.bytes,
-                        ...(typeof request.actorId === 'string'
-                            ? { actorId: request.actorId }
-                            : actor
-                              ? { actorId: String(actor.id) }
+                        ...(typeof request.entityUid === 'string'
+                            ? { entityUid: request.entityUid }
+                            : entity
+                              ? { entityUid: String(entity.id) }
                               : {}),
                         ...(typeof chunk.mimeType === 'string' ? { mimeType: chunk.mimeType } : {}),
                     } satisfies ResolvedAnimationStreamingChunk);
@@ -401,7 +401,7 @@ export class AnimationStreamingBridge {
                     }
 
                     this._world.emitSync?.('animation:streaming-loaded', {
-                        actorId: payload.actorId,
+                        entityUid: payload.entityUid,
                         entity,
                         clipId: request.clipId,
                         chunkId: request.chunkId,
@@ -414,11 +414,11 @@ export class AnimationStreamingBridge {
                     if (controller.signal.aborted || isAbortError(error) || this._disposed) {
                         return;
                     }
-                    await this._handleFailure(request, toError(error), actor, animator, entity);
+                    await this._handleFailure(request, toError(error), entity, animator, entity);
                 }
             })
             .catch((error) => {
-                // _resolveActor and _handleFailure run outside the inner
+                // _resolveEntity and _handleFailure run outside the inner
                 // try/catch — contain their failures so task promises
                 // tracked in _inFlightTasks never reject unobserved.
                 console.warn(
@@ -434,15 +434,15 @@ export class AnimationStreamingBridge {
         this._inFlightTasks.add(task);
     }
 
-    private _resolveActor(request: Readonly<AnimationStreamingRequestEvent>): Actor | undefined {
+    private _resolveEntity(request: Readonly<AnimationStreamingRequestEvent>): EntityId | undefined {
         if (request.entity !== undefined) {
-            const actor = this._world.getActor?.(request.entity);
-            if (actor) {
-                return actor;
+            const entity = this._world.getEntity?.(request.entity);
+            if (entity) {
+                return entity;
             }
         }
-        if (typeof request.actorId === 'string') {
-            return this._world.getAllActors?.().find((actor) => String(actor.id) === request.actorId);
+        if (typeof request.entityUid === 'string') {
+            return this._world.getAllEntities?.().find((entity) => String(entity.id) === request.entityUid);
         }
         return undefined;
     }
@@ -450,15 +450,15 @@ export class AnimationStreamingBridge {
     private async _handleFailure(
         request: Readonly<AnimationStreamingRequestEvent>,
         error: Error,
-        actor: Actor | undefined,
+        entity: Entity | undefined,
         animator: Animator | undefined,
-        entity: Entity | undefined
+        entityId: EntityId | undefined
     ): Promise<void> {
         const failure = Object.freeze({
-            actor,
-            ...(typeof request.actorId === 'string' ? { actorId: request.actorId } : {}),
+            entity,
+            ...(typeof request.entityUid === 'string' ? { entityUid: request.entityUid } : {}),
             ...(animator ? { animator } : {}),
-            ...(entity !== undefined ? { entity } : {}),
+            ...(entityId !== undefined ? { entityId } : {}),
             request,
             error,
         } satisfies FailedAnimationStreamingChunk);
@@ -477,7 +477,7 @@ export class AnimationStreamingBridge {
         }
 
         this._world.emitSync?.('animation:streaming-failed', {
-            actorId: request.actorId,
+            entityUid: request.entityUid,
             entity,
             clipId: request.clipId,
             chunkId: request.chunkId,

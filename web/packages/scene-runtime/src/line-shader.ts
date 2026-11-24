@@ -13,7 +13,7 @@ export const DEFAULT_SCENE_LINE_SHADER_ID = 'scene/line-ribbon';
  *
  * Uniforms:
  *   - u_ViewProjection : mat4
- *   - u_Model          : mat4  (identity for world-space, actor world matrix for local)
+ *   - u_Model          : mat4  (identity for world-space, entity world matrix for local)
  *   - u_MainTexture    : sampler2D
  *   - u_UseTexture     : float (0 = color only, 1 = texture * color)
  */

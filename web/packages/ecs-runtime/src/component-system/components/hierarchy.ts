@@ -1,7 +1,7 @@
 import { Component } from '../core/component';
 import { script } from '../decorators/script';
-import type { Actor } from '../core/actor';
-import type { Entity } from '../types/core';
+import type { Entity } from '../core/entity';
+import type { EntityId } from '../types/core';
 import type { Transform } from './transform';
 
 @script({
@@ -20,11 +20,11 @@ import type { Transform } from './transform';
 })
 export class Hierarchy extends Component {
     private _parent?: Hierarchy;
-    private readonly _children = new Map<Entity, Hierarchy>();
+    private readonly _children = new Map<EntityId, Hierarchy>();
     private readonly _childrenArray: Hierarchy[] = [];
-    private readonly _childActorsArray: Actor[] = [];
+    private readonly _childEntitiesArray: Entity[] = [];
     private _childrenDirty = false;
-    private _childActorsVersion = -1;
+    private _childEntitiesVersion = -1;
     private _version = 0;
 
     get parent(): Hierarchy | undefined {
@@ -42,20 +42,20 @@ export class Hierarchy extends Component {
         return this._childrenArray;
     }
 
-    get childActors(): readonly Actor[] {
-        if (this._childActorsVersion !== this._version) {
-            this._childActorsArray.length = 0;
+    get childEntities(): readonly Entity[] {
+        if (this._childEntitiesVersion !== this._version) {
+            this._childEntitiesArray.length = 0;
 
             for (const child of this.children) {
-                if (child.actor) {
-                    this._childActorsArray.push(child.actor);
+                if (child.entity) {
+                    this._childEntitiesArray.push(child.entity);
                 }
             }
 
-            this._childActorsVersion = this._version;
+            this._childEntitiesVersion = this._version;
         }
 
-        return this._childActorsArray;
+        return this._childEntitiesArray;
     }
 
     get childCount(): number {
@@ -66,8 +66,8 @@ export class Hierarchy extends Component {
         return this._version;
     }
 
-    get parentActor(): Actor | undefined {
-        return this._parent?.actor;
+    get parentEntity(): Entity | undefined {
+        return this._parent?.entity;
     }
 
     setParent(value?: Hierarchy): void {
@@ -165,32 +165,32 @@ export class Hierarchy extends Component {
 
         this._children.clear();
         this._childrenArray.length = 0;
-        this._childActorsArray.length = 0;
+        this._childEntitiesArray.length = 0;
         this._childrenDirty = false;
-        this._childActorsVersion = -1;
+        this._childEntitiesVersion = -1;
         this._version = 0;
     }
 
     private _linkChild(child: Hierarchy): void {
-        if (!child.entity) {
+        if (!child.entityId) {
             return;
         }
 
-        if (this._children.get(child.entity) === child) {
+        if (this._children.get(child.entityId) === child) {
             return;
         }
 
-        this._children.set(child.entity, child);
+        this._children.set(child.entityId, child);
         this._childrenDirty = true;
         this._touch();
     }
 
     private _unlinkChild(child: Hierarchy): void {
-        if (!child.entity) {
+        if (!child.entityId) {
             return;
         }
 
-        if (!this._children.delete(child.entity)) {
+        if (!this._children.delete(child.entityId)) {
             return;
         }
 
@@ -216,21 +216,21 @@ export class Hierarchy extends Component {
     }
 
     private _emitHierarchyChanged(): void {
-        if (!this.world || !this.entity || !this.actor) {
+        if (!this.world || !this.entityId || !this.entity) {
             return;
         }
 
         const component = this._getTransform() ?? this;
 
         this.world.emitSync('TransformHierarchyChanged' as any, {
-            entity: this.entity,
+            entityId: this.entityId,
             component,
-            actor: this.actor,
+            entity: this.entity,
         });
     }
 
     private _getTransform(): Transform | undefined {
-        if (!this.actor) {
+        if (!this.entity) {
             return undefined;
         }
 
@@ -241,6 +241,6 @@ export class Hierarchy extends Component {
             return undefined;
         }
 
-        return this.actor.getComponent(TransformClass);
+        return this.entity.getComponent(TransformClass);
     }
 }

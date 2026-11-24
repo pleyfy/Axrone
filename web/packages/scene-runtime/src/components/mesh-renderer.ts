@@ -461,7 +461,7 @@ export class MeshRenderer extends Component {
             return null;
         }
 
-        const instanceId = this.actor?.getComponent(PrefabNodeBinding)?.instanceId ?? null;
+        const instanceId = this.entity?.getComponent(PrefabNodeBinding)?.instanceId ?? null;
         if (
             this._resolvedJointTransforms &&
             this._resolvedSkinInstanceId === instanceId &&
@@ -480,16 +480,16 @@ export class MeshRenderer extends Component {
             this._jointResolutionFirstAttemptMs = performance.now();
         }
 
-        const actors =
+        const entities =
             (
                 this.world as
-                    | { getAllActors?: () => readonly { getComponent: (type: any) => any }[] }
+                    | { getAllEntities?: () => readonly { getComponent: (type: any) => any }[] }
                     | undefined
-            )?.getAllActors?.() ?? [];
+            )?.getAllEntities?.() ?? [];
         const transformsByNodeId = new Map<string, Transform>();
 
-        for (const actor of actors) {
-            const binding = actor.getComponent(PrefabNodeBinding) as PrefabNodeBinding | undefined;
+        for (const entity of entities) {
+            const binding = entity.getComponent(PrefabNodeBinding) as PrefabNodeBinding | undefined;
             if (!binding || binding.nodeId === null) {
                 continue;
             }
@@ -497,7 +497,7 @@ export class MeshRenderer extends Component {
                 continue;
             }
 
-            const transform = actor.getComponent(Transform) as Transform | undefined;
+            const transform = entity.getComponent(Transform) as Transform | undefined;
             if (transform) {
                 transformsByNodeId.set(binding.nodeId, transform);
             }

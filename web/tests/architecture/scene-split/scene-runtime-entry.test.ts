@@ -6,7 +6,7 @@ describe('scene-runtime entry', () => {
         expect(sceneRuntime.createSceneRuntimeRegistry).toBeDefined();
         expect(sceneRuntime.getCoreSceneRuntimeProfile).toBeDefined();
         expect(sceneRuntime.SCENE_RUNTIME_CORE_BUILT_IN_MANIFEST).toBeDefined();
-        expect(sceneRuntime.SceneActorRuntime).toBeDefined();
+        expect(sceneRuntime.SceneEntityRuntime).toBeDefined();
         expect(sceneRuntime.SceneSnapshotRuntime).toBeDefined();
         expect('SceneRuntimeKernel' in sceneRuntime).toBe(false);
         expect('Scene' in sceneRuntime).toBe(false);

@@ -459,7 +459,7 @@ export interface TilemapCameraRectProvider {
 
 const emptyQuery: SystemQuery<ComponentRegistry> = [];
 
-/** Moves `TilemapAgent` actors along their world-space waypoints. */
+/** Moves `TilemapAgent` entities along their world-space waypoints. */
 export const createTilemapAgentSystem = (
     _runtimes: TilemapRuntimeSet
 ): System<ComponentRegistry, typeof emptyQuery> => {

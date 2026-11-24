@@ -4,13 +4,13 @@ import {
     applyScenePrefabOverrides,
     createScenePrefabScopedNodeId,
     PrefabNodeBinding,
-    type SceneActorSnapshot,
+    type SceneEntitySnapshot,
     type SceneComponentSnapshot,
     type ScenePrefabDefinition,
     type ScenePrefabNestedInstance,
     type ScenePrefabOverrideOperation,
 } from '../index';
-import { scopeScenePrefabActors } from '../scene-prefab-operations';
+import { scopeScenePrefabEntities } from '../scene-prefab-operations';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -26,12 +26,12 @@ function makeComponent(
     };
 }
 
-function makeActor(
+function makeEntity(
     nodeId: string,
     name?: string,
     parentNodeId?: string | null,
     components?: SceneComponentSnapshot[],
-): SceneActorSnapshot {
+): SceneEntitySnapshot {
     return {
         nodeId,
         parentNodeId: parentNodeId ?? null,
@@ -47,7 +47,7 @@ function makeActor(
 
 function makeDefinition(
     id: string,
-    actors?: SceneActorSnapshot[],
+    entities?: SceneEntitySnapshot[],
     overrides?: ScenePrefabOverrideOperation[],
     nested?: ScenePrefabNestedInstance[],
     base?: ScenePrefabDefinition['base'],
@@ -55,7 +55,7 @@ function makeDefinition(
     return {
         id,
         kind: 'prefab',
-        actors: actors ?? [makeActor('root', 'Root')],
+        entities: entities ?? [makeEntity('root', 'Root')],
         ...(overrides ? { overrides } : {}),
         ...(nested ? { nested } : {}),
         ...(base ? { base } : {}),
@@ -63,7 +63,7 @@ function makeDefinition(
 }
 
 /**
- * Simulates instantiating a prefab by resolving it and then scoping its actors
+ * Simulates instantiating a prefab by resolving it and then scoping its entities
  * with a unique instanceId, mirroring what the runtime instantiation pipeline does.
  */
 function simulateInstantiation(
@@ -71,14 +71,14 @@ function simulateInstantiation(
     prefabId: string,
     instanceId: string,
     namePrefix?: string,
-): readonly SceneActorSnapshot[] {
+): readonly SceneEntitySnapshot[] {
     const result = workflow.resolvePrefab({ kind: 'registry', prefabId });
     const nested: ScenePrefabNestedInstance = {
         instanceId,
         reference: { kind: 'registry', prefabId },
         ...(namePrefix ? { namePrefix } : {}),
     };
-    return scopeScenePrefabActors(result.definition.actors, nested, prefabId);
+    return scopeScenePrefabEntities(result.definition.entities, nested, prefabId);
 }
 
 // ---------------------------------------------------------------------------
@@ -90,21 +90,21 @@ describe('T-02: Prefab Instantiation Integration', () => {
     describe('prefab definition loading', () => {
         it('loads a valid prefab definition with correct structure', () => {
             const def = makeDefinition('enemy-prefab', [
-                makeActor('body', 'EnemyBody', null, [
+                makeEntity('body', 'EnemyBody', null, [
                     makeComponent('Transform', { x: 0, y: 0, z: 0 }),
                     makeComponent('MeshRenderer', { mesh: 'enemy.mesh' }),
                 ]),
-                makeActor('weapon', 'Weapon', 'body', [
+                makeEntity('weapon', 'Weapon', 'body', [
                     makeComponent('Transform', { x: 1, y: 0, z: 0 }),
                 ]),
             ]);
 
             expect(def.id).toBe('enemy-prefab');
             expect(def.kind).toBe('prefab');
-            expect(def.actors).toHaveLength(2);
-            expect(def.actors[0]!.nodeId).toBe('body');
-            expect(def.actors[0]!.components).toHaveLength(2);
-            expect(def.actors[1]!.parentNodeId).toBe('body');
+            expect(def.entities).toHaveLength(2);
+            expect(def.entities[0]!.nodeId).toBe('body');
+            expect(def.entities[0]!.components).toHaveLength(2);
+            expect(def.entities[1]!.parentNodeId).toBe('body');
         });
     });
 
@@ -118,20 +118,20 @@ describe('T-02: Prefab Instantiation Integration', () => {
 
             expect(result.definition.kind).toBe('resolved');
             expect(result.definition.lineage).toEqual(['simple-prefab']);
-            expect(result.definition.actors).toHaveLength(1);
+            expect(result.definition.entities).toHaveLength(1);
             expect(result.conflicts).toEqual([]);
         });
 
         it('resolves a variant chain with multi-entry lineage', () => {
             const base = makeDefinition('base-prefab', [
-                makeActor('root', 'BaseRoot', null, [
+                makeEntity('root', 'BaseRoot', null, [
                     makeComponent('Transform', { x: 0 }),
                 ]),
             ]);
             const variant: ScenePrefabDefinition = {
                 id: 'variant-prefab',
                 kind: 'variant',
-                actors: [makeActor('root', 'VariantRoot')],
+                entities: [makeEntity('root', 'VariantRoot')],
                 base: { kind: 'registry', prefabId: 'base-prefab' },
             };
 
@@ -139,35 +139,35 @@ describe('T-02: Prefab Instantiation Integration', () => {
             const result = workflow.resolvePrefab({ kind: 'registry', prefabId: 'variant-prefab' });
 
             expect(result.definition.lineage).toEqual(['base-prefab', 'variant-prefab']);
-            expect(result.definition.actors[0]!.name).toBe('VariantRoot');
+            expect(result.definition.entities[0]!.name).toBe('VariantRoot');
         });
     });
 
-    // ── 3. Instantiate a simple prefab → verify actor count ──────────────
-    describe('prefab instantiation — actor count', () => {
-        it('creates the correct number of scoped actors from a simple prefab', () => {
+    // ── 3. Instantiate a simple prefab → verify entity count ──────────────
+    describe('prefab instantiation — entity count', () => {
+        it('creates the correct number of scoped entities from a simple prefab', () => {
             const def = makeDefinition('tree-prefab', [
-                makeActor('trunk', 'Trunk'),
-                makeActor('branch-1', 'Branch1', 'trunk'),
-                makeActor('branch-2', 'Branch2', 'trunk'),
-                makeActor('leaves', 'Leaves', 'trunk'),
+                makeEntity('trunk', 'Trunk'),
+                makeEntity('branch-1', 'Branch1', 'trunk'),
+                makeEntity('branch-2', 'Branch2', 'trunk'),
+                makeEntity('leaves', 'Leaves', 'trunk'),
             ]);
             const workflow = new ScenePrefabWorkflow({ prefabs: [def] });
 
-            const actors = simulateInstantiation(workflow, 'tree-prefab', 'instance-001');
+            const entities = simulateInstantiation(workflow, 'tree-prefab', 'instance-001');
 
-            expect(actors).toHaveLength(4);
+            expect(entities).toHaveLength(4);
         });
 
-        it('creates correct number of actors from a prefab with nested instances', () => {
+        it('creates correct number of entities from a prefab with nested instances', () => {
             const inner = makeDefinition('inner-prefab', [
-                makeActor('inner-root', 'InnerRoot'),
-                makeActor('inner-child', 'InnerChild', 'inner-root'),
+                makeEntity('inner-root', 'InnerRoot'),
+                makeEntity('inner-child', 'InnerChild', 'inner-root'),
             ]);
             const outer: ScenePrefabDefinition = {
                 id: 'outer-prefab',
                 kind: 'prefab',
-                actors: [makeActor('outer-root', 'OuterRoot')],
+                entities: [makeEntity('outer-root', 'OuterRoot')],
                 nested: [
                     {
                         instanceId: 'nested-1',
@@ -180,8 +180,8 @@ describe('T-02: Prefab Instantiation Integration', () => {
             const workflow = new ScenePrefabWorkflow({ prefabs: [inner, outer] });
             const result = workflow.resolvePrefab({ kind: 'registry', prefabId: 'outer-prefab' });
 
-            // outer-root + 2 inner actors (scoped)
-            expect(result.definition.actors).toHaveLength(3);
+            // outer-root + 2 inner entities (scoped)
+            expect(result.definition.entities).toHaveLength(3);
         });
     });
 
@@ -189,34 +189,34 @@ describe('T-02: Prefab Instantiation Integration', () => {
     describe('hierarchy preservation', () => {
         it('preserves parent-child relationships after instantiation', () => {
             const def = makeDefinition('hierarchy-prefab', [
-                makeActor('parent', 'Parent'),
-                makeActor('child-a', 'ChildA', 'parent'),
-                makeActor('child-b', 'ChildB', 'parent'),
-                makeActor('grandchild', 'Grandchild', 'child-a'),
+                makeEntity('parent', 'Parent'),
+                makeEntity('child-a', 'ChildA', 'parent'),
+                makeEntity('child-b', 'ChildB', 'parent'),
+                makeEntity('grandchild', 'Grandchild', 'child-a'),
             ]);
             const workflow = new ScenePrefabWorkflow({ prefabs: [def] });
 
-            const actors = simulateInstantiation(workflow, 'hierarchy-prefab', 'inst-h');
+            const entities = simulateInstantiation(workflow, 'hierarchy-prefab', 'inst-h');
 
-            const parentActor = actors.find((a) => a.nodeId === 'inst-h::parent');
-            const childA = actors.find((a) => a.nodeId === 'inst-h::child-a');
-            const childB = actors.find((a) => a.nodeId === 'inst-h::child-b');
-            const grandchild = actors.find((a) => a.nodeId === 'inst-h::grandchild');
+            const parentEntity = entities.find((a) => a.nodeId === 'inst-h::parent');
+            const childA = entities.find((a) => a.nodeId === 'inst-h::child-a');
+            const childB = entities.find((a) => a.nodeId === 'inst-h::child-b');
+            const grandchild = entities.find((a) => a.nodeId === 'inst-h::grandchild');
 
-            expect(parentActor!.parentNodeId).toBeNull();
+            expect(parentEntity!.parentNodeId).toBeNull();
             expect(childA!.parentNodeId).toBe('inst-h::parent');
             expect(childB!.parentNodeId).toBe('inst-h::parent');
             expect(grandchild!.parentNodeId).toBe('inst-h::child-a');
         });
 
-        it('roots nested instance actors under the specified parent', () => {
+        it('roots nested instance entities under the specified parent', () => {
             const inner = makeDefinition('inner', [
-                makeActor('inner-root', 'InnerRoot'),
+                makeEntity('inner-root', 'InnerRoot'),
             ]);
             const outer: ScenePrefabDefinition = {
                 id: 'outer',
                 kind: 'prefab',
-                actors: [makeActor('outer-root', 'OuterRoot')],
+                entities: [makeEntity('outer-root', 'OuterRoot')],
                 nested: [
                     {
                         instanceId: 'n1',
@@ -229,7 +229,7 @@ describe('T-02: Prefab Instantiation Integration', () => {
             const workflow = new ScenePrefabWorkflow({ prefabs: [inner, outer] });
             const result = workflow.resolvePrefab({ kind: 'registry', prefabId: 'outer' });
 
-            const nestedRoot = result.definition.actors.find((a) => a.nodeId === 'n1::inner-root');
+            const nestedRoot = result.definition.entities.find((a) => a.nodeId === 'n1::inner-root');
             expect(nestedRoot).toBeDefined();
             expect(nestedRoot!.parentNodeId).toBe('outer-root');
         });
@@ -239,7 +239,7 @@ describe('T-02: Prefab Instantiation Integration', () => {
     describe('component data cloning', () => {
         it('clones component data from prefab to resolved instance', () => {
             const def = makeDefinition('comp-prefab', [
-                makeActor('root', 'Root', null, [
+                makeEntity('root', 'Root', null, [
                     makeComponent('Transform', { position: { x: 10, y: 20, z: 30 } }),
                     makeComponent('Health', { hp: 100, maxHp: 100 }),
                 ]),
@@ -247,18 +247,18 @@ describe('T-02: Prefab Instantiation Integration', () => {
             const workflow = new ScenePrefabWorkflow({ prefabs: [def] });
             const result = workflow.resolvePrefab({ kind: 'registry', prefabId: 'comp-prefab' });
 
-            const actor = result.definition.actors[0]!;
-            expect(actor.components).toHaveLength(2);
-            expect(actor.components[0]!.type).toBe('Transform');
-            expect(actor.components[0]!.data).toEqual({ position: { x: 10, y: 20, z: 30 } });
-            expect(actor.components[1]!.type).toBe('Health');
-            expect(actor.components[1]!.data).toEqual({ hp: 100, maxHp: 100 });
+            const entity = result.definition.entities[0]!;
+            expect(entity.components).toHaveLength(2);
+            expect(entity.components[0]!.type).toBe('Transform');
+            expect(entity.components[0]!.data).toEqual({ position: { x: 10, y: 20, z: 30 } });
+            expect(entity.components[1]!.type).toBe('Health');
+            expect(entity.components[1]!.data).toEqual({ hp: 100, maxHp: 100 });
         });
 
         it('resolved component data is independent from the original definition input', () => {
             const originalData = { position: { x: 5, y: 10 } };
             const def = makeDefinition('clone-test', [
-                makeActor('root', 'Root', null, [makeComponent('Transform', originalData)]),
+                makeEntity('root', 'Root', null, [makeComponent('Transform', originalData)]),
             ]);
             // Disable cache so each resolve produces a fresh clone
             const workflow = new ScenePrefabWorkflow({ prefabs: [def], enableCache: false });
@@ -267,15 +267,15 @@ describe('T-02: Prefab Instantiation Integration', () => {
             const result2 = workflow.resolvePrefab({ kind: 'registry', prefabId: 'clone-test' });
 
             // Both should have equal data
-            expect(result1.definition.actors[0]!.components[0]!.data).toEqual(
-                result2.definition.actors[0]!.components[0]!.data,
+            expect(result1.definition.entities[0]!.components[0]!.data).toEqual(
+                result2.definition.entities[0]!.components[0]!.data,
             );
             // But not be the same reference (each resolution deep-clones)
-            expect(result1.definition.actors[0]!.components[0]!.data).not.toBe(
-                result2.definition.actors[0]!.components[0]!.data,
+            expect(result1.definition.entities[0]!.components[0]!.data).not.toBe(
+                result2.definition.entities[0]!.components[0]!.data,
             );
             // And neither should be the original input reference
-            expect(result1.definition.actors[0]!.components[0]!.data).not.toBe(originalData);
+            expect(result1.definition.entities[0]!.components[0]!.data).not.toBe(originalData);
         });
     });
 
@@ -283,8 +283,8 @@ describe('T-02: Prefab Instantiation Integration', () => {
     describe('ID remapping and uniqueness', () => {
         it('generates unique scoped nodeIds for each instance', () => {
             const def = makeDefinition('shared-prefab', [
-                makeActor('root', 'Root'),
-                makeActor('child', 'Child', 'root'),
+                makeEntity('root', 'Root'),
+                makeEntity('child', 'Child', 'root'),
             ]);
             const workflow = new ScenePrefabWorkflow({ prefabs: [def] });
 
@@ -313,8 +313,8 @@ describe('T-02: Prefab Instantiation Integration', () => {
 
         it('three instances of the same prefab all have distinct IDs', () => {
             const def = makeDefinition('triple', [
-                makeActor('a', 'A'),
-                makeActor('b', 'B', 'a'),
+                makeEntity('a', 'A'),
+                makeEntity('b', 'B', 'a'),
             ]);
             const workflow = new ScenePrefabWorkflow({ prefabs: [def] });
 
@@ -367,52 +367,52 @@ describe('T-02: Prefab Instantiation Integration', () => {
             expect(binding.instanceId).toBe('inst-99');
         });
 
-        it('resolved actors carry source metadata linking back to prefab', () => {
+        it('resolved entities carry source metadata linking back to prefab', () => {
             const def = makeDefinition('source-track', [
-                makeActor('root', 'Root'),
+                makeEntity('root', 'Root'),
             ]);
             const workflow = new ScenePrefabWorkflow({ prefabs: [def] });
             const result = workflow.resolvePrefab({ kind: 'registry', prefabId: 'source-track' });
 
-            const actor = result.definition.actors[0]!;
-            expect(actor.source).toBeDefined();
-            expect(actor.source!.prefabId).toBe('source-track');
-            expect(actor.source!.nodeId).toBe('root');
+            const entity = result.definition.entities[0]!;
+            expect(entity.source).toBeDefined();
+            expect(entity.source!.prefabId).toBe('source-track');
+            expect(entity.source!.nodeId).toBe('root');
         });
 
-        it('scoped actors carry instancePath in source metadata', () => {
+        it('scoped entities carry instancePath in source metadata', () => {
             const def = makeDefinition('tracked-prefab', [
-                makeActor('root', 'Root'),
+                makeEntity('root', 'Root'),
             ]);
             const workflow = new ScenePrefabWorkflow({ prefabs: [def] });
 
-            const actors = simulateInstantiation(workflow, 'tracked-prefab', 'inst-77');
-            const actor = actors[0]!;
+            const entities = simulateInstantiation(workflow, 'tracked-prefab', 'inst-77');
+            const entity = entities[0]!;
 
-            expect(actor.source).toBeDefined();
-            expect(actor.source!.prefabId).toBe('tracked-prefab');
-            expect(actor.source!.nodeId).toBe('root');
-            expect(actor.source!.instancePath).toContain('inst-77');
+            expect(entity.source).toBeDefined();
+            expect(entity.source!.prefabId).toBe('tracked-prefab');
+            expect(entity.source!.nodeId).toBe('root');
+            expect(entity.source!.instancePath).toContain('inst-77');
         });
     });
 
     // ── 8. Override application ──────────────────────────────────────────
     describe('override application', () => {
-        it('applies set-actor-field override to change name', () => {
+        it('applies set-entity-field override to change name', () => {
             const def = makeDefinition('override-name', [
-                makeActor('root', 'OriginalName'),
+                makeEntity('root', 'OriginalName'),
             ]);
 
             const result = applyScenePrefabOverrides(def, [
-                { kind: 'set-actor-field', nodeId: 'root', field: 'name', value: 'Renamed' },
+                { kind: 'set-entity-field', nodeId: 'root', field: 'name', value: 'Renamed' },
             ]);
 
-            expect(result.actors[0]!.name).toBe('Renamed');
+            expect(result.entities[0]!.name).toBe('Renamed');
         });
 
         it('applies set-component-property override to change position', () => {
             const def = makeDefinition('override-pos', [
-                makeActor('root', 'Root', null, [
+                makeEntity('root', 'Root', null, [
                     makeComponent('Transform', { x: 0, y: 0, z: 0 }, 'Transform'),
                 ]),
             ]);
@@ -427,7 +427,7 @@ describe('T-02: Prefab Instantiation Integration', () => {
                 },
             ]);
 
-            const transformData = result.actors[0]!.components[0]!.data as Record<string, unknown>;
+            const transformData = result.entities[0]!.components[0]!.data as Record<string, unknown>;
             expect(transformData.x).toBe(42);
             // y and z remain unchanged
             expect(transformData.y).toBe(0);
@@ -436,7 +436,7 @@ describe('T-02: Prefab Instantiation Integration', () => {
 
         it('applies add-component override', () => {
             const def = makeDefinition('override-add-comp', [
-                makeActor('root', 'Root'),
+                makeEntity('root', 'Root'),
             ]);
 
             const result = applyScenePrefabOverrides(def, [
@@ -447,21 +447,21 @@ describe('T-02: Prefab Instantiation Integration', () => {
                 },
             ]);
 
-            expect(result.actors[0]!.components).toHaveLength(1);
-            expect(result.actors[0]!.components[0]!.type).toBe('Rigidbody');
+            expect(result.entities[0]!.components).toHaveLength(1);
+            expect(result.entities[0]!.components[0]!.type).toBe('Rigidbody');
         });
 
         it('applies multiple overrides in sequence', () => {
             const def = makeDefinition('multi-override', [
-                makeActor('root', 'Root', null, [
+                makeEntity('root', 'Root', null, [
                     makeComponent('Transform', { x: 0 }, 'Transform'),
                 ]),
-                makeActor('child', 'Child', 'root'),
+                makeEntity('child', 'Child', 'root'),
             ]);
 
             const result = applyScenePrefabOverrides(def, [
-                { kind: 'set-actor-field', nodeId: 'root', field: 'name', value: 'Parent' },
-                { kind: 'set-actor-field', nodeId: 'child', field: 'layer', value: 5 },
+                { kind: 'set-entity-field', nodeId: 'root', field: 'name', value: 'Parent' },
+                { kind: 'set-entity-field', nodeId: 'child', field: 'layer', value: 5 },
                 {
                     kind: 'set-component-property',
                     nodeId: 'root',
@@ -471,24 +471,24 @@ describe('T-02: Prefab Instantiation Integration', () => {
                 },
             ]);
 
-            expect(result.actors[0]!.name).toBe('Parent');
-            expect(result.actors[1]!.layer).toBe(5);
-            expect((result.actors[0]!.components[0]!.data as Record<string, unknown>).x).toBe(100);
+            expect(result.entities[0]!.name).toBe('Parent');
+            expect(result.entities[1]!.layer).toBe(5);
+            expect((result.entities[0]!.components[0]!.data as Record<string, unknown>).x).toBe(100);
         });
 
         it('workflow applyOverrides resolves and applies in one step', () => {
             const def = makeDefinition('wf-override', [
-                makeActor('root', 'Original'),
+                makeEntity('root', 'Original'),
             ]);
             const workflow = new ScenePrefabWorkflow({ prefabs: [def] });
 
             const result = workflow.applyOverrides(
                 { kind: 'registry', prefabId: 'wf-override' },
-                [{ kind: 'set-actor-field', nodeId: 'root', field: 'name', value: 'Modified' }],
+                [{ kind: 'set-entity-field', nodeId: 'root', field: 'name', value: 'Modified' }],
             );
 
             expect(result.kind).toBe('resolved');
-            expect(result.actors[0]!.name).toBe('Modified');
+            expect(result.entities[0]!.name).toBe('Modified');
         });
     });
 
@@ -496,10 +496,10 @@ describe('T-02: Prefab Instantiation Integration', () => {
     describe('multiple instance coexistence', () => {
         it('multiple instances of the same prefab coexist without interference', () => {
             const def = makeDefinition('coexist-prefab', [
-                makeActor('root', 'Root', null, [
+                makeEntity('root', 'Root', null, [
                     makeComponent('Transform', { x: 0, y: 0 }),
                 ]),
-                makeActor('arm', 'Arm', 'root'),
+                makeEntity('arm', 'Arm', 'root'),
             ]);
             const workflow = new ScenePrefabWorkflow({ prefabs: [def] });
 
@@ -507,7 +507,7 @@ describe('T-02: Prefab Instantiation Integration', () => {
             const inst2 = simulateInstantiation(workflow, 'coexist-prefab', 'enemy-2');
             const inst3 = simulateInstantiation(workflow, 'coexist-prefab', 'enemy-3');
 
-            // All three instances have the expected number of actors
+            // All three instances have the expected number of entities
             expect(inst1).toHaveLength(2);
             expect(inst2).toHaveLength(2);
             expect(inst3).toHaveLength(2);
@@ -531,7 +531,7 @@ describe('T-02: Prefab Instantiation Integration', () => {
 
         it('applying overrides to one resolved instance does not affect another', () => {
             const def = makeDefinition('isolated', [
-                makeActor('root', 'Base', null, [
+                makeEntity('root', 'Base', null, [
                     makeComponent('Transform', { x: 0 }, 'Transform'),
                 ]),
             ]);
@@ -553,9 +553,9 @@ describe('T-02: Prefab Instantiation Integration', () => {
             const fresh = workflow.resolvePrefab({ kind: 'registry', prefabId: 'isolated' });
 
             // Overridden instance has the new value
-            expect((overridden.actors[0]!.components[0]!.data as Record<string, unknown>).x).toBe(999);
+            expect((overridden.entities[0]!.components[0]!.data as Record<string, unknown>).x).toBe(999);
             // Fresh resolution still has the original value
-            expect((fresh.definition.actors[0]!.components[0]!.data as Record<string, unknown>).x).toBe(0);
+            expect((fresh.definition.entities[0]!.components[0]!.data as Record<string, unknown>).x).toBe(0);
         });
     });
 
@@ -563,12 +563,12 @@ describe('T-02: Prefab Instantiation Integration', () => {
     describe('nested prefab resolution', () => {
         it('resolves deeply nested prefab references', () => {
             const leaf = makeDefinition('leaf', [
-                makeActor('leaf-node', 'Leaf'),
+                makeEntity('leaf-node', 'Leaf'),
             ]);
             const branch: ScenePrefabDefinition = {
                 id: 'branch',
                 kind: 'prefab',
-                actors: [makeActor('branch-root', 'BranchRoot')],
+                entities: [makeEntity('branch-root', 'BranchRoot')],
                 nested: [
                     {
                         instanceId: 'leaf-inst',
@@ -580,7 +580,7 @@ describe('T-02: Prefab Instantiation Integration', () => {
             const tree: ScenePrefabDefinition = {
                 id: 'tree',
                 kind: 'prefab',
-                actors: [makeActor('tree-root', 'TreeRoot')],
+                entities: [makeEntity('tree-root', 'TreeRoot')],
                 nested: [
                     {
                         instanceId: 'branch-inst',
@@ -594,11 +594,11 @@ describe('T-02: Prefab Instantiation Integration', () => {
             const result = workflow.resolvePrefab({ kind: 'registry', prefabId: 'tree' });
 
             // tree-root + branch-root (scoped) + leaf-node (double-scoped)
-            expect(result.definition.actors).toHaveLength(3);
+            expect(result.definition.entities).toHaveLength(3);
 
-            const treeRoot = result.definition.actors.find((a) => a.nodeId === 'tree-root');
-            const branchRoot = result.definition.actors.find((a) => a.nodeId === 'branch-inst::branch-root');
-            const leafNode = result.definition.actors.find((a) => a.nodeId === 'branch-inst::leaf-inst::leaf-node');
+            const treeRoot = result.definition.entities.find((a) => a.nodeId === 'tree-root');
+            const branchRoot = result.definition.entities.find((a) => a.nodeId === 'branch-inst::branch-root');
+            const leafNode = result.definition.entities.find((a) => a.nodeId === 'branch-inst::leaf-inst::leaf-node');
 
             expect(treeRoot).toBeDefined();
             expect(branchRoot).toBeDefined();
@@ -610,15 +610,15 @@ describe('T-02: Prefab Instantiation Integration', () => {
             expect(leafNode!.parentNodeId).toBe('branch-inst::branch-root');
         });
 
-        it('nested instances with namePrefix apply prefix to actor names', () => {
+        it('nested instances with namePrefix apply prefix to entity names', () => {
             const inner = makeDefinition('inner-name', [
-                makeActor('root', 'InnerRoot'),
-                makeActor('child', 'InnerChild', 'root'),
+                makeEntity('root', 'InnerRoot'),
+                makeEntity('child', 'InnerChild', 'root'),
             ]);
             const outer: ScenePrefabDefinition = {
                 id: 'outer-name',
                 kind: 'prefab',
-                actors: [makeActor('root', 'OuterRoot')],
+                entities: [makeEntity('root', 'OuterRoot')],
                 nested: [
                     {
                         instanceId: 'n1',
@@ -632,23 +632,23 @@ describe('T-02: Prefab Instantiation Integration', () => {
             const workflow = new ScenePrefabWorkflow({ prefabs: [inner, outer] });
             const result = workflow.resolvePrefab({ kind: 'registry', prefabId: 'outer-name' });
 
-            const nestedRoot = result.definition.actors.find((a) => a.nodeId === 'n1::root');
-            const nestedChild = result.definition.actors.find((a) => a.nodeId === 'n1::child');
+            const nestedRoot = result.definition.entities.find((a) => a.nodeId === 'n1::root');
+            const nestedChild = result.definition.entities.find((a) => a.nodeId === 'n1::child');
 
             expect(nestedRoot!.name).toBe('[Nested] InnerRoot');
             expect(nestedChild!.name).toBe('[Nested] InnerChild');
         });
 
-        it('nested instances with overrides apply them to scoped actors', () => {
+        it('nested instances with overrides apply them to scoped entities', () => {
             const inner = makeDefinition('inner-ov', [
-                makeActor('root', 'OriginalName', null, [
+                makeEntity('root', 'OriginalName', null, [
                     makeComponent('Transform', { x: 0 }, 'Transform'),
                 ]),
             ]);
             const outer: ScenePrefabDefinition = {
                 id: 'outer-ov',
                 kind: 'prefab',
-                actors: [makeActor('root', 'OuterRoot')],
+                entities: [makeEntity('root', 'OuterRoot')],
                 nested: [
                     {
                         instanceId: 'n1',
@@ -670,9 +670,9 @@ describe('T-02: Prefab Instantiation Integration', () => {
             const workflow = new ScenePrefabWorkflow({ prefabs: [inner, outer] });
             const result = workflow.resolvePrefab({ kind: 'registry', prefabId: 'outer-ov' });
 
-            const nestedActor = result.definition.actors.find((a) => a.nodeId === 'n1::root');
-            expect(nestedActor).toBeDefined();
-            expect((nestedActor!.components[0]!.data as Record<string, unknown>).x).toBe(77);
+            const nestedEntity = result.definition.entities.find((a) => a.nodeId === 'n1::root');
+            expect(nestedEntity).toBeDefined();
+            expect((nestedEntity!.components[0]!.data as Record<string, unknown>).x).toBe(77);
         });
     });
 });

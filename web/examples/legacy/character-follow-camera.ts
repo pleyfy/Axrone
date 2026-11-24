@@ -37,7 +37,7 @@ const CHARACTER_TRAIL_MESH_ID = 'character-demo.trail-mesh';
 const CHARACTER_TRAIL_POINT_COUNT = 14;
 const CHARACTER_TELEMETRY_SYSTEM_ID = 'character-follow-camera.telemetry';
 
-type SceneActor = ReturnType<Scene['createActor']>;
+type SceneEntity = ReturnType<Scene['createEntity']>;
 
 interface SceneBounds {
     readonly min: Vec3;
@@ -97,8 +97,8 @@ const formatDebugVec3 = (value: Readonly<Vec3>): string =>
 const formatDebugQuat = (value: Readonly<Quat>): string =>
     `${value.x.toFixed(3)}, ${value.y.toFixed(3)}, ${value.z.toFixed(3)}, ${value.w.toFixed(3)}`;
 
-const getActorFromTransform = (transform: Transform | null | undefined): SceneActor | null =>
-    ((transform as unknown as { actor?: SceneActor | undefined })?.actor ?? null);
+const getEntityFromTransform = (transform: Transform | null | undefined): SceneEntity | null =>
+    ((transform as unknown as { entity?: SceneEntity | undefined })?.entity ?? null);
 
 const resolveCharacterClipSet = (animator: Animator | null): CharacterClipSet => {
     const serialized = animator?.serialize() as { clips?: readonly { id?: unknown }[] } | undefined;
@@ -118,8 +118,8 @@ const resolveCharacterClipSet = (animator: Animator | null): CharacterClipSet =>
     };
 };
 
-const computeActorsBounds = (
-    actors: readonly SceneActor[],
+const computeEntitiesBounds = (
+    entities: readonly SceneEntity[],
     database: AssetDatabase<GltfAssetSchemaLike>
 ): SceneBounds | null => {
     let minX = Number.POSITIVE_INFINITY;
@@ -130,9 +130,9 @@ const computeActorsBounds = (
     let maxZ = Number.NEGATIVE_INFINITY;
     let found = false;
 
-    for (const actor of actors) {
-        const renderer = actor.getComponent(MeshRenderer);
-        const transform = actor.getComponent(Transform);
+    for (const entity of entities) {
+        const renderer = entity.getComponent(MeshRenderer);
+        const transform = entity.getComponent(Transform);
         if (!renderer?.meshId || !transform) {
             continue;
         }
@@ -179,11 +179,11 @@ const computeActorsBounds = (
     };
 };
 
-const collectImportedRootTransforms = (actors: readonly SceneActor[]): readonly Transform[] => {
+const collectImportedRootTransforms = (entities: readonly SceneEntity[]): readonly Transform[] => {
     const roots: Transform[] = [];
 
-    for (const actor of actors) {
-        const transform = actor.getComponent(Transform);
+    for (const entity of entities) {
+        const transform = entity.getComponent(Transform);
         if (!transform || transform.parent) {
             continue;
         }
@@ -196,13 +196,13 @@ const collectImportedRootTransforms = (actors: readonly SceneActor[]): readonly 
 
 const createImportedModelContainer = (
     scene: Scene,
-    actors: readonly SceneActor[],
+    entities: readonly SceneEntity[],
     name: string
-): SceneActor => {
-    const container = scene.createActor({ name });
+): SceneEntity => {
+    const container = scene.createEntity({ name });
     const containerTransform = container.requireComponent(Transform);
 
-    for (const rootTransform of collectImportedRootTransforms(actors)) {
+    for (const rootTransform of collectImportedRootTransforms(entities)) {
         rootTransform.parent = containerTransform;
     }
 
@@ -210,8 +210,8 @@ const createImportedModelContainer = (
 };
 
 const fitImportedModel = (
-    actors: readonly SceneActor[],
-    container: SceneActor,
+    entities: readonly SceneEntity[],
+    container: SceneEntity,
     database: AssetDatabase<GltfAssetSchemaLike>,
     options: {
         readonly targetHeight: number;
@@ -226,7 +226,7 @@ const fitImportedModel = (
         containerTransform.rotation = Quat.fromEuler(0, options.yaw, 0);
     }
 
-    const initialBounds = computeActorsBounds(actors, database);
+    const initialBounds = computeEntitiesBounds(entities, database);
     if (!initialBounds) {
         containerTransform.position = options.position.clone();
         return null;
@@ -237,7 +237,7 @@ const fitImportedModel = (
         containerTransform.scale = new Vec3(scale, scale, scale);
     }
 
-    const scaledBounds = computeActorsBounds(actors, database);
+    const scaledBounds = computeEntitiesBounds(entities, database);
     if (!scaledBounds) {
         return null;
     }
@@ -249,7 +249,7 @@ const fitImportedModel = (
         options.position.z - scaledBounds.center.z
     );
 
-    return computeActorsBounds(actors, database);
+    return computeEntitiesBounds(entities, database);
 };
 
 const registerGroundAssets = (scene: Scene): void => {
@@ -318,7 +318,7 @@ void main() {
 const createGround = (scene: Scene): void => {
     registerGroundAssets(scene);
 
-    const ground = scene.createRenderableActor(
+    const ground = scene.createRenderableEntity(
         { name: 'Ground' },
         {
             meshId: 'character-demo-ground',
@@ -367,7 +367,7 @@ const createReferenceMarker = (scene: Scene): void => {
     ] as const;
 
     for (const segment of segments) {
-        const actor = scene.createRenderableActor(
+        const entity = scene.createRenderableEntity(
             { name: segment.name },
             {
                 meshId: segment.meshId,
@@ -375,11 +375,11 @@ const createReferenceMarker = (scene: Scene): void => {
                 receiveLighting: false,
             }
         );
-        actor.requireComponent(Transform).position = segment.position.clone();
+        entity.requireComponent(Transform).position = segment.position.clone();
     }
 };
 
-const createMotionTrail = (scene: Scene): readonly SceneActor[] => {
+const createMotionTrail = (scene: Scene): readonly SceneEntity[] => {
     scene.createSphereMesh(CHARACTER_TRAIL_MESH_ID, 0.09, 12);
     scene.createMaterial({
         id: CHARACTER_TRAIL_MATERIAL_ID,
@@ -389,9 +389,9 @@ const createMotionTrail = (scene: Scene): readonly SceneActor[] => {
         },
     });
 
-    const actors: SceneActor[] = [];
+    const entities: SceneEntity[] = [];
     for (let index = 0; index < CHARACTER_TRAIL_POINT_COUNT; index += 1) {
-        const actor = scene.createRenderableActor(
+        const entity = scene.createRenderableEntity(
             { name: `MotionTrail${index}` },
             {
                 meshId: CHARACTER_TRAIL_MESH_ID,
@@ -399,15 +399,15 @@ const createMotionTrail = (scene: Scene): readonly SceneActor[] => {
                 receiveLighting: false,
             }
         );
-        actor.requireComponent(Transform).position = new Vec3(0, -100 - index, 0);
-        actors.push(actor);
+        entity.requireComponent(Transform).position = new Vec3(0, -100 - index, 0);
+        entities.push(entity);
     }
 
-    return actors;
+    return entities;
 };
 
 const createLighting = (scene: Scene): void => {
-    const sun = scene.createActor({ name: 'KeyLight' });
+    const sun = scene.createEntity({ name: 'KeyLight' });
     const light = sun.addComponent(DirectionalLight, {
         color: [1, 0.95, 0.9],
         intensity: 1.45,
@@ -484,14 +484,14 @@ const registerCharacterPaletteMaterial = async (scene: Scene): Promise<void> => 
 };
 
 const applyMaterialToImportedRenderers = (
-    actors: readonly SceneActor[],
+    entities: readonly SceneEntity[],
     materialId: string,
     predicate: (renderer: MeshRenderer) => boolean = () => true
 ): number => {
     let appliedCount = 0;
 
-    for (const actor of actors) {
-        const renderer = actor.getComponent(MeshRenderer);
+    for (const entity of entities) {
+        const renderer = entity.getComponent(MeshRenderer);
         if (!renderer?.meshId || !predicate(renderer)) {
             continue;
         }
@@ -722,10 +722,10 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
             return;
         }
 
-        const actor = getActorFromTransform(selectedTransform);
-        const parentActor = getActorFromTransform(selectedTransform.parent);
-        selectedNodeValue.textContent = actor?.name ?? 'Unnamed';
-        parentNodeValue.textContent = parentActor?.name ?? 'None';
+        const entity = getEntityFromTransform(selectedTransform);
+        const parentEntity = getEntityFromTransform(selectedTransform.parent);
+        selectedNodeValue.textContent = entity?.name ?? 'Unnamed';
+        parentNodeValue.textContent = parentEntity?.name ?? 'None';
         childCountValue.textContent = String(selectedTransform.children.length);
         localPositionValue.textContent = formatDebugVec3(selectedTransform.position);
         worldPositionValue.textContent = formatDebugVec3(selectedTransform.worldPosition);
@@ -753,10 +753,10 @@ const createDashboard = (container: HTMLElement): DashboardHandle => {
     };
 
     const appendTransformNode = (transform: Transform, depth: number) => {
-        const actor = getActorFromTransform(transform);
+        const entity = getEntityFromTransform(transform);
         const button = document.createElement('button');
         button.type = 'button';
-        button.textContent = `${transform.children.length > 0 ? '▾' : '•'} ${actor?.name ?? 'Unnamed Node'}`;
+        button.textContent = `${transform.children.length > 0 ? '▾' : '•'} ${entity?.name ?? 'Unnamed Node'}`;
         Object.assign(button.style, {
             appearance: 'none',
             background: 'transparent',
@@ -1257,7 +1257,7 @@ const characterFollowCameraExample: SceneExample = {
 
         createGround(scene);
         createReferenceMarker(scene);
-        const motionTrailActors = createMotionTrail(scene);
+        const motionTrailEntities = createMotionTrail(scene);
         createLighting(scene);
 
         const cleanupResize = bindSceneToContainer(scene, sceneHost, viewportWidth, viewportHeight);
@@ -1280,19 +1280,19 @@ const characterFollowCameraExample: SceneExample = {
                 throw characterLoadResult.reason;
             }
 
-            const characterActors = characterLoadResult.value.actors as readonly SceneActor[];
+            const characterEntities = characterLoadResult.value.entities as readonly SceneEntity[];
             await registerCharacterPaletteMaterial(scene);
             const characterContainer = createImportedModelContainer(
                 scene,
-                characterActors,
+                characterEntities,
                 'CharacterRoot'
             );
             const paletteRendererCount = applyMaterialToImportedRenderers(
-                characterActors,
+                characterEntities,
                 CHARACTER_PALETTE_MATERIAL_ID
             );
             const characterBounds = fitImportedModel(
-                characterActors,
+                characterEntities,
                 characterContainer,
                 database,
                 {
@@ -1302,12 +1302,12 @@ const characterFollowCameraExample: SceneExample = {
             );
 
             let deskPaletteRendererCount = 0;
-            let deskActorsForPaletteBinding: readonly SceneActor[] = [];
+            let deskEntitiesForPaletteBinding: readonly SceneEntity[] = [];
             if (deskLoadResult.status === 'fulfilled') {
-                const deskActors = deskLoadResult.value.actors as readonly SceneActor[];
-                deskActorsForPaletteBinding = deskActors;
-                const deskContainer = createImportedModelContainer(scene, deskActors, 'DeskRoot');
-                fitImportedModel(deskActors, deskContainer, database, {
+                const deskEntities = deskLoadResult.value.entities as readonly SceneEntity[];
+                deskEntitiesForPaletteBinding = deskEntities;
+                const deskContainer = createImportedModelContainer(scene, deskEntities, 'DeskRoot');
+                fitImportedModel(deskEntities, deskContainer, database, {
                     targetHeight: 1.75,
                     position: new Vec3(4.4, 0, -2.8),
                     yaw: -0.62,
@@ -1315,8 +1315,8 @@ const characterFollowCameraExample: SceneExample = {
             }
 
             const animator =
-                characterActors
-                    .map((actor) => actor.getComponent(Animator))
+                characterEntities
+                    .map((entity) => entity.getComponent(Animator))
                     .find((component): component is Animator => Boolean(component)) ?? null;
             const clipSet = resolveCharacterClipSet(animator);
             dashboard.setClipSummary(
@@ -1334,7 +1334,7 @@ const characterFollowCameraExample: SceneExample = {
             locomotion.onStateChanged = (label) => dashboard.setAnimationState(label);
             dashboard.setMotionTelemetry(characterRig.worldPosition, 0);
 
-            const camera = scene.createCameraActor(
+            const camera = scene.createCameraEntity(
                 { name: 'FollowCamera' },
                 { primary: true, fieldOfView: 46, near: 0.1, far: 200 }
             );
@@ -1373,10 +1373,10 @@ const characterFollowCameraExample: SceneExample = {
                         position.z - lastTrailDropPosition.z
                     );
                     if (speed >= 0.35 && planarTravel >= 0.7) {
-                        motionTrailActors[trailWriteIndex]
+                        motionTrailEntities[trailWriteIndex]
                             .requireComponent(Transform)
                             .position = new Vec3(position.x, 0.09, position.z);
-                        trailWriteIndex = (trailWriteIndex + 1) % motionTrailActors.length;
+                        trailWriteIndex = (trailWriteIndex + 1) % motionTrailEntities.length;
                         lastTrailDropPosition.x = position.x;
                         lastTrailDropPosition.y = position.y;
                         lastTrailDropPosition.z = position.z;
@@ -1599,10 +1599,10 @@ const characterFollowCameraExample: SceneExample = {
 
             updateStatus();
 
-            if (deskActorsForPaletteBinding.length > 0) {
+            if (deskEntitiesForPaletteBinding.length > 0) {
                 deferredDeskPaletteBinding = globalThis.setTimeout(() => {
                     deskPaletteRendererCount = applyMaterialToImportedRenderers(
-                        deskActorsForPaletteBinding,
+                        deskEntitiesForPaletteBinding,
                         CHARACTER_PALETTE_MATERIAL_ID,
                         (renderer) =>
                             renderer.materialId === null || renderer.materialId.endsWith('#material/default')

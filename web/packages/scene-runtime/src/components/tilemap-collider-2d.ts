@@ -14,7 +14,7 @@ export interface TilemapCollider2DConfig {
 }
 
 /**
- * Declares that an actor's map contributes static collision. The actual body
+ * Declares that an entity's map contributes static collision. The actual body
  * building lives in the collision builder and never in `@axrone/physics-2d`.
  *
  * A scene may author only a `PhysicsBridge2D`, which owns its world outside of

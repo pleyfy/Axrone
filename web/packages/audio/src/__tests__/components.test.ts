@@ -166,7 +166,7 @@ describe('AudioListenerComponent', () => {
                 useTransform: true,
                 position: { x: 1, y: 2, z: 3 },
             });
-            // No entity/actor set, so transform is undefined
+            // No entity/entity set, so transform is undefined
             const desc = comp.toDescriptor();
             expect(desc.position).toEqual({ x: 1, y: 2, z: 3 });
         });

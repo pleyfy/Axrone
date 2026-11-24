@@ -7,19 +7,19 @@ import {
 import { ScenePrefabWorkflow, resolveScenePrefab } from '../scene-prefab-workflow';
 import { ScenePrefabValidationError, ScenePrefabResolutionError } from '../errors';
 import type {
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     SceneComponentSnapshot,
     ScenePrefabDefinition,
 } from '../types';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-const makeActor = (
+const makeEntity = (
     nodeId: string,
-    name = 'Actor',
+    name = 'Entity',
     parentNodeId: string | null = null,
     components: SceneComponentSnapshot[] = [],
-): SceneActorSnapshot => ({
+): SceneEntitySnapshot => ({
     nodeId,
     parentNodeId,
     name,
@@ -33,21 +33,21 @@ const makeActor = (
 
 const makeDefinition = (
     id: string,
-    actors: SceneActorSnapshot[] = [makeActor('root', 'Root')],
+    entities: SceneEntitySnapshot[] = [makeEntity('root', 'Root')],
 ): ScenePrefabDefinition => ({
     id,
     kind: 'prefab',
-    actors,
+    entities,
 });
 
 // ---------------------------------------------------------------------------
 // Duplicate nodeId detection in createScenePrefabState
 // ---------------------------------------------------------------------------
 describe('Prefab ID collision — createScenePrefabState', () => {
-    it('throws ScenePrefabValidationError when two actors share the same nodeId', () => {
+    it('throws ScenePrefabValidationError when two entities share the same nodeId', () => {
         const definition = makeDefinition('dup-prefab', [
-            makeActor('shared-id', 'Actor-A'),
-            makeActor('shared-id', 'Actor-B'),
+            makeEntity('shared-id', 'Entity-A'),
+            makeEntity('shared-id', 'Entity-B'),
         ]);
 
         expect(() => createScenePrefabState(definition)).toThrow(ScenePrefabValidationError);
@@ -55,8 +55,8 @@ describe('Prefab ID collision — createScenePrefabState', () => {
 
     it('includes the duplicate nodeId in the error message', () => {
         const definition = makeDefinition('dup-prefab', [
-            makeActor('node-42', 'Actor-A'),
-            makeActor('node-42', 'Actor-B'),
+            makeEntity('node-42', 'Entity-A'),
+            makeEntity('node-42', 'Entity-B'),
         ]);
 
         expect(() => createScenePrefabState(definition)).toThrowError(/node-42/);
@@ -64,8 +64,8 @@ describe('Prefab ID collision — createScenePrefabState', () => {
 
     it('includes the prefab id in the error message', () => {
         const definition = makeDefinition('my-prefab', [
-            makeActor('dup', 'A'),
-            makeActor('dup', 'B'),
+            makeEntity('dup', 'A'),
+            makeEntity('dup', 'B'),
         ]);
 
         expect(() => createScenePrefabState(definition)).toThrowError(/my-prefab/);
@@ -73,13 +73,13 @@ describe('Prefab ID collision — createScenePrefabState', () => {
 
     it('succeeds when all nodeIds are unique', () => {
         const definition = makeDefinition('ok-prefab', [
-            makeActor('node-a', 'A'),
-            makeActor('node-b', 'B'),
-            makeActor('node-c', 'C'),
+            makeEntity('node-a', 'A'),
+            makeEntity('node-b', 'B'),
+            makeEntity('node-c', 'C'),
         ]);
 
         const state = createScenePrefabState(definition);
-        expect(state.actorIndex.size).toBe(3);
+        expect(state.entityIndex.size).toBe(3);
     });
 });
 
@@ -89,27 +89,27 @@ describe('Prefab ID collision — createScenePrefabState', () => {
 describe('Prefab ID collision — validateScenePrefabState', () => {
     it('throws ScenePrefabValidationError on duplicate nodeIds', () => {
         const definition = makeDefinition('val-prefab', [
-            makeActor('same-id', 'A'),
-            makeActor('same-id', 'B'),
+            makeEntity('same-id', 'A'),
+            makeEntity('same-id', 'B'),
         ]);
 
         const state = {
             id: definition.id,
-            actors: definition.actors.map((actor) => ({ ...actor, parentNodeId: actor.parentNodeId ?? null, components: [...actor.components] })),
-            actorIndex: new Map(),
+            entities: definition.entities.map((entity) => ({ ...entity, parentNodeId: entity.parentNodeId ?? null, components: [...entity.components] })),
+            entityIndex: new Map(),
         };
 
         expect(() => validateScenePrefabState(state as any)).toThrow(ScenePrefabValidationError);
     });
 
-    it('throws when actor references a missing parent nodeId', () => {
+    it('throws when entity references a missing parent nodeId', () => {
         const definition = makeDefinition('orphan-prefab', [
-            makeActor('child', 'Child', 'missing-parent'),
+            makeEntity('child', 'Child', 'missing-parent'),
         ]);
 
-        const state = createScenePrefabState({ id: 'orphan-prefab', actors: [makeActor('root')] });
-        // Manually add an actor with a missing parent to bypass createScenePrefabState's index check
-        state.actors.push({
+        const state = createScenePrefabState({ id: 'orphan-prefab', entities: [makeEntity('root')] });
+        // Manually add an entity with a missing parent to bypass createScenePrefabState's index check
+        state.entities.push({
             nodeId: 'child',
             parentNodeId: 'missing-parent',
             name: 'Child',
@@ -138,36 +138,36 @@ describe('Prefab ID collision — validateScenePrefabState', () => {
 describe('Prefab ID collision — workflow registration', () => {
     it('second registration with same prefabId silently overwrites the first', () => {
         const wf = new ScenePrefabWorkflow();
-        const first = makeDefinition('shared-id', [makeActor('root', 'First')]);
-        const second = makeDefinition('shared-id', [makeActor('root', 'Second')]);
+        const first = makeDefinition('shared-id', [makeEntity('root', 'First')]);
+        const second = makeDefinition('shared-id', [makeEntity('root', 'Second')]);
 
         wf.register(first);
-        expect(wf.getPrefab('shared-id')!.actors[0]!.name).toBe('First');
+        expect(wf.getPrefab('shared-id')!.entities[0]!.name).toBe('First');
 
         wf.register(second);
-        expect(wf.getPrefab('shared-id')!.actors[0]!.name).toBe('Second');
+        expect(wf.getPrefab('shared-id')!.entities[0]!.name).toBe('Second');
     });
 
     it('registerAll with duplicate ids keeps the last entry', () => {
         const wf = new ScenePrefabWorkflow();
         const defs = [
-            makeDefinition('dup', [makeActor('root', 'A')]),
-            makeDefinition('dup', [makeActor('root', 'B')]),
+            makeDefinition('dup', [makeEntity('root', 'A')]),
+            makeDefinition('dup', [makeEntity('root', 'B')]),
         ];
 
         wf.registerAll(defs);
-        expect(wf.getPrefab('dup')!.actors[0]!.name).toBe('B');
+        expect(wf.getPrefab('dup')!.entities[0]!.name).toBe('B');
     });
 
     it('constructor prefabs with duplicate ids keeps the last entry', () => {
         const wf = new ScenePrefabWorkflow({
             prefabs: [
-                makeDefinition('dup', [makeActor('root', 'First')]),
-                makeDefinition('dup', [makeActor('root', 'Last')]),
+                makeDefinition('dup', [makeEntity('root', 'First')]),
+                makeDefinition('dup', [makeEntity('root', 'Last')]),
             ],
         });
 
-        expect(wf.getPrefab('dup')!.actors[0]!.name).toBe('Last');
+        expect(wf.getPrefab('dup')!.entities[0]!.name).toBe('Last');
     });
 });
 
@@ -198,14 +198,14 @@ describe('Prefab ID collision — empty prefabId resolution', () => {
 describe('Prefab ID collision — nested instances', () => {
     it('scoped nodeIds prevent collision between two nested instances of the same prefab', () => {
         const child = makeDefinition('child-prefab', [
-            makeActor('inner-root', 'InnerRoot'),
-            makeActor('inner-child', 'InnerChild', 'inner-root'),
+            makeEntity('inner-root', 'InnerRoot'),
+            makeEntity('inner-child', 'InnerChild', 'inner-root'),
         ]);
 
         const parent: ScenePrefabDefinition = {
             id: 'parent',
             kind: 'prefab',
-            actors: [makeActor('root', 'Root')],
+            entities: [makeEntity('root', 'Root')],
             nested: [
                 {
                     instanceId: 'inst-A',
@@ -223,7 +223,7 @@ describe('Prefab ID collision — nested instances', () => {
         const wf = new ScenePrefabWorkflow({ prefabs: [child, parent] });
         const result = wf.resolvePrefab({ kind: 'registry', prefabId: 'parent' });
 
-        const nodeIds = result.definition.actors.map((a) => a.nodeId);
+        const nodeIds = result.definition.entities.map((a) => a.nodeId);
         // Each nested instance gets its own scoped nodeId — no collision
         expect(nodeIds).toContain('inst-A::inner-root');
         expect(nodeIds).toContain('inst-B::inner-root');
@@ -237,13 +237,13 @@ describe('Prefab ID collision — nested instances', () => {
 
     it('nested instance with same instanceId causes nodeId collision', () => {
         const child = makeDefinition('child-prefab', [
-            makeActor('inner-root', 'InnerRoot'),
+            makeEntity('inner-root', 'InnerRoot'),
         ]);
 
         const parent: ScenePrefabDefinition = {
             id: 'parent',
             kind: 'prefab',
-            actors: [makeActor('root', 'Root')],
+            entities: [makeEntity('root', 'Root')],
             nested: [
                 {
                     instanceId: 'same-inst',
@@ -260,12 +260,12 @@ describe('Prefab ID collision — nested instances', () => {
 
         const wf = new ScenePrefabWorkflow({ prefabs: [child, parent] });
         // The second nested instance merges over the first (same scoped nodeId),
-        // so it does NOT throw — mergeScenePrefabActors replaces on collision.
+        // so it does NOT throw — mergeScenePrefabEntities replaces on collision.
         const result = wf.resolvePrefab({ kind: 'registry', prefabId: 'parent' });
         expect(result.definition.kind).toBe('resolved');
 
         // Only one instance of the scoped nodeId should exist
-        const scopedIds = result.definition.actors
+        const scopedIds = result.definition.entities
             .map((a) => a.nodeId)
             .filter((id) => id.startsWith('same-inst::'));
         expect(scopedIds.length).toBe(1);
@@ -273,12 +273,12 @@ describe('Prefab ID collision — nested instances', () => {
 });
 
 // ---------------------------------------------------------------------------
-// rebuildActorIndex duplicate guard via add-actor override
+// rebuildEntityIndex duplicate guard via add-entity override
 // ---------------------------------------------------------------------------
-describe('Prefab ID collision — add-actor override duplicate guard', () => {
-    it('throws when add-actor override uses an existing nodeId', () => {
+describe('Prefab ID collision — add-entity override duplicate guard', () => {
+    it('throws when add-entity override uses an existing nodeId', () => {
         const definition = makeDefinition('guard-prefab', [
-            makeActor('root', 'Root'),
+            makeEntity('root', 'Root'),
         ]);
 
         const state = createScenePrefabState(definition);
@@ -286,16 +286,16 @@ describe('Prefab ID collision — add-actor override duplicate guard', () => {
         expect(() =>
             applyScenePrefabOverrideOperations(state, [
                 {
-                    kind: 'add-actor',
-                    actor: makeActor('root', 'Duplicate'),
+                    kind: 'add-entity',
+                    entity: makeEntity('root', 'Duplicate'),
                 },
             ]),
         ).toThrow(ScenePrefabValidationError);
     });
 
-    it('error message mentions the conflicting nodeId for add-actor', () => {
+    it('error message mentions the conflicting nodeId for add-entity', () => {
         const definition = makeDefinition('guard-prefab', [
-            makeActor('existing-node', 'Root'),
+            makeEntity('existing-node', 'Root'),
         ]);
 
         const state = createScenePrefabState(definition);
@@ -303,16 +303,16 @@ describe('Prefab ID collision — add-actor override duplicate guard', () => {
         expect(() =>
             applyScenePrefabOverrideOperations(state, [
                 {
-                    kind: 'add-actor',
-                    actor: makeActor('existing-node', 'Duplicate'),
+                    kind: 'add-entity',
+                    entity: makeEntity('existing-node', 'Duplicate'),
                 },
             ]),
         ).toThrowError(/existing-node/);
     });
 
-    it('succeeds when add-actor uses a unique nodeId', () => {
+    it('succeeds when add-entity uses a unique nodeId', () => {
         const definition = makeDefinition('ok-prefab', [
-            makeActor('root', 'Root'),
+            makeEntity('root', 'Root'),
         ]);
 
         const state = createScenePrefabState(definition);
@@ -320,13 +320,13 @@ describe('Prefab ID collision — add-actor override duplicate guard', () => {
         expect(() =>
             applyScenePrefabOverrideOperations(state, [
                 {
-                    kind: 'add-actor',
-                    actor: makeActor('new-node', 'NewActor'),
+                    kind: 'add-entity',
+                    entity: makeEntity('new-node', 'NewEntity'),
                 },
             ]),
         ).not.toThrow();
 
-        expect(state.actorIndex.size).toBe(2);
-        expect(state.actorIndex.has('new-node')).toBe(true);
+        expect(state.entityIndex.size).toBe(2);
+        expect(state.entityIndex.has('new-node')).toBe(true);
     });
 });

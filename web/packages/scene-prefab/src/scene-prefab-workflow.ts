@@ -9,8 +9,8 @@ import {
     createScenePrefabState,
     getScenePrefabLineage,
     materializeScenePrefabResolvedDefinition,
-    mergeScenePrefabActors,
-    scopeScenePrefabActors,
+    mergeScenePrefabEntities,
+    scopeScenePrefabEntities,
     scopeScenePrefabOverrideOperations,
     validateScenePrefabState,
 } from './scene-prefab-operations';
@@ -232,14 +232,14 @@ export class ScenePrefabWorkflow implements ScenePrefabResolver, ScenePrefabRegi
             : createScenePrefabState(definition, definition.id, lineage);
 
         if (baseDefinition) {
-            mergeScenePrefabActors(state, definition.actors, definition.id, [definition.id]);
+            mergeScenePrefabEntities(state, definition.entities, definition.id, [definition.id]);
         }
 
         for (const nested of definition.nested ?? []) {
             const resolvedNested = this._resolveReference(nested.reference, nextStack);
-            mergeScenePrefabActors(
+            mergeScenePrefabEntities(
                 state,
-                scopeScenePrefabActors(resolvedNested.actors, nested, resolvedNested.id),
+                scopeScenePrefabEntities(resolvedNested.entities, nested, resolvedNested.id),
                 definition.id,
                 [definition.id],
             );

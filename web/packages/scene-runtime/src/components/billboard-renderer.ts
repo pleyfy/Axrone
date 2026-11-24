@@ -52,7 +52,7 @@ const DEFAULT_UV_RECT: readonly [number, number, number, number] = [0, 0, 1, 1];
  *     width: 2,
  *     height: 4,
  * });
- * actor.addComponent(BillboardRenderer, billboard);
+ * entity.addComponent(BillboardRenderer, billboard);
  * ```
  */
 @script({

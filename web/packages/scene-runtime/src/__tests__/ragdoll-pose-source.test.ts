@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AnimationController } from '@axrone/animation/controller';
-import { Actor, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Transform, World } from '@axrone/ecs-runtime';
 import { Vec3 } from '@axrone/numeric';
 import { SceneRagdollPoseSource } from '../components/ragdoll-pose-source';
 import { createSceneRegistry } from '../scene-registry';
@@ -38,10 +38,10 @@ const makeStubAnimator = (controller: AnimationController) => {
     return stub as unknown as Animator & { appliedCount: number };
 };
 
-const makeBoneActor = (world: World, position: readonly [number, number, number]): Actor => {
-    const actor = new Actor(world);
-    actor.getComponent(Transform)!.position = new Vec3(position[0], position[1], position[2]);
-    return actor;
+const makeBoneEntity = (world: World, position: readonly [number, number, number]): EntityId => {
+    const entity = new Entity(world);
+    entity.getComponent(Transform)!.position = new Vec3(position[0], position[1], position[2]);
+    return entity;
 };
 
 describe('SceneRagdollPoseSource', () => {
@@ -50,9 +50,9 @@ describe('SceneRagdollPoseSource', () => {
         const controller = makeController();
         const animator = makeStubAnimator(controller);
 
-        const root = makeBoneActor(world, [0, 0, 0]);
-        const upper = makeBoneActor(world, [1, 0, 0]);
-        const lower = makeBoneActor(world, [0, 1, 0]);
+        const root = makeBoneEntity(world, [0, 0, 0]);
+        const upper = makeBoneEntity(world, [1, 0, 0]);
+        const lower = makeBoneEntity(world, [0, 1, 0]);
 
         const source = new SceneRagdollPoseSource();
         source.bind(animator, [root, upper, lower]);
@@ -74,9 +74,9 @@ describe('SceneRagdollPoseSource', () => {
 
         const source = new SceneRagdollPoseSource();
         source.bind(animator, [
-            makeBoneActor(world, [0, 0, 0]),
-            makeBoneActor(world, [1, 0, 0]),
-            makeBoneActor(world, [0, 1, 0]),
+            makeBoneEntity(world, [0, 0, 0]),
+            makeBoneEntity(world, [1, 0, 0]),
+            makeBoneEntity(world, [0, 1, 0]),
         ]);
 
         source.capture();
@@ -94,9 +94,9 @@ describe('SceneRagdollPoseSource', () => {
 
         const source = new SceneRagdollPoseSource();
         source.bind(animator, [
-            makeBoneActor(world, [0, 0, 0]),
-            makeBoneActor(world, [1, 0, 0]),
-            makeBoneActor(world, [0, 1, 0]),
+            makeBoneEntity(world, [0, 0, 0]),
+            makeBoneEntity(world, [1, 0, 0]),
+            makeBoneEntity(world, [0, 1, 0]),
         ]);
 
         source.capture();
@@ -110,19 +110,19 @@ describe('SceneRagdollPoseSource', () => {
         const animator = makeStubAnimator(controller);
         const source = new SceneRagdollPoseSource();
 
-        expect(() => source.bind(animator, [makeBoneActor(world, [0, 0, 0])])).toThrow(
-            /requires 3 bone actors/
+        expect(() => source.bind(animator, [makeBoneEntity(world, [0, 0, 0])])).toThrow(
+            /requires 3 bone entities/
         );
     });
 
-    it('skips a binding whose bone actor has no transform', () => {
+    it('skips a binding whose bone entity has no transform', () => {
         const world = new World(createSceneRegistry());
         const controller = makeController();
         const animator = makeStubAnimator(controller);
 
-        const root = makeBoneActor(world, [0, 0, 0]);
-        const upper = makeBoneActor(world, [1, 0, 0]);
-        const lower = makeBoneActor(world, [0, 1, 0]);
+        const root = makeBoneEntity(world, [0, 0, 0]);
+        const upper = makeBoneEntity(world, [1, 0, 0]);
+        const lower = makeBoneEntity(world, [0, 1, 0]);
         lower.removeComponent(Transform);
 
         const source = new SceneRagdollPoseSource();
@@ -139,9 +139,9 @@ describe('SceneRagdollPoseSource', () => {
 
         const source = new SceneRagdollPoseSource();
         source.bind(animator, [
-            makeBoneActor(world, [0, 0, 0]),
-            makeBoneActor(world, [1, 0, 0]),
-            makeBoneActor(world, [2, 0, 0]),
+            makeBoneEntity(world, [0, 0, 0]),
+            makeBoneEntity(world, [1, 0, 0]),
+            makeBoneEntity(world, [2, 0, 0]),
         ]);
 
         expect(source.has(animator)).toBe(true);

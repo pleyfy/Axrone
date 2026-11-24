@@ -1,27 +1,27 @@
 import {
-    cloneSceneActorSnapshot,
+    cloneSceneEntitySnapshot,
     cloneScenePrefabOverrideOperation,
 } from './scene-prefab-internals';
 import {
     applyScenePrefabOverrideOperations,
     applyScenePrefabOverrides,
     createScenePrefabState,
-    materializeScenePrefabActors,
+    materializeScenePrefabEntities,
 } from './scene-prefab-operations';
 import type {
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     ScenePrefabDefinition,
     ScenePrefabOverrideOperation,
     ScenePrefabReference,
 } from './types';
 
 /**
- * Strips all prefab source/lineage metadata from actors, producing clean
- * standalone actors suitable for a non-instanced prefab definition.
+ * Strips all prefab source/lineage metadata from entities, producing clean
+ * standalone entities suitable for a non-instanced prefab definition.
  */
-const stripActorSourceMetadata = (actor: SceneActorSnapshot): SceneActorSnapshot => {
-    const { source: _source, ...rest } = actor;
-    return cloneSceneActorSnapshot(rest);
+const stripEntitySourceMetadata = (entity: SceneEntitySnapshot): SceneEntitySnapshot => {
+    const { source: _source, ...rest } = entity;
+    return cloneSceneEntitySnapshot(rest);
 };
 
 /**
@@ -30,7 +30,7 @@ const stripActorSourceMetadata = (actor: SceneActorSnapshot): SceneActorSnapshot
  * Given a resolved prefab definition (already resolved through its variant
  * chain and nested instances) and a set of live instance overrides, this
  * function produces a new `ScenePrefabDefinition` with `kind: 'prefab'`
- * that contains fully materialized actors with no `base`, `nested`, or
+ * that contains fully materialized entities with no `base`, `nested`, or
  * `source` metadata.
  *
  * This is the engine-level equivalent of Unity's "Unpack Prefab" operation.
@@ -45,12 +45,12 @@ export const unpackScenePrefabInstance = (
             ? applyScenePrefabOverrides(definition, overrides)
             : definition;
 
-    const actors = withOverrides.actors.map(stripActorSourceMetadata);
+    const entities = withOverrides.entities.map(stripEntitySourceMetadata);
 
     return {
         id: unpackedId ?? definition.id,
         kind: 'prefab',
-        actors,
+        entities,
         ...(definition.metadata ? { metadata: definition.metadata } : {}),
     };
 };
@@ -81,7 +81,7 @@ export const createScenePrefabVariant = (
     return {
         id: variantId,
         kind: 'variant',
-        actors: [],
+        entities: [],
         base,
         overrides: overrides.map((operation) => cloneScenePrefabOverrideOperation(operation)),
         ...(metadata ? { metadata } : {}),
@@ -108,19 +108,19 @@ export const applyOverridesToBaseDefinition = (
         return {
             id: base.id,
             kind: 'prefab',
-            actors: base.actors.map((actor) => cloneSceneActorSnapshot(actor)),
+            entities: base.entities.map((entity) => cloneSceneEntitySnapshot(entity)),
             ...(base.metadata ? { metadata: base.metadata } : {}),
         };
     }
 
     const state = createScenePrefabState(base);
     applyScenePrefabOverrideOperations(state, overrides);
-    const actors = materializeScenePrefabActors(state);
+    const entities = materializeScenePrefabEntities(state);
 
     return {
         id: base.id,
         kind: 'prefab',
-        actors,
+        entities,
         ...(base.metadata ? { metadata: base.metadata } : {}),
     };
 };

@@ -1,4 +1,4 @@
-import { Transform, type Actor } from '@axrone/ecs-runtime';
+import { Transform, type EntityId } from '@axrone/ecs-runtime';
 import { Rect } from '@axrone/numeric';
 import { transformPoint2D } from '@axrone/render-core';
 import {
@@ -37,7 +37,7 @@ const MIN_CLIP_W = 1e-6;
 
 /**
  * The general sprite batch builder splits at 2048 quads per batch. Below that
- * actor count the cached batch path is already a single draw, so the derived
+ * entity count the cached batch path is already a single draw, so the derived
  * instance registry only engages once a pass would otherwise split batches or
  * where per-frame submission churn dominates. Small scenes keep their existing
  * behaviour (and draw statistics) untouched.
@@ -94,33 +94,33 @@ interface SceneResolvedSpriteMaskState {
  * and never retain the builder's `Render2DSpriteBatchBuildResult`.
  */
 interface SceneSpriteMaskCacheSignature {
-    readonly actor: Actor;
+    readonly entity: EntityId;
     readonly mask: SpriteMask;
     readonly transform: Transform;
-    readonly actorRevision: number;
+    readonly entityRevision: number;
     readonly transformRevision: number;
     readonly maskRevision: number;
 }
 
 interface SceneSpriteBatchCacheEntry {
-    readonly actors: readonly Actor[];
-    readonly actorRevisions: Uint32Array;
+    readonly entities: readonly EntityId[];
+    readonly entityRevisions: Uint32Array;
     readonly transformRevisions: Uint32Array;
     readonly rendererRevisions: Uint32Array;
     /**
-     * Index-aligned component references. `actor.revision` changes whenever the
-     * component set changes, so a matched actor revision guarantees these refs
-     * are still attached to the same actor.
+     * Index-aligned component references. `entity.revision` changes whenever the
+     * component set changes, so a matched entity revision guarantees these refs
+     * are still attached to the same entity.
      */
     readonly transformRefs: (Transform | null)[];
     readonly rendererRefs: (SpriteRenderer | null)[];
-    readonly actorCount: number;
+    readonly registeredEntityCount: number;
     readonly cameraKey: string;
     readonly viewportWidth: number;
     readonly viewportHeight: number;
     readonly budgetTotal: number;
     readonly budgetRemaining: number;
-    readonly renderableActorCount: number;
+    readonly renderableEntityCount: number;
     readonly maskSignatures: readonly SceneSpriteMaskCacheSignature[];
     readonly batches: Render2DSpriteBatchRange[];
     readonly indexType: number;
@@ -154,7 +154,7 @@ export interface SceneSpriteBatchRuntimeOptions {
 }
 
 export interface SceneSpriteBatchRuntimeRenderParams {
-    readonly actors: readonly Actor[];
+    readonly entities: readonly EntityId[];
     readonly cameraFrame: SceneCameraFrameState;
     readonly renderPass: SceneRenderPassResource;
     readonly frameState: SceneRenderFrameState;
@@ -234,7 +234,7 @@ export class SceneSpriteBatchRuntime {
 
         const passId = params.renderPass.rendererPassId;
 
-        // Derived fast path: homogeneous passes with a stable actor/component
+        // Derived fast path: homogeneous passes with a stable entity/component
         // graph stream straight into persistent instance buffers and skip the
         // per-frame collect/sort/submission work entirely.
         const direct = this._tryRenderDirectInstances(params, passId);
@@ -277,7 +277,7 @@ export class SceneSpriteBatchRuntime {
         this._missStreak.set(passId, missStreak);
         const useInstanced = !this._cacheEnabled || missStreak >= 3;
 
-        const items = this._collector.collect(params.actors, passId, {
+        const items = this._collector.collect(params.entities, passId, {
             cameraFrustum: params.cameraFrame.camera3D.frustum,
         });
         if (items.length === 0) {
@@ -301,7 +301,7 @@ export class SceneSpriteBatchRuntime {
             }
 
             const maskState = this._resolveMaskState(
-                item.actor,
+                item.entity,
                 params.cameraFrame,
                 params.viewportWidth,
                 params.viewportHeight
@@ -541,7 +541,7 @@ export class SceneSpriteBatchRuntime {
     ): boolean {
         return (
             entry.safe &&
-            entry.actors === params.actors &&
+            entry.entities === params.entities &&
             entry.cameraKey === cameraKey &&
             entry.viewportWidth === params.viewportWidth &&
             entry.viewportHeight === params.viewportHeight &&
@@ -550,7 +550,7 @@ export class SceneSpriteBatchRuntime {
             // Another pass uploaded into the shared buffers since this entry
             // was stored, so the cached batch ranges no longer match the GPU data.
             this._cachedBufferOwner === entry &&
-            this._matchesActorSignatures(entry, params.actors, passId) &&
+            this._matchesEntitySignatures(entry, params.entities, passId) &&
             this._matchesMaskSignatures(entry)
         );
     }
@@ -559,8 +559,8 @@ export class SceneSpriteBatchRuntime {
         for (let index = 0; index < entry.maskSignatures.length; index += 1) {
             const signature = entry.maskSignatures[index]!;
             if (
-                !signature.actor.active ||
-                signature.actor.revision !== signature.actorRevision ||
+                !signature.entity.active ||
+                signature.entity.revision !== signature.entityRevision ||
                 signature.transform.revision !== signature.transformRevision ||
                 signature.mask.revision !== signature.maskRevision
             ) {
@@ -571,24 +571,24 @@ export class SceneSpriteBatchRuntime {
     }
 
     private _collectMaskSignatures(
-        actors: readonly Actor[]
+        entities: readonly EntityId[]
     ): SceneSpriteMaskCacheSignature[] | null {
         const signatures: SceneSpriteMaskCacheSignature[] = [];
-        for (let index = 0; index < actors.length; index += 1) {
-            const actor = actors[index]!;
-            const mask = actor.getComponent(SpriteMask);
+        for (let index = 0; index < entities.length; index += 1) {
+            const entity = entities[index]!;
+            const mask = entity.getComponent(SpriteMask);
             if (!mask) {
                 continue;
             }
-            const transform = actor.getComponent(Transform);
+            const transform = entity.getComponent(Transform);
             if (!transform) {
                 return null;
             }
             signatures.push({
-                actor,
+                entity,
                 mask,
                 transform,
-                actorRevision: actor.revision,
+                entityRevision: entity.revision,
                 transformRevision: transform.revision,
                 maskRevision: mask.revision,
             });
@@ -596,19 +596,19 @@ export class SceneSpriteBatchRuntime {
         return signatures;
     }
 
-    private _matchesActorSignatures(
+    private _matchesEntitySignatures(
         entry: SceneSpriteBatchCacheEntry,
-        actors: readonly Actor[],
+        entities: readonly EntityId[],
         passId: string
     ): boolean {
-        if (entry.actorCount !== actors.length) {
+        if (entry.registeredEntityCount !== entities.length) {
             return false;
         }
 
-        let renderableActorCount = 0;
-        for (let index = 0; index < actors.length; index += 1) {
-            const actor = actors[index]!;
-            if (actor.revision !== entry.actorRevisions[index]) {
+        let renderableEntityCount = 0;
+        for (let index = 0; index < entities.length; index += 1) {
+            const entity = entities[index]!;
+            if (entity.revision !== entry.entityRevisions[index]) {
                 return false;
             }
 
@@ -623,7 +623,7 @@ export class SceneSpriteBatchRuntime {
             }
 
             if (
-                actor.active &&
+                entity.active &&
                 transform &&
                 renderer &&
                 renderer.enabled &&
@@ -631,13 +631,13 @@ export class SceneSpriteBatchRuntime {
                 renderer.hasRenderableSource &&
                 renderer.passId === passId
             ) {
-                renderableActorCount += 1;
+                renderableEntityCount += 1;
             }
         }
 
         // Guards against a renderable-set change that slipped past the
         // revision snapshot (e.g. a component swapped between frames).
-        return renderableActorCount === entry.renderableActorCount;
+        return renderableEntityCount === entry.renderableEntityCount;
     }
 
     private _replayCache(
@@ -720,61 +720,61 @@ export class SceneSpriteBatchRuntime {
         stats: SceneSpriteBatchRuntimeRenderStats
     ): void {
         const previous = this._batchCache.get(passId);
-        const actors = params.actors;
-        const actorCount = actors.length;
+        const entities = params.entities;
+        const registeredEntityCount = entities.length;
         const structureChanged =
-            !previous || previous.actors !== actors || previous.actorCount !== actorCount;
+            !previous || previous.entities !== entities || previous.registeredEntityCount !== registeredEntityCount;
 
-        let actorRevisions: Uint32Array;
+        let entityRevisions: Uint32Array;
         let transformRevisions: Uint32Array;
         let rendererRevisions: Uint32Array;
         if (
             previous &&
-            previous.actorRevisions.length === actorCount &&
-            previous.transformRevisions.length === actorCount &&
-            previous.rendererRevisions.length === actorCount
+            previous.entityRevisions.length === registeredEntityCount &&
+            previous.transformRevisions.length === registeredEntityCount &&
+            previous.rendererRevisions.length === registeredEntityCount
         ) {
-            actorRevisions = previous.actorRevisions;
+            entityRevisions = previous.entityRevisions;
             transformRevisions = previous.transformRevisions;
             rendererRevisions = previous.rendererRevisions;
         } else {
-            actorRevisions = new Uint32Array(actorCount);
-            transformRevisions = new Uint32Array(actorCount);
-            rendererRevisions = new Uint32Array(actorCount);
+            entityRevisions = new Uint32Array(registeredEntityCount);
+            transformRevisions = new Uint32Array(registeredEntityCount);
+            rendererRevisions = new Uint32Array(registeredEntityCount);
         }
 
-        let renderableActorCount = 0;
+        let renderableEntityCount = 0;
         let valuesChanged = false;
-        let actorRevisionChanged = false;
+        let entityRevisionChanged = false;
         const transformRefs = previous ? previous.transformRefs : [];
         const rendererRefs = previous ? previous.rendererRefs : [];
-        transformRefs.length = actorCount;
-        rendererRefs.length = actorCount;
+        transformRefs.length = registeredEntityCount;
+        rendererRefs.length = registeredEntityCount;
 
-        for (let index = 0; index < actorCount; index += 1) {
-            const actor = actors[index]!;
-            const actorRevision = actor.revision;
-            const previousActorRevision = previous?.actorRevisions[index];
+        for (let index = 0; index < registeredEntityCount; index += 1) {
+            const entity = entities[index]!;
+            const entityRevision = entity.revision;
+            const previousEntityRevision = previous?.entityRevisions[index];
             const previousTransformRevision = previous?.transformRevisions[index];
             const previousRendererRevision = previous?.rendererRevisions[index];
 
-            // Only re-query components when the actor changed structurally.
-            // Dynamic sprite scenes keep the same actor/component graph and
-            // therefore avoid two component lookups per actor every frame.
+            // Only re-query components when the entity changed structurally.
+            // Dynamic sprite scenes keep the same entity/component graph and
+            // therefore avoid two component lookups per entity every frame.
             let transform = structureChanged ? null : (transformRefs[index] ?? null);
             let renderer = structureChanged ? null : (rendererRefs[index] ?? null);
-            if (structureChanged || (previous && actorRevision !== previousActorRevision)) {
-                transform = actor.getComponent(Transform) ?? null;
-                renderer = actor.getComponent(SpriteRenderer) ?? null;
+            if (structureChanged || (previous && entityRevision !== previousEntityRevision)) {
+                transform = entity.getComponent(Transform) ?? null;
+                renderer = entity.getComponent(SpriteRenderer) ?? null;
             }
 
-            if (previous && !structureChanged && actorRevision !== previousActorRevision) {
-                actorRevisionChanged = true;
+            if (previous && !structureChanged && entityRevision !== previousEntityRevision) {
+                entityRevisionChanged = true;
             }
 
             const transformRevision = transform?.revision ?? 0;
             const rendererRevision = renderer?.revision ?? 0;
-            actorRevisions[index] = actorRevision;
+            entityRevisions[index] = entityRevision;
             transformRefs[index] = transform;
             rendererRefs[index] = renderer;
             transformRevisions[index] = transformRevision;
@@ -783,7 +783,7 @@ export class SceneSpriteBatchRuntime {
             if (
                 previous &&
                 !structureChanged &&
-                (actorRevision !== previousActorRevision ||
+                (entityRevision !== previousEntityRevision ||
                     transformRevision !== previousTransformRevision ||
                     rendererRevision !== previousRendererRevision)
             ) {
@@ -791,7 +791,7 @@ export class SceneSpriteBatchRuntime {
             }
 
             if (
-                actor.active &&
+                entity.active &&
                 transform &&
                 renderer &&
                 renderer.enabled &&
@@ -799,23 +799,23 @@ export class SceneSpriteBatchRuntime {
                 renderer.hasRenderableSource &&
                 renderer.passId === passId
             ) {
-                renderableActorCount += 1;
+                renderableEntityCount += 1;
             }
         }
 
-        // Mask components only need a full scene scan when the actor/component
+        // Mask components only need a full scene scan when the entity/component
         // graph changed. Transform-only dynamic frames just refresh the cached
         // mask revisions, avoiding 50k SpriteMask lookups every frame.
         let maskSignatures: readonly SceneSpriteMaskCacheSignature[];
-        if (previous && !structureChanged && !actorRevisionChanged) {
+        if (previous && !structureChanged && !entityRevisionChanged) {
             maskSignatures = previous.maskSignatures.map((signature) => ({
                 ...signature,
-                actorRevision: signature.actor.revision,
+                entityRevision: signature.entity.revision,
                 transformRevision: signature.transform.revision,
                 maskRevision: signature.mask.revision,
             }));
         } else {
-            const collected = this._collectMaskSignatures(actors);
+            const collected = this._collectMaskSignatures(entities);
             if (!collected) {
                 this._dropCacheEntry(passId);
                 return;
@@ -828,19 +828,19 @@ export class SceneSpriteBatchRuntime {
         // on every miss; the payload is stored once the scene settles.
         if (valuesChanged && !structureChanged) {
             const entry: SceneSpriteBatchCacheEntry = {
-                actors,
-                actorRevisions,
+                entities,
+                entityRevisions,
                 transformRevisions,
                 rendererRevisions,
                 transformRefs,
                 rendererRefs,
-                actorCount,
+                registeredEntityCount,
                 cameraKey,
                 viewportWidth: params.viewportWidth,
                 viewportHeight: params.viewportHeight,
                 budgetTotal,
                 budgetRemaining,
-                renderableActorCount,
+                renderableEntityCount,
                 maskSignatures,
                 batches: previous?.batches ?? [],
                 indexType,
@@ -877,19 +877,19 @@ export class SceneSpriteBatchRuntime {
         }
 
         const entry: SceneSpriteBatchCacheEntry = {
-            actors,
-            actorRevisions,
+            entities,
+            entityRevisions,
             transformRevisions,
             rendererRevisions,
             transformRefs,
             rendererRefs,
-            actorCount,
+            registeredEntityCount,
             cameraKey,
             viewportWidth: params.viewportWidth,
             viewportHeight: params.viewportHeight,
             budgetTotal,
             budgetRemaining,
-            renderableActorCount,
+            renderableEntityCount,
             maskSignatures,
             batches,
             indexType,
@@ -934,8 +934,8 @@ export class SceneSpriteBatchRuntime {
             return null;
         }
 
-        const actors = params.actors;
-        if (actors.length < DIRECT_INSTANCE_MIN_ACTORS) {
+        const entities = params.entities;
+        if (entities.length < DIRECT_INSTANCE_MIN_ACTORS) {
             return null;
         }
 
@@ -964,7 +964,7 @@ export class SceneSpriteBatchRuntime {
             this._instanceRegistries.set(passId, registry);
         }
 
-        let status = registry.sync(actors, passId);
+        let status = registry.sync(entities, passId);
         if (status === 'ineligible') {
             return null;
         }
@@ -977,7 +977,7 @@ export class SceneSpriteBatchRuntime {
             // A component set changed between the structural snapshot and this
             // frame; rebuild once and retry. If it still cannot settle, fall
             // back to the general path for this frame.
-            status = registry.sync(actors, passId);
+            status = registry.sync(entities, passId);
             if (status === 'ineligible') {
                 return null;
             }
@@ -1418,14 +1418,14 @@ export class SceneSpriteBatchRuntime {
     }
 
     private _resolveMaskState(
-        actor: Actor,
+        entity: EntityId,
         cameraFrame: SceneCameraFrameState,
         viewportWidth: number,
         viewportHeight: number
     ): SceneResolvedSpriteMaskState | null {
         let clipRect: Render2DRectLike | undefined;
         let shapeMask: Render2DSpriteMask | undefined;
-        let current: Actor | undefined = actor;
+        let current: EntityId | undefined = entity;
 
         while (current) {
             const mask = current.getComponent(SpriteMask);

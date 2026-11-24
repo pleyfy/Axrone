@@ -1,5 +1,5 @@
 import { Camera3D } from '@axrone/geometry';
-import { Actor, Hierarchy, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Hierarchy, Transform, World } from '@axrone/ecs-runtime';
 import { Vec3 } from '@axrone/numeric';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SpriteMask } from '../components/sprite-mask';
@@ -48,25 +48,25 @@ const readTranslation = (
 
 describe('SceneSpriteInstanceRegistry settled-frame skip', () => {
     let world: World<any>;
-    let actors: Actor[];
+    let entities: EntityId[];
 
-    const spawn = (x: number, textureId = 'tex'): Actor => {
-        const actor = new Actor(world, { name: `Sprite${actors.length}` });
-        actor.addComponent(SpriteRenderer, { textureId, size: [1, 1] });
-        actor.requireComponent(Transform).position = new Vec3(x, 0, 0);
-        actors.push(actor);
-        return actor;
+    const spawn = (x: number, textureId = 'tex'): EntityId => {
+        const entity = new Entity(world, { name: `Sprite${entities.length}` });
+        entity.addComponent(SpriteRenderer, { textureId, size: [1, 1] });
+        entity.requireComponent(Transform).position = new Vec3(x, 0, 0);
+        entities.push(entity);
+        return entity;
     };
 
     const prime = (registry: SceneSpriteInstanceRegistry, frame: SceneCameraFrameState): void => {
-        expect(registry.sync(actors, 'main')).toBe('ready');
+        expect(registry.sync(entities, 'main')).toBe('ready');
         expect(registry.refresh(frame)).toBe(true);
         registry.commit();
     };
 
     beforeEach(() => {
         world = new World({ Hierarchy, Transform, SpriteRenderer, SpriteMask } as any);
-        actors = [];
+        entities = [];
     });
 
     afterEach(() => {
@@ -134,7 +134,7 @@ describe('SceneSpriteInstanceRegistry settled-frame skip', () => {
         expect(registry.staticData[9]).toBeCloseTo(1);
     });
 
-    it('rebuilds when an actor is deactivated and recovers when it returns', () => {
+    it('rebuilds when an entity is deactivated and recovers when it returns', () => {
         const sprite = spawn(0);
         spawn(1);
         const frame = createCameraFrame(createOrthoCamera());
@@ -144,13 +144,13 @@ describe('SceneSpriteInstanceRegistry settled-frame skip', () => {
 
         sprite.active = false;
         expect(registry.refresh(frame)).toBe(false);
-        expect(registry.sync(actors, 'main')).toBe('ready');
+        expect(registry.sync(entities, 'main')).toBe('ready');
         expect(registry.refresh(frame)).toBe(true);
         expect(registry.drawCount).toBe(1);
 
         sprite.active = true;
         expect(registry.refresh(frame)).toBe(false);
-        registry.sync(actors, 'main');
+        registry.sync(entities, 'main');
         registry.refresh(frame);
         expect(registry.drawCount).toBe(2);
     });
@@ -180,8 +180,8 @@ describe('SceneSpriteInstanceRegistry settled-frame skip', () => {
         prime(registry, frame);
         expect(registry.textureId).toBe('tex');
 
-        for (const actor of actors) {
-            actor.requireComponent(SpriteRenderer).textureId = 'atlas-b';
+        for (const entity of entities) {
+            entity.requireComponent(SpriteRenderer).textureId = 'atlas-b';
         }
         // Texture swaps are reclassified in place now: the sweep settles in
         // one refresh and the group layout collapses to the new texture.
@@ -207,15 +207,15 @@ describe('SceneSpriteInstanceRegistry settled-frame skip', () => {
 
         sprite.addComponent(SpriteMask, { size: [4, 4], shape: 'circle' });
 
-        // The added component bumps the actor revision, which asks for a
+        // The added component bumps the entity revision, which asks for a
         // rebuild; the rebuild then sees the mask and declines the pass.
         expect(registry.refresh(frame)).toBe(false);
-        expect(registry.sync(actors, 'main')).toBe('ineligible');
-        // Ineligible results stay cached for the same actor set + pass.
-        expect(registry.sync(actors, 'main')).toBe('ineligible');
+        expect(registry.sync(entities, 'main')).toBe('ineligible');
+        // Ineligible results stay cached for the same entity set + pass.
+        expect(registry.sync(entities, 'main')).toBe('ineligible');
     });
 
-    it('falls back to the full sweep when actors have no world clock', () => {
+    it('falls back to the full sweep when entities have no world clock', () => {
         const transform = new Transform();
         const renderer = new SpriteRenderer({ textureId: 'tex' });
         const detached = {
@@ -228,7 +228,7 @@ describe('SceneSpriteInstanceRegistry settled-frame skip', () => {
                 if (componentType === SpriteRenderer) return renderer;
                 return undefined;
             },
-        } as unknown as Actor;
+        } as unknown as EntityId;
         const frame = createCameraFrame(createOrthoCamera());
         const registry = new SceneSpriteInstanceRegistry();
 

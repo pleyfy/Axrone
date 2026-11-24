@@ -24,10 +24,10 @@
             "import": "./dist/world.mjs",
             "require": "./dist/world.js"
         },
-        "./actor": {
-            "types": "./dist/actor.d.ts",
-            "import": "./dist/actor.mjs",
-            "require": "./dist/actor.js"
+        "./entity": {
+            "types": "./dist/entity.d.ts",
+            "import": "./dist/entity.mjs",
+            "require": "./dist/entity.js"
         },
         "./component": {
             "types": "./dist/component.d.ts",

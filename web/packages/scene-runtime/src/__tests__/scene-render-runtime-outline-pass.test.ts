@@ -1,4 +1,4 @@
-import { Actor, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Transform, World } from '@axrone/ecs-runtime';
 import { Vec3, Vec4 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
 import { Camera } from '../components/camera';
@@ -181,18 +181,18 @@ const createHarness = (options: {
     const gl = createMockGL();
     const world = new World(createSceneRegistry());
 
-    const cameraActor = new Actor(world);
-    cameraActor.addComponent(Camera, { primary: true, near: 0.1, far: 100 });
-    cameraActor.requireComponent(Transform).position = new Vec3(0, 0, 10);
+    const cameraEntity = new Entity(world);
+    cameraEntity.addComponent(Camera, { primary: true, near: 0.1, far: 100 });
+    cameraEntity.requireComponent(Transform).position = new Vec3(0, 0, 10);
 
-    const rendererActor = new Actor(world);
-    rendererActor.addComponent(MeshRenderer, {
+    const rendererEntity = new Entity(world);
+    rendererEntity.addComponent(MeshRenderer, {
         meshId: 'mesh',
         materialId: 'material',
         passId: MAIN_PASS_ID,
         receiveLighting: true,
     });
-    rendererActor.requireComponent(Transform);
+    rendererEntity.requireComponent(Transform);
 
     const mesh: SceneMeshResource = {
         id: 'mesh',
@@ -277,7 +277,7 @@ const createHarness = (options: {
         skyLight: Vec3.ZERO.clone(),
         groundLight: Vec3.ZERO.clone(),
         defaultClearColor: new Vec4(0, 0, 0, 1),
-        getActors: () => world.getAllActors(),
+        getEntitys: () => world.getAllEntities(),
         createMeshResource: vi.fn(() => mesh),
         disposeMesh: vi.fn(),
         applyMissingVertexAttributeDefaults: vi.fn(),
@@ -311,8 +311,8 @@ const createHarness = (options: {
                 materialsStub.revision = materialRevision;
             }
             // Every renderer mutation must be visible to the render-list cache.
-            for (const actor of world.getAllActors()) {
-                const renderer = actor.getComponent(MeshRenderer);
+            for (const entity of world.getAllEntities()) {
+                const renderer = entity.getComponent(MeshRenderer);
                 if (renderer) {
                     renderer.visible = !renderer.visible;
                     renderer.visible = !renderer.visible;
@@ -543,9 +543,9 @@ describe('SceneRenderRuntime outline render pass', () => {
         it('returns the registered list untouched when mesh draws are unavailable', () => {
             const gl = createMockGL();
             const world = new World(createSceneRegistry());
-            const cameraActor = new Actor(world);
-            cameraActor.addComponent(Camera, { primary: true });
-            cameraActor.requireComponent(Transform);
+            const cameraEntity = new Entity(world);
+            cameraEntity.addComponent(Camera, { primary: true });
+            cameraEntity.requireComponent(Transform);
             const mesh: SceneMeshResource = {
                 id: 'mesh',
                 vertexArray: {} as WebGLVertexArrayObject,
@@ -598,7 +598,7 @@ describe('SceneRenderRuntime outline render pass', () => {
                 skyLight: Vec3.ZERO.clone(),
                 groundLight: Vec3.ZERO.clone(),
                 defaultClearColor: new Vec4(0, 0, 0, 1),
-                getActors: () => world.getAllActors(),
+                getEntitys: () => world.getAllEntities(),
                 createMeshResource: vi.fn(() => mesh),
                 disposeMesh: vi.fn(),
                 applyMissingVertexAttributeDefaults: vi.fn(),

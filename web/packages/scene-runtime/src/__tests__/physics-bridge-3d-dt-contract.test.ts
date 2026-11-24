@@ -27,7 +27,7 @@ interface TransformData {
     parent: null;
 }
 
-class MockActor {
+class MockEntity {
     active = true;
     isDestroyed = false;
     private readonly _components: object[] = [];
@@ -46,14 +46,14 @@ class MockActor {
 }
 
 class MockEcsWorld {
-    private readonly _actors: MockActor[] = [];
+    private readonly _entities: MockEntity[] = [];
 
-    addActor(actor: MockActor): void {
-        this._actors.push(actor);
+    addEntity(entity: MockEntity): void {
+        this._entities.push(entity);
     }
 
-    getAllActors(): MockActor[] {
-        return [...this._actors];
+    getAllEntities(): MockEntity[] {
+        return [...this._entities];
     }
 }
 
@@ -91,7 +91,7 @@ const createTransform = (position: Vector3Data): TransformData => {
 
 const addFallingBox = (ecsWorld: MockEcsWorld, position: Vector3Data): Rigidbody3D => {
     const transform = createTransform(position);
-    const actor = new MockActor();
+    const entity = new MockEntity();
 
     const rigidbody = new Rigidbody3D();
     Object.defineProperty(rigidbody, 'transform', {
@@ -99,7 +99,7 @@ const addFallingBox = (ecsWorld: MockEcsWorld, position: Vector3Data): Rigidbody
         configurable: true,
     });
     rigidbody.mass = 1;
-    actor.addComponent(rigidbody);
+    entity.addComponent(rigidbody);
 
     const collider = new BoxCollider3D();
     Object.defineProperty(collider, 'transform', {
@@ -107,9 +107,9 @@ const addFallingBox = (ecsWorld: MockEcsWorld, position: Vector3Data): Rigidbody
         configurable: true,
     });
     collider.size = { x: 0.8, y: 0.8, z: 0.8 };
-    actor.addComponent(collider);
+    entity.addComponent(collider);
 
-    ecsWorld.addActor(actor);
+    ecsWorld.addEntity(entity);
     return rigidbody;
 };
 

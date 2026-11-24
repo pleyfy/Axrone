@@ -38,17 +38,17 @@ describe('Scene2D direct instance path with the atomic 2D TRS API', () => {
 
         try {
             await registerTexture(scene, 'hero');
-            scene.createCameraActor(
+            scene.createCameraEntity(
                 { name: 'Camera' },
                 { primary: true, orthographic: true, orthographicSize: 100 }
             );
-            const actors = scene.createSpriteActors(
+            const entities = scene.createSpriteEntities(
                 Array.from({ length: SPRITE_COUNT }, (_, index) => ({
-                    actorConfig: { name: `Hero${index}` },
+                    entityConfig: { name: `Hero${index}` },
                     spriteConfig: { textureId: 'hero' },
                 }))
             );
-            const transforms = actors.map((actor) => actor.getComponent(Transform)!);
+            const transforms = entities.map((entity) => entity.getComponent(Transform)!);
 
             scene.renderNow();
             expect(scene.renderStats.planning.spriteBatchCount).toBe(1);
@@ -98,13 +98,13 @@ describe('Scene2D direct instance path with the atomic 2D TRS API', () => {
 
         try {
             await registerTexture(scene, 'hero');
-            scene.createCameraActor(
+            scene.createCameraEntity(
                 { name: 'Camera' },
                 { primary: true, orthographic: true, orthographicSize: 100 }
             );
-            scene.createSpriteActors(
+            scene.createSpriteEntities(
                 Array.from({ length: SPRITE_COUNT }, (_, index) => ({
-                    actorConfig: { name: `Hero${index}` },
+                    entityConfig: { name: `Hero${index}` },
                     spriteConfig: { textureId: 'hero' },
                     position: [index % 10, Math.floor(index / 10), 0] as const,
                     rotationZ: index % 7 === 0 ? 0.3 : undefined,

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Component, script } from '@axrone/ecs-runtime';
 import { World } from '@axrone/ecs-runtime';
-import { Actor } from '@axrone/ecs-runtime/actor';
+import { EntityId } from '@axrone/ecs-runtime/entity';
 import { Transform } from '@axrone/ecs-runtime';
-import { createActor } from './factory-helpers';
+import { createEntity } from './factory-helpers';
 
 /**
  * Test component that tracks all lifecycle events
@@ -85,7 +85,7 @@ class DependentComponent extends Component {
     public dependencyResolved = false;
 
     onLoad(): void {
-        this.dependencyResolved = this.actor?.hasComponent(Transform) ?? false;
+        this.dependencyResolved = this.entity?.hasComponent(Transform) ?? false;
     }
 }
 
@@ -105,14 +105,14 @@ class DependentOnCustomComponent extends Component {
     public targetWasInitialized = false;
 
     start(): void {
-        const target = this.actor?.getComponent(DependencyTargetComponent);
+        const target = this.entity?.getComponent(DependencyTargetComponent);
         this.targetWasInitialized = target?.initialized ?? false;
     }
 }
 
 describe('Component Lifecycle Integration', () => {
     let world: World<any>;
-    let actor: Actor;
+    let entity: EntityId;
     let registry: any;
 
     beforeEach(() => {
@@ -127,13 +127,13 @@ describe('Component Lifecycle Integration', () => {
             DependentOnCustomComponent,
         };
         world = new World(registry);
-        actor = createActor(world, 'TestActor');
+        entity = createEntity(world, 'TestEntity');
     });
 
     afterEach(() => {
         try {
-            if (actor && !actor.isDestroyed) {
-                actor.destroy();
+            if (entity && !entity.isDestroyed) {
+                entity.destroy();
             }
         } catch (error) {}
         try {
@@ -145,17 +145,17 @@ describe('Component Lifecycle Integration', () => {
 
     describe('Test Group 1: Basic Lifecycle Flow', () => {
         it('should transition through complete lifecycle: uninitialized → loaded → enabled → destroyed', async () => {
-            const component = actor.addComponent(LifecycleTestComponent);
+            const component = entity.addComponent(LifecycleTestComponent);
 
-            // actor.addComponent triggers onLoad + start + onEnable automatically
+            // entity.addComponent triggers onLoad + start + onEnable automatically
             expect(component.events).toContain('onLoad');
             expect(component.events).toContain('start');
             expect(component.events).toContain('onEnable');
 
-            actor.update(0.016);
+            entity.update(0.016);
             expect(component.events).toContain('update:0.016');
 
-            actor.destroy();
+            entity.destroy();
             expect(component.events).toContain('onDisable');
             expect(component.events).toContain('onDestroy');
         });
@@ -197,19 +197,19 @@ describe('Component Lifecycle Integration', () => {
             component._internalDestroy();
         });
 
-        it('should handle actor-level lifecycle correctly', () => {
-            const component = actor.addComponent(LifecycleTestComponent);
+        it('should handle entity-level lifecycle correctly', () => {
+            const component = entity.addComponent(LifecycleTestComponent);
 
             expect(component.events).toContain('onLoad');
 
-            actor.start();
+            entity.start();
             expect(component.events).toContain('start');
             expect(component.events).toContain('onEnable');
 
-            actor.update(0.016);
+            entity.update(0.016);
             expect(component.events).toContain('update:0.016');
 
-            actor.destroy();
+            entity.destroy();
             expect(component.events).toContain('onDisable');
             expect(component.events).toContain('onDestroy');
         });
@@ -284,34 +284,34 @@ describe('Component Lifecycle Integration', () => {
             component._internalDestroy();
         });
 
-        it('should handle actor-level enable/disable cycle', () => {
-            const component = actor.addComponent(LifecycleTestComponent);
+        it('should handle entity-level enable/disable cycle', () => {
+            const component = entity.addComponent(LifecycleTestComponent);
 
-            actor.start();
+            entity.start();
             expect(component.events).toContain('onEnable');
 
-            actor.active = false;
+            entity.active = false;
             expect(component.events).toContain('onDisable');
 
-            actor.active = true;
+            entity.active = true;
             const onEnableCount = component.events.filter((e) => e === 'onEnable').length;
             expect(onEnableCount).toBe(2);
 
-            actor.destroy();
+            entity.destroy();
         });
 
-        it('should not call update on disabled actor', () => {
-            const component = actor.addComponent(LifecycleTestComponent);
+        it('should not call update on disabled entity', () => {
+            const component = entity.addComponent(LifecycleTestComponent);
 
-            actor.start();
-            actor.active = false;
+            entity.start();
+            entity.active = false;
 
-            actor.update(0.016);
+            entity.update(0.016);
 
             const updateEvents = component.events.filter((e) => e.startsWith('update:'));
             expect(updateEvents).toHaveLength(0);
 
-            actor.destroy();
+            entity.destroy();
         });
     });
 
@@ -319,12 +319,12 @@ describe('Component Lifecycle Integration', () => {
         it('should execute components in priority order (higher number = earlier)', () => {
             resetExecutionLog();
 
-            actor.addComponent(LowPriorityComponent);
-            actor.addComponent(MediumPriorityComponent);
-            actor.addComponent(HighPriorityComponent);
+            entity.addComponent(LowPriorityComponent);
+            entity.addComponent(MediumPriorityComponent);
+            entity.addComponent(HighPriorityComponent);
 
-            actor.start();
-            actor.update(0.016);
+            entity.start();
+            entity.update(0.016);
 
             expect(executionLog).toEqual(['high', 'medium', 'low']);
         });
@@ -332,15 +332,15 @@ describe('Component Lifecycle Integration', () => {
         it('should maintain priority order across multiple updates', () => {
             resetExecutionLog();
 
-            actor.addComponent(LowPriorityComponent);
-            actor.addComponent(MediumPriorityComponent);
-            actor.addComponent(HighPriorityComponent);
+            entity.addComponent(LowPriorityComponent);
+            entity.addComponent(MediumPriorityComponent);
+            entity.addComponent(HighPriorityComponent);
 
-            actor.start();
+            entity.start();
 
-            actor.update(0.016);
-            actor.update(0.016);
-            actor.update(0.016);
+            entity.update(0.016);
+            entity.update(0.016);
+            entity.update(0.016);
 
             expect(executionLog).toHaveLength(9);
 
@@ -366,11 +366,11 @@ describe('Component Lifecycle Integration', () => {
             world.registerComponentType(SamePriorityB);
             resetExecutionLog();
 
-            actor.addComponent(SamePriorityA);
-            actor.addComponent(SamePriorityB);
+            entity.addComponent(SamePriorityA);
+            entity.addComponent(SamePriorityB);
 
-            actor.start();
-            actor.update(0.016);
+            entity.start();
+            entity.update(0.016);
 
             expect(executionLog).toHaveLength(2);
             expect(executionLog).toContain('A');
@@ -380,17 +380,17 @@ describe('Component Lifecycle Integration', () => {
 
     describe('Test Group 4: Dependency Resolution', () => {
         it('should resolve Transform dependency before dependent component starts', () => {
-            const dependent = actor.addComponent(DependentComponent);
+            const dependent = entity.addComponent(DependentComponent);
 
             expect(dependent.dependencyResolved).toBe(true);
-            expect(actor.hasComponent(Transform)).toBe(true);
+            expect(entity.hasComponent(Transform)).toBe(true);
         });
 
         it('should resolve custom component dependencies', () => {
-            const target = actor.addComponent(DependencyTargetComponent);
-            const dependent = actor.addComponent(DependentOnCustomComponent);
+            const target = entity.addComponent(DependencyTargetComponent);
+            const dependent = entity.addComponent(DependentOnCustomComponent);
 
-            actor.start();
+            entity.start();
 
             expect(target.initialized).toBe(true);
             expect(dependent.targetWasInitialized).toBe(true);
@@ -398,20 +398,20 @@ describe('Component Lifecycle Integration', () => {
 
         it('should throw error when dependency is missing', () => {
             expect(() => {
-                actor.addComponent(DependentComponent);
+                entity.addComponent(DependentComponent);
             }).not.toThrow();
 
-            const dependent = actor.getComponent(DependentComponent);
+            const dependent = entity.getComponent(DependentComponent);
             expect(dependent).toBeDefined();
         });
 
-        it('should maintain dependency order during actor start', () => {
-            const target = actor.addComponent(DependencyTargetComponent);
-            const dependent = actor.addComponent(DependentOnCustomComponent);
+        it('should maintain dependency order during entity start', () => {
+            const target = entity.addComponent(DependencyTargetComponent);
+            const dependent = entity.addComponent(DependentOnCustomComponent);
 
             expect(target.initialized).toBe(true);
 
-            actor.start();
+            entity.start();
 
             expect(dependent.targetWasInitialized).toBe(true);
         });
@@ -419,46 +419,46 @@ describe('Component Lifecycle Integration', () => {
 
     describe('Test Group 5: Scene-Level Lifecycle', () => {
         it('should run update through scene scheduler', () => {
-            const component = actor.addComponent(LifecycleTestComponent);
+            const component = entity.addComponent(LifecycleTestComponent);
 
-            actor.start();
-            actor.update(0.016);
+            entity.start();
+            entity.update(0.016);
 
             expect(component.events).toContain('update:0.016');
 
-            actor.destroy();
+            entity.destroy();
         });
 
         it('should run lateUpdate after all updates', () => {
-            const component = actor.addComponent(LifecycleTestComponent);
+            const component = entity.addComponent(LifecycleTestComponent);
 
-            actor.start();
-            actor.lateUpdate(0.016);
+            entity.start();
+            entity.lateUpdate(0.016);
 
             expect(component.events).toContain('lateUpdate:0.016');
 
-            actor.destroy();
+            entity.destroy();
         });
 
         it('should run fixedUpdate at fixed intervals', () => {
-            const component = actor.addComponent(LifecycleTestComponent);
+            const component = entity.addComponent(LifecycleTestComponent);
 
-            actor.start();
-            actor.fixedUpdate(0.02);
+            entity.start();
+            entity.fixedUpdate(0.02);
 
             expect(component.events).toContain('fixedUpdate:0.02');
 
-            actor.destroy();
+            entity.destroy();
         });
 
         it('should execute lifecycle phases in correct order: fixedUpdate → update → lateUpdate', () => {
-            const component = actor.addComponent(LifecycleTestComponent);
+            const component = entity.addComponent(LifecycleTestComponent);
 
-            actor.start();
+            entity.start();
 
-            actor.fixedUpdate(0.02);
-            actor.update(0.016);
-            actor.lateUpdate(0.016);
+            entity.fixedUpdate(0.02);
+            entity.update(0.016);
+            entity.lateUpdate(0.016);
 
             const fixedIndex = component.events.indexOf('fixedUpdate:0.02');
             const updateIndex = component.events.indexOf('update:0.016');
@@ -467,25 +467,25 @@ describe('Component Lifecycle Integration', () => {
             expect(fixedIndex).toBeLessThan(updateIndex);
             expect(updateIndex).toBeLessThan(lateIndex);
 
-            actor.destroy();
+            entity.destroy();
         });
 
-        it('should not execute updates on inactive actor', () => {
-            const component = actor.addComponent(LifecycleTestComponent);
+        it('should not execute updates on inactive entity', () => {
+            const component = entity.addComponent(LifecycleTestComponent);
 
-            actor.start();
-            actor.active = false;
+            entity.start();
+            entity.active = false;
 
-            actor.update(0.016);
-            actor.lateUpdate(0.016);
-            actor.fixedUpdate(0.02);
+            entity.update(0.016);
+            entity.lateUpdate(0.016);
+            entity.fixedUpdate(0.02);
 
             const updateEvents = component.events.filter((e) =>
                 e.startsWith('update:') || e.startsWith('lateUpdate:') || e.startsWith('fixedUpdate:')
             );
             expect(updateEvents).toHaveLength(0);
 
-            actor.destroy();
+            entity.destroy();
         });
     });
 

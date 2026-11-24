@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-21T18:53:26.592Z",
+  "generatedAt": "2026-11-22T12:59:06.594Z",
   "engineVersion": "0.0.1",
   "packages": [
     {
@@ -3574,7 +3574,6 @@
         "IRaycastResult3D",
         "InvalidRayError",
         "IslandSolver2D",
-        "JOINT_2D_BREAK_LIMIT",
         "JOINT_CAPABILITY_2D",
         "JOINT_CAPABILITY_3D",
         "Joint2D",
@@ -3648,7 +3647,6 @@
         "SpringJoint3D",
         "TOIState",
         "WheelJoint2D",
-        "_getPhysicsWorld2DBridgeProvider",
         "_setPhysicsWorld2DBridgeProvider",
         "createAdaptiveRaycaster3D",
         "createBoxCastOrigins3D",
@@ -3659,13 +3657,9 @@
         "createRaycastSystem3D",
         "createShapeCaster3D",
         "createSphereCastOrigins3D",
-        "encodeBreakLimit",
         "interpolateHit2D",
         "interpolateHit3D",
-        "isComponentReference",
-        "makeCollisionPairKey",
-        "normalizeBreakLimit",
-        "resolveBridgePhysicsWorld2D"
+        "makeCollisionPairKey"
       ],
       "typeExports": [
         "AngularVelocity",
@@ -3837,7 +3831,6 @@
         "GearJoint2D",
         "HingeJoint2D",
         "IslandSolver2D",
-        "JOINT_2D_BREAK_LIMIT",
         "JOINT_CAPABILITY_2D",
         "Joint2D",
         "MotorJoint2D",
@@ -3855,12 +3848,7 @@
         "SliderJoint2D",
         "SpringJoint2D",
         "WheelJoint2D",
-        "_getPhysicsWorld2DBridgeProvider",
-        "_setPhysicsWorld2DBridgeProvider",
-        "encodeBreakLimit",
-        "isComponentReference",
-        "normalizeBreakLimit",
-        "resolveBridgePhysicsWorld2D"
+        "_setPhysicsWorld2DBridgeProvider"
       ],
       "typeExports": [
         "JointCapability2D",
@@ -5886,7 +5874,6 @@
       "version": "0.1.0",
       "description": "",
       "exports": [
-        "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES",
         "SCENE_2D_RUNTIME_PROFILE_ID",
         "SceneRuntimeProfile",
         "SceneRuntimeProfileContext",
@@ -5896,13 +5883,6 @@
       "typeExports": [],
       "hasDefaultExport": false,
       "subpaths": [
-        {
-          "path": "@axrone/runtime-profile-2d/capabilities",
-          "exports": [
-            "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES"
-          ],
-          "typeExports": []
-        },
         {
           "path": "@axrone/runtime-profile-2d/profile",
           "exports": [
@@ -6093,7 +6073,6 @@
         "Scene2D",
         "SceneActorRuntime",
         "SceneActorSnapshot",
-        "SceneAnimationClipAssetLibrary",
         "SceneAssetFacade",
         "SceneAssetRuntime",
         "SceneBatchRuntimeFactory",
@@ -6170,7 +6149,6 @@
         "ScenePrefabResolvedDefinition",
         "ScenePrefabResolver",
         "ScenePrefabValidationError",
-        "SceneRagdollPoseSource",
         "SceneRegistry",
         "SceneRegistryBuilderOptions",
         "SceneRegistryForBuiltIns",
@@ -6273,7 +6251,6 @@
         "parseAssetReferenceToken",
         "parseAssetVersionedReferenceToken",
         "requireRegisteredComponent",
-        "resolveAnimationClipAssets",
         "resolveAssetMessage",
         "resolvePhysicsBridgesForProfile",
         "resolveSceneAmbientLight",
@@ -6286,7 +6263,6 @@
         "resolveSceneRuntimeBuiltInComponents",
         "resolveSceneRuntimeComposition",
         "resolveSceneSkyLight",
-        "sceneAnimationClipAssets",
         "serializeSpriteAtlasDefinition",
         "setSceneUIWidgetRefResolver"
       ],
@@ -6297,7 +6273,6 @@
         "AnimationStreamingChunkResolver",
         "AnimationStreamingRequestEvent",
         "AnimationStreamingResolveContext",
-        "AnimatorClipAssetReference",
         "AnimatorClipConfig",
         "AnimatorConfig",
         "AnimatorTrackConfig",
@@ -6384,7 +6359,6 @@
         "ResolvedAnimationStreamingChunk",
         "Scene2DBulkSpriteConfig",
         "SceneActorRuntimeOptions",
-        "SceneAnimationClipAsset",
         "SceneAssetRuntimeOptions",
         "SceneFogMode",
         "SceneFogState",
@@ -6660,7 +6634,6 @@
         "SceneActorLifecycleRunner",
         "SceneActorRuntime",
         "SceneActorSnapshot",
-        "SceneAnimationClipAssetLibrary",
         "SceneAssetFacade",
         "SceneAssetRuntime",
         "SceneBatchRuntimeFactory",
@@ -6756,7 +6729,6 @@
         "ScenePrefabResolvedDefinition",
         "ScenePrefabResolver",
         "ScenePrefabValidationError",
-        "SceneRagdollPoseSource",
         "SceneRegistry",
         "SceneRegistryBuilderOptions",
         "SceneRegistryForBuiltIns",
@@ -6882,7 +6854,6 @@
         "isGLContextError",
         "normalizeSceneTextureBinding",
         "requireRegisteredComponent",
-        "resolveAnimationClipAssets",
         "resolveContext",
         "resolveContextGL",
         "resolveContextNullable",
@@ -6901,7 +6872,6 @@
         "resolveSceneSkyLight",
         "resolveSceneSurface",
         "resolveSurfaceFeatures",
-        "sceneAnimationClipAssets",
         "selectSceneCamera",
         "setSceneUIWidgetRefResolver",
         "throwContextCreationFailed",
@@ -6916,7 +6886,6 @@
         "AnimationStreamingChunkResolver",
         "AnimationStreamingRequestEvent",
         "AnimationStreamingResolveContext",
-        "AnimatorClipAssetReference",
         "AnimatorClipConfig",
         "AnimatorConfig",
         "AnimatorTrackConfig",
@@ -7002,7 +6971,6 @@
         "Scene3DActorRuntimeOptions",
         "SceneActorLifecycleRunnerOptions",
         "SceneActorRuntimeOptions",
-        "SceneAnimationClipAsset",
         "SceneAssetRuntimeOptions",
         "SceneCameraFrameState",
         "SceneComponentTypeResolver",
@@ -7498,7 +7466,6 @@
         "ParticleSystem",
         "PathAgent",
         "PointLight",
-        "REFRACTION_COPY_PASS_ID",
         "ReflectionProbe",
         "RenderShaderAttributeDefinition",
         "RenderShaderEffectDefinition",
@@ -7518,24 +7485,15 @@
         "SCENE_3D_RUNTIME_PROFILE_ID",
         "SCENE_ANIMATION_BUILT_IN_MANIFEST",
         "SCENE_ATTRIBUTE_LOCATIONS",
-        "SCENE_COLOR_COPY_TEXTURE_ID",
-        "SCENE_COLOR_COPY_UNIFORM_NAME",
         "SCENE_CORE_BUILT_IN_MANIFEST",
-        "SCENE_FRAMEBUFFER_PASS_DEFINITIONS",
-        "SCENE_FRAMEBUFFER_RENDERER_PASS_ID",
         "SCENE_MIXED_RUNTIME_PROFILE_ID",
         "SCENE_RENDER_CAPABILITIES_ALL",
         "SCENE_RUNTIME_CORE_BUILT_IN_MANIFEST",
         "SCENE_RUNTIME_PROFILER_PHASES",
-        "SCENE_TILEMAP_BUILT_IN_MANIFEST",
         "SCENE_UI_BUILT_IN_MANIFEST",
-        "SSS_BLUR_PASS_ID",
-        "SSS_BLUR_TEXTURE_ID",
-        "SSS_BLUR_UNIFORM_NAME",
         "SceneActorLifecycleRunner",
         "SceneActorRuntime",
         "SceneActorSnapshot",
-        "SceneAnimationClipAssetLibrary",
         "SceneAssetFacade",
         "SceneAssetRuntime",
         "SceneBatchRuntimeFactory",
@@ -7558,7 +7516,6 @@
         "SceneError",
         "SceneFogUniformBinder",
         "SceneFrameUniformBinder",
-        "SceneFramebufferPassRuntime",
         "SceneGeometryMeshBuilder",
         "SceneInstancingMode",
         "SceneLifecycleError",
@@ -7634,7 +7591,6 @@
         "ScenePrefabResolvedDefinition",
         "ScenePrefabResolver",
         "ScenePrefabValidationError",
-        "SceneRagdollPoseSource",
         "SceneRegistry",
         "SceneRegistryBuilderOptions",
         "SceneRegistryForBuiltIns",
@@ -7689,15 +7645,7 @@
         "SpriteAnimator",
         "SpriteMask",
         "SpriteRenderer",
-        "TILEMAP_SCENE_BUILT_IN_MANIFESTS",
         "Terrain",
-        "TilemapAgent",
-        "TilemapCollider2D",
-        "TilemapInstanceSource",
-        "TilemapRenderRuntime",
-        "TilemapRenderer",
-        "TilemapRuntime",
-        "TilemapRuntimeSet",
         "TrailRenderer",
         "UIHost",
         "bindAnimationStreamingBridge",
@@ -7731,12 +7679,6 @@
         "createSprite2DShaderDefinition",
         "createTerrainFoliageShaderDefinition",
         "createTerrainSplatShaderDefinition",
-        "createTilemapAgentSystem",
-        "createTilemapPagingPostSystem",
-        "createTilemapPagingPreSystem",
-        "createTilemapSceneRegistry",
-        "createTilemapSceneRegistryFromBuiltInManifests",
-        "createTilesetFrameTable",
         "decodeSceneValue",
         "encodeSceneValue",
         "generateSceneShaderVariantKey",
@@ -7748,14 +7690,9 @@
         "getDefaultSceneRuntimeProfile",
         "getMixedSceneRuntimeProfile",
         "getSceneComponentTypeName",
-        "getSceneFramebufferPassDefinition",
         "getSceneUIWidgetRefResolver",
-        "getTilemapSceneBuiltInRegistrySource",
-        "isSceneFramebufferPassId",
         "normalizeSceneTextureBinding",
-        "planSceneFramebufferPasses",
         "requireRegisteredComponent",
-        "resolveAnimationClipAssets",
         "resolveCameraVerticalFieldOfViewRadians",
         "resolvePhysicsBridgesForProfile",
         "resolveSceneAmbientLight",
@@ -7771,11 +7708,8 @@
         "resolveSceneSkyLight",
         "resolveSceneSurface",
         "resolveSurfaceFeatures",
-        "resolveTilemapCameraRect",
-        "sceneAnimationClipAssets",
         "selectSceneCamera",
-        "setSceneUIWidgetRefResolver",
-        "toSceneRenderPassDefinitions"
+        "setSceneUIWidgetRefResolver"
       ],
       "typeExports": [
         "AnimationStreamingBridgeOptions",
@@ -7784,7 +7718,6 @@
         "AnimationStreamingChunkResolver",
         "AnimationStreamingRequestEvent",
         "AnimationStreamingResolveContext",
-        "AnimatorClipAssetReference",
         "AnimatorClipConfig",
         "AnimatorConfig",
         "AnimatorTrackConfig",
@@ -7836,7 +7769,6 @@
         "SceneActorFactory",
         "SceneActorLifecycleRunnerOptions",
         "SceneActorRuntimeOptions",
-        "SceneAnimationClipAsset",
         "SceneAssetRuntimeOptions",
         "SceneBuiltInComponentName",
         "SceneBuiltInManifest",
@@ -7851,10 +7783,6 @@
         "SceneFogMode",
         "SceneFogState",
         "SceneFrameUniformContext",
-        "SceneFramebufferPassDefinition",
-        "SceneFramebufferPassId",
-        "SceneFramebufferPassStats",
-        "SceneFramebufferTextureBindings",
         "SceneInstancingMode",
         "SceneLifecycle",
         "SceneLifecycleRuntimeOptions",
@@ -7994,7 +7922,6 @@
         "SceneTextureResource",
         "SceneTextureResourceHandle",
         "SceneTextureSourceDefinition",
-        "SceneTilemapRenderRuntimeLike",
         "SceneUIWidgetRef",
         "SceneUIWidgetRefResolver",
         "SceneUniformValue",
@@ -8016,19 +7943,6 @@
         "SpriteRendererSizeInput",
         "SpriteRendererVec2Input",
         "TerrainConfig",
-        "TilemapAgentConfig",
-        "TilemapCameraRectProvider",
-        "TilemapCollider2DConfig",
-        "TilemapInstanceSourceOptions",
-        "TilemapLayerOverride",
-        "TilemapLayerView",
-        "TilemapRenderParams",
-        "TilemapRenderRuntimeOptions",
-        "TilemapRendererConfig",
-        "TilemapRendererTint",
-        "TilemapRuntimeConfig",
-        "TilemapRuntimeSnapshot",
-        "TilesetFrameTable",
         "TrailAlignment",
         "TrailRendererConfig",
         "TrailRendererGradientStop",
@@ -8141,15 +8055,7 @@
             "FetchAnimationStreamingResolverOptions",
             "PrefabNodeBinding",
             "PrefabNodeBindingConfig",
-            "REFRACTION_COPY_PASS_ID",
             "ResolvedAnimationStreamingChunk",
-            "SCENE_COLOR_COPY_TEXTURE_ID",
-            "SCENE_COLOR_COPY_UNIFORM_NAME",
-            "SCENE_FRAMEBUFFER_PASS_DEFINITIONS",
-            "SCENE_FRAMEBUFFER_RENDERER_PASS_ID",
-            "SSS_BLUR_PASS_ID",
-            "SSS_BLUR_TEXTURE_ID",
-            "SSS_BLUR_UNIFORM_NAME",
             "SceneAssetFacade",
             "SceneBatchRuntimeFactory",
             "SceneBatchRuntimeFactoryContext",
@@ -8161,7 +8067,6 @@
             "SceneDrawExecutorContext",
             "SceneFogMode",
             "SceneFogState",
-            "SceneFramebufferPassRuntime",
             "SceneGeometryMeshBuilder",
             "SceneLodEvaluator",
             "SceneParticleBatchRuntime",
@@ -8188,19 +8093,11 @@
             "createFetchAnimationStreamingResolver",
             "createRenderCacheCameraKey",
             "createSceneShaderDefinitionFromEffect",
-            "getSceneFramebufferPassDefinition",
-            "isSceneFramebufferPassId",
-            "planSceneFramebufferPasses",
             "requireRegisteredComponent",
-            "resolveSceneFogState",
-            "toSceneRenderPassDefinitions"
+            "resolveSceneFogState"
           ],
           "typeExports": [
             "RenderCacheViewport",
-            "SceneFramebufferPassDefinition",
-            "SceneFramebufferPassId",
-            "SceneFramebufferPassStats",
-            "SceneFramebufferTextureBindings",
             "SceneLodEvaluateParams",
             "SceneLodEvaluateStats",
             "SceneSpriteBatchRuntimeOptions",
@@ -8757,44 +8654,6 @@
             "SpriteRendererRectState",
             "SpriteRendererSizeInput",
             "SpriteRendererVec2Input"
-          ]
-        },
-        {
-          "path": "@axrone/scene-runtime/scene-tilemap",
-          "exports": [
-            "SCENE_TILEMAP_BUILT_IN_MANIFEST",
-            "TILEMAP_SCENE_BUILT_IN_MANIFESTS",
-            "TilemapAgent",
-            "TilemapCollider2D",
-            "TilemapInstanceSource",
-            "TilemapRenderRuntime",
-            "TilemapRenderer",
-            "TilemapRuntime",
-            "TilemapRuntimeSet",
-            "createTilemapAgentSystem",
-            "createTilemapPagingPostSystem",
-            "createTilemapPagingPreSystem",
-            "createTilemapSceneRegistry",
-            "createTilemapSceneRegistryFromBuiltInManifests",
-            "createTilesetFrameTable",
-            "getTilemapSceneBuiltInRegistrySource",
-            "resolveTilemapCameraRect"
-          ],
-          "typeExports": [
-            "SceneTilemapRenderRuntimeLike",
-            "TilemapAgentConfig",
-            "TilemapCameraRectProvider",
-            "TilemapCollider2DConfig",
-            "TilemapInstanceSourceOptions",
-            "TilemapLayerOverride",
-            "TilemapLayerView",
-            "TilemapRenderParams",
-            "TilemapRenderRuntimeOptions",
-            "TilemapRendererConfig",
-            "TilemapRendererTint",
-            "TilemapRuntimeConfig",
-            "TilemapRuntimeSnapshot",
-            "TilesetFrameTable"
           ]
         },
         {
@@ -11663,16 +11522,6 @@
       "kind": "const"
     },
     {
-      "name": "_getPhysicsWorld2DBridgeProvider",
-      "package": "@axrone/physics",
-      "kind": "unknown"
-    },
-    {
-      "name": "_getPhysicsWorld2DBridgeProvider",
-      "package": "@axrone/physics-2d",
-      "kind": "function"
-    },
-    {
       "name": "_setPhysicsWorld2DBridgeProvider",
       "package": "@axrone/physics",
       "kind": "unknown"
@@ -12786,21 +12635,6 @@
       "name": "Animator",
       "package": "@axrone/scene-runtime",
       "kind": "class"
-    },
-    {
-      "name": "AnimatorClipAssetReference",
-      "package": "@axrone/scene-2d",
-      "kind": "unknown"
-    },
-    {
-      "name": "AnimatorClipAssetReference",
-      "package": "@axrone/scene-3d",
-      "kind": "unknown"
-    },
-    {
-      "name": "AnimatorClipAssetReference",
-      "package": "@axrone/scene-runtime",
-      "kind": "interface"
     },
     {
       "name": "AnimatorClipConfig",
@@ -20063,44 +19897,14 @@
       "kind": "const"
     },
     {
-      "name": "createTilemapAgentSystem",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
       "name": "createTilemapAssetDefinition",
       "package": "@axrone/asset-tilemap",
       "kind": "const"
     },
     {
-      "name": "createTilemapPagingPostSystem",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "createTilemapPagingPreSystem",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "createTilemapSceneRegistry",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "createTilemapSceneRegistryFromBuiltInManifests",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
       "name": "createTilesetDefinition",
       "package": "@axrone/asset-tilemap",
       "kind": "const"
-    },
-    {
-      "name": "createTilesetFrameTable",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
     },
     {
       "name": "createTorus",
@@ -21505,16 +21309,6 @@
     {
       "name": "encodeBase64",
       "package": "@axrone/hash",
-      "kind": "function"
-    },
-    {
-      "name": "encodeBreakLimit",
-      "package": "@axrone/physics",
-      "kind": "unknown"
-    },
-    {
-      "name": "encodeBreakLimit",
-      "package": "@axrone/physics-2d",
       "kind": "function"
     },
     {
@@ -23308,11 +23102,6 @@
       "kind": "unknown"
     },
     {
-      "name": "getSceneFramebufferPassDefinition",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
       "name": "getScenePrefabComponentSelectorKey",
       "package": "@axrone/scene-prefab",
       "kind": "const"
@@ -23420,11 +23209,6 @@
     {
       "name": "getTextureTypeForFormat",
       "package": "@axrone/render-webgl2",
-      "kind": "unknown"
-    },
-    {
-      "name": "getTilemapSceneBuiltInRegistrySource",
-      "package": "@axrone/scene-runtime",
       "kind": "unknown"
     },
     {
@@ -27638,16 +27422,6 @@
       "kind": "function"
     },
     {
-      "name": "isComponentReference",
-      "package": "@axrone/physics",
-      "kind": "unknown"
-    },
-    {
-      "name": "isComponentReference",
-      "package": "@axrone/physics-2d",
-      "kind": "function"
-    },
-    {
       "name": "isContextLostError",
       "package": "@axrone/render-webgl2",
       "kind": "unknown"
@@ -28313,11 +28087,6 @@
       "kind": "function"
     },
     {
-      "name": "isSceneFramebufferPassId",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
       "name": "isScenePrefabReference",
       "package": "@axrone/scene-prefab",
       "kind": "const"
@@ -28906,16 +28675,6 @@
       "name": "IWritableBuffer",
       "package": "@axrone/memory",
       "kind": "interface"
-    },
-    {
-      "name": "JOINT_2D_BREAK_LIMIT",
-      "package": "@axrone/physics",
-      "kind": "unknown"
-    },
-    {
-      "name": "JOINT_2D_BREAK_LIMIT",
-      "package": "@axrone/physics-2d",
-      "kind": "const"
     },
     {
       "name": "JOINT_CAPABILITY_2D",
@@ -30678,16 +30437,6 @@
       "kind": "const"
     },
     {
-      "name": "normalizeBreakLimit",
-      "package": "@axrone/physics",
-      "kind": "unknown"
-    },
-    {
-      "name": "normalizeBreakLimit",
-      "package": "@axrone/physics-2d",
-      "kind": "function"
-    },
-    {
       "name": "normalizeColor",
       "package": "@axrone/ui",
       "kind": "unknown"
@@ -31676,11 +31425,6 @@
       "name": "pipe",
       "package": "@axrone/observer",
       "kind": "function"
-    },
-    {
-      "name": "planSceneFramebufferPasses",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
     },
     {
       "name": "PointFrustumClassification",
@@ -33013,11 +32757,6 @@
       "kind": "const"
     },
     {
-      "name": "REFRACTION_COPY_PASS_ID",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
       "name": "registerCustomAlgorithm",
       "package": "@axrone/hash",
       "kind": "function"
@@ -34178,21 +33917,6 @@
       "kind": "unknown"
     },
     {
-      "name": "resolveAnimationClipAssets",
-      "package": "@axrone/scene-2d",
-      "kind": "unknown"
-    },
-    {
-      "name": "resolveAnimationClipAssets",
-      "package": "@axrone/scene-3d",
-      "kind": "unknown"
-    },
-    {
-      "name": "resolveAnimationClipAssets",
-      "package": "@axrone/scene-runtime",
-      "kind": "const"
-    },
-    {
       "name": "resolveAssetMessage",
       "package": "@axrone/asset-2d",
       "kind": "unknown"
@@ -34231,16 +33955,6 @@
       "name": "resolveBlend2DWeightsWithContext",
       "package": "@axrone/animation",
       "kind": "unknown"
-    },
-    {
-      "name": "resolveBridgePhysicsWorld2D",
-      "package": "@axrone/physics",
-      "kind": "unknown"
-    },
-    {
-      "name": "resolveBridgePhysicsWorld2D",
-      "package": "@axrone/physics-2d",
-      "kind": "function"
     },
     {
       "name": "resolveCameraCullingMessage",
@@ -34718,11 +34432,6 @@
       "kind": "unknown"
     },
     {
-      "name": "resolveTilemapCameraRect",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
       "name": "resolveUIFrame",
       "package": "@axrone/ui",
       "kind": "unknown"
@@ -34968,11 +34677,6 @@
       "kind": "interface"
     },
     {
-      "name": "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES",
-      "package": "@axrone/runtime-profile-2d",
-      "kind": "unknown"
-    },
-    {
       "name": "RUNTIME_PROFILE_3D_CAPABILITY_PACKAGES",
       "package": "@axrone/runtime-profile-3d",
       "kind": "unknown"
@@ -35173,16 +34877,6 @@
       "kind": "unknown"
     },
     {
-      "name": "SCENE_COLOR_COPY_TEXTURE_ID",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "SCENE_COLOR_COPY_UNIFORM_NAME",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
       "name": "SCENE_CORE_BUILT_IN_MANIFEST",
       "package": "@axrone/scene-2d",
       "kind": "unknown"
@@ -35194,16 +34888,6 @@
     },
     {
       "name": "SCENE_CORE_BUILT_IN_MANIFEST",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "SCENE_FRAMEBUFFER_PASS_DEFINITIONS",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "SCENE_FRAMEBUFFER_RENDERER_PASS_ID",
       "package": "@axrone/scene-runtime",
       "kind": "unknown"
     },
@@ -35266,11 +34950,6 @@
       "name": "SCENE_RUNTIME_PROFILER_PHASES",
       "package": "@axrone/scene-runtime",
       "kind": "const"
-    },
-    {
-      "name": "SCENE_TILEMAP_BUILT_IN_MANIFEST",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
     },
     {
       "name": "SCENE_UI_BUILT_IN_MANIFEST",
@@ -35381,51 +35060,6 @@
       "name": "SceneActorSnapshot",
       "package": "@axrone/scene-runtime",
       "kind": "unknown"
-    },
-    {
-      "name": "SceneAnimationClipAsset",
-      "package": "@axrone/scene-2d",
-      "kind": "unknown"
-    },
-    {
-      "name": "SceneAnimationClipAsset",
-      "package": "@axrone/scene-3d",
-      "kind": "unknown"
-    },
-    {
-      "name": "SceneAnimationClipAsset",
-      "package": "@axrone/scene-runtime",
-      "kind": "interface"
-    },
-    {
-      "name": "SceneAnimationClipAssetLibrary",
-      "package": "@axrone/scene-2d",
-      "kind": "unknown"
-    },
-    {
-      "name": "SceneAnimationClipAssetLibrary",
-      "package": "@axrone/scene-3d",
-      "kind": "unknown"
-    },
-    {
-      "name": "SceneAnimationClipAssetLibrary",
-      "package": "@axrone/scene-runtime",
-      "kind": "class"
-    },
-    {
-      "name": "sceneAnimationClipAssets",
-      "package": "@axrone/scene-2d",
-      "kind": "unknown"
-    },
-    {
-      "name": "sceneAnimationClipAssets",
-      "package": "@axrone/scene-3d",
-      "kind": "unknown"
-    },
-    {
-      "name": "sceneAnimationClipAssets",
-      "package": "@axrone/scene-runtime",
-      "kind": "const"
     },
     {
       "name": "SceneAssetFacade",
@@ -35789,31 +35423,6 @@
     },
     {
       "name": "SceneFogUniformBinder",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "SceneFramebufferPassDefinition",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "SceneFramebufferPassId",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "SceneFramebufferPassRuntime",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "SceneFramebufferPassStats",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "SceneFramebufferTextureBindings",
       "package": "@axrone/scene-runtime",
       "kind": "unknown"
     },
@@ -37448,21 +37057,6 @@
       "kind": "interface"
     },
     {
-      "name": "SceneRagdollPoseSource",
-      "package": "@axrone/scene-2d",
-      "kind": "unknown"
-    },
-    {
-      "name": "SceneRagdollPoseSource",
-      "package": "@axrone/scene-3d",
-      "kind": "unknown"
-    },
-    {
-      "name": "SceneRagdollPoseSource",
-      "package": "@axrone/scene-runtime",
-      "kind": "class"
-    },
-    {
       "name": "SceneRegistry",
       "package": "@axrone/scene-2d",
       "kind": "unknown"
@@ -38716,11 +38310,6 @@
       "name": "SceneTextureSourceDefinition",
       "package": "@axrone/scene-runtime",
       "kind": "unknown"
-    },
-    {
-      "name": "SceneTilemapRenderRuntimeLike",
-      "package": "@axrone/scene-runtime",
-      "kind": "interface"
     },
     {
       "name": "SceneUIOverlayHandle",
@@ -40493,21 +40082,6 @@
       "kind": "unknown"
     },
     {
-      "name": "SSS_BLUR_PASS_ID",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "SSS_BLUR_TEXTURE_ID",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "SSS_BLUR_UNIFORM_NAME",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
       "name": "Stack",
       "package": "@axrone/memory",
       "kind": "class"
@@ -41508,21 +41082,6 @@
       "kind": "const"
     },
     {
-      "name": "TILEMAP_SCENE_BUILT_IN_MANIFESTS",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapAgent",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapAgentConfig",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
       "name": "TilemapAssetDefinition",
       "package": "@axrone/asset-tilemap",
       "kind": "interface"
@@ -41563,11 +41122,6 @@
       "kind": "class"
     },
     {
-      "name": "TilemapCameraRectProvider",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
       "name": "tilemapChunkAssetKey",
       "package": "@axrone/asset-tilemap",
       "kind": "const"
@@ -41576,16 +41130,6 @@
       "name": "TilemapChunkAssetReference",
       "package": "@axrone/asset-tilemap",
       "kind": "interface"
-    },
-    {
-      "name": "TilemapCollider2D",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapCollider2DConfig",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
     },
     {
       "name": "TilemapEngine",
@@ -41633,26 +41177,6 @@
       "kind": "type"
     },
     {
-      "name": "TilemapInstanceSource",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapInstanceSourceOptions",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapLayerOverride",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapLayerView",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
       "name": "TilemapMetricsCounters",
       "package": "@axrone/tilemap",
       "kind": "unknown"
@@ -41670,56 +41194,6 @@
     {
       "name": "TilemapProfilerSinkOptions",
       "package": "@axrone/tilemap",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapRenderer",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapRendererConfig",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapRendererTint",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapRenderParams",
-      "package": "@axrone/scene-runtime",
-      "kind": "interface"
-    },
-    {
-      "name": "TilemapRenderRuntime",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapRenderRuntimeOptions",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapRuntime",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapRuntimeConfig",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapRuntimeSet",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
-    },
-    {
-      "name": "TilemapRuntimeSnapshot",
-      "package": "@axrone/scene-runtime",
       "kind": "unknown"
     },
     {
@@ -41746,11 +41220,6 @@
       "name": "TilesetDefinition",
       "package": "@axrone/asset-tilemap",
       "kind": "interface"
-    },
-    {
-      "name": "TilesetFrameTable",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
     },
     {
       "name": "tilesetJsonCodec",
@@ -41941,11 +41410,6 @@
       "name": "Torque",
       "package": "@axrone/physics-core",
       "kind": "type"
-    },
-    {
-      "name": "toSceneRenderPassDefinitions",
-      "package": "@axrone/scene-runtime",
-      "kind": "unknown"
     },
     {
       "name": "toShaderEffectSource",
@@ -44261,15 +43725,9 @@
       "package": "@axrone/memory"
     },
     {
-      "name": "_getPhysicsWorld2DBridgeProvider",
-      "kind": "function",
-      "code": "declare function _getPhysicsWorld2DBridgeProvider(): BridgeWorldProvider;",
-      "package": "@axrone/physics-2d"
-    },
-    {
       "name": "_setPhysicsWorld2DBridgeProvider",
       "kind": "function",
-      "code": "declare function _setPhysicsWorld2DBridgeProvider(provider: BridgeWorldProvider): void;",
+      "code": "declare function _setPhysicsWorld2DBridgeProvider(provider: (() => PhysicsWorld2D | null) | null): void;",
       "package": "@axrone/physics-2d"
     },
     {
@@ -48149,52 +47607,16 @@
       "package": "@axrone/asset-tilemap"
     },
     {
-      "name": "createTilemapAgentSystem",
-      "kind": "const",
-      "code": "declare const createTilemapAgentSystem: (_runtimes: TilemapRuntimeSet) => System<ComponentRegistry, typeof emptyQuery>;",
-      "package": "@axrone/scene-runtime"
-    },
-    {
       "name": "createTilemapAssetDefinition",
       "kind": "const",
       "code": "declare const createTilemapAssetDefinition: (input: unknown) => Result<TilemapAssetDefinition, TilemapAssetError>;",
       "package": "@axrone/asset-tilemap"
     },
     {
-      "name": "createTilemapPagingPostSystem",
-      "kind": "const",
-      "code": "declare const createTilemapPagingPostSystem: (runtimes: TilemapRuntimeSet, camera: TilemapCameraRectProvider) => System<ComponentRegistry, typeof emptyQuery>;",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "createTilemapPagingPreSystem",
-      "kind": "const",
-      "code": "declare const createTilemapPagingPreSystem: (runtimes: TilemapRuntimeSet, camera: TilemapCameraRectProvider) => System<ComponentRegistry, typeof emptyQuery>;",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "createTilemapSceneRegistry",
-      "kind": "const",
-      "code": "declare const createTilemapSceneRegistry: <R extends ComponentRegistry = Record<string, never>>(options?: SceneRegistryBuilderOptions<R>) => SceneRegistry<R>;",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "createTilemapSceneRegistryFromBuiltInManifests",
-      "kind": "const",
-      "code": "declare const createTilemapSceneRegistryFromBuiltInManifests: <R extends ComponentRegistry = Record<string, never>>(options?: SceneManifestRegistryBuilderOptions<R>) => SceneRegistry<R>;",
-      "package": "@axrone/scene-runtime"
-    },
-    {
       "name": "createTilesetDefinition",
       "kind": "const",
       "code": "declare const createTilesetDefinition: (input: unknown) => Result<TilesetDefinition, TilemapAssetError>;",
       "package": "@axrone/asset-tilemap"
-    },
-    {
-      "name": "createTilesetFrameTable",
-      "kind": "const",
-      "code": "declare const createTilesetFrameTable: (tileset: TilesetDefinition) => TilesetFrameTable;",
-      "package": "@axrone/scene-runtime"
     },
     {
       "name": "createTorus",
@@ -49151,12 +48573,6 @@
       "package": "@axrone/hash"
     },
     {
-      "name": "encodeBreakLimit",
-      "kind": "function",
-      "code": "declare function encodeBreakLimit(value: number): number;",
-      "package": "@axrone/physics-2d"
-    },
-    {
       "name": "encodeChunkSnapshot",
       "kind": "const",
       "code": "declare const encodeChunkSnapshot: (snapshot: ChunkSnapshot) => Result<Uint8Array, TilemapError>;",
@@ -49567,7 +48983,7 @@
     {
       "name": "FixedJoint2D",
       "kind": "class",
-      "code": "declare class FixedJoint2D extends Joint2D { get anchor(): Vec2; set anchor(value: Vec2); get dampingRatio(): number; set dampingRatio(value: number); get frequency(): number; set frequency(value: number); get connectedAnchor(): Vec2; set connectedAnchor(value: Vec2); serialize(): Record<string, an…",
+      "code": "declare class FixedJoint2D extends Joint2D { get anchor(): Vec2; set anchor(value: Vec2); get dampingRatio(): number; set dampingRatio(value: number); get frequency(): number; set frequency(value: number); serialize(): Record<string, any>; deserialize(data: Record<string, any>): void; … }",
       "package": "@axrone/physics-2d"
     },
     {
@@ -49927,7 +49343,7 @@
     {
       "name": "GearJoint2D",
       "kind": "class",
-      "code": "declare class GearJoint2D extends Joint2D { get jointA(): Joint2D | null; set jointA(value: Joint2D | null); get jointB(): Joint2D | null; set jointB(value: Joint2D | null); get ratio(): number; set ratio(value: number); get isPending(): boolean; getPendingJointRefs(): {; jointA: string | null; … }",
+      "code": "declare class GearJoint2D extends Joint2D { get jointA(): Joint2D | null; set jointA(value: Joint2D | null); get jointB(): Joint2D | null; set jointB(value: Joint2D | null); get ratio(): number; set ratio(value: number); get isPending(): boolean; tryResolve(): boolean; serialize(): Record<string, a…",
       "package": "@axrone/physics-2d"
     },
     {
@@ -50261,12 +49677,6 @@
       "package": "@axrone/scene-runtime"
     },
     {
-      "name": "getSceneFramebufferPassDefinition",
-      "kind": "const",
-      "code": "declare const getSceneFramebufferPassDefinition: (id: string) => SceneFramebufferPassDefinition | null;",
-      "package": "@axrone/scene-runtime"
-    },
-    {
       "name": "getScenePrefabComponentSelectorKey",
       "kind": "const",
       "code": "declare const getScenePrefabComponentSelectorKey: (selector: ScenePrefabComponentSelector) => string;",
@@ -50373,12 +49783,6 @@
       "kind": "const",
       "code": "declare const getTextureTypeForFormat: (gl: WebGL2RenderingContext, format: GLTextureFormat) => GLenum;",
       "package": "@axrone/render-webgl2"
-    },
-    {
-      "name": "getTilemapSceneBuiltInRegistrySource",
-      "kind": "const",
-      "code": "declare const getTilemapSceneBuiltInRegistrySource: () => SceneBuiltInRegistrySource;",
-      "package": "@axrone/scene-runtime"
     },
     {
       "name": "getToggleIsOn",
@@ -51467,12 +50871,6 @@
       "package": "@axrone/utility"
     },
     {
-      "name": "isComponentReference",
-      "kind": "function",
-      "code": "declare function isComponentReference(value: unknown): boolean;",
-      "package": "@axrone/physics-2d"
-    },
-    {
       "name": "isContextLostError",
       "kind": "const",
       "code": "declare const isContextLostError: (value: unknown) => value is GLContextLostError;",
@@ -51833,12 +51231,6 @@
       "package": "@axrone/utility"
     },
     {
-      "name": "isSceneFramebufferPassId",
-      "kind": "const",
-      "code": "declare const isSceneFramebufferPassId: (id: string | null | undefined) => id is SceneFramebufferPassId;",
-      "package": "@axrone/scene-runtime"
-    },
-    {
       "name": "isScenePrefabReference",
       "kind": "const",
       "code": "declare const isScenePrefabReference: (value: unknown) => value is ScenePrefabReference;",
@@ -52097,12 +51489,6 @@
       "package": "@axrone/ui"
     },
     {
-      "name": "JOINT_2D_BREAK_LIMIT",
-      "kind": "const",
-      "code": "declare const JOINT_2D_BREAK_LIMIT = 1000000000000000000;",
-      "package": "@axrone/physics-2d"
-    },
-    {
       "name": "JOINT_CAPABILITY_2D",
       "kind": "const",
       "code": "declare const JOINT_CAPABILITY_2D: { readonly DISTANCE: \"full\"; readonly SPRING: \"full\"; readonly REVOLUTE: \"full\"; readonly PRISMATIC: \"full\"; readonly WELD: \"full\"; readonly WHEEL: \"full\"; readonly MOTOR: \"full\"; readonly MOUSE: \"full\"; readonly GEAR: \"full\"; readonly ROPE: \"full\"; }",
@@ -52123,7 +51509,7 @@
     {
       "name": "Joint2D",
       "kind": "class",
-      "code": "declare abstract class Joint2D extends Component { get constraintId(): ConstraintId | null; get connectedBody(): Rigidbody2D | null; set connectedBody(value: Rigidbody2D | null); getPendingConnectedBodyRef(): string | null; resolveConnectedBodyRef(body: Rigidbody2D | null): void; get enableCollisio…",
+      "code": "declare abstract class Joint2D extends Component { get constraintId(): ConstraintId | null; get connectedBody(): Rigidbody2D | null; set connectedBody(value: Rigidbody2D | null); get enableCollision(): boolean; set enableCollision(value: boolean); get breakForce(): number; set breakForce(value: num…",
       "package": "@axrone/physics-2d"
     },
     {
@@ -53027,12 +52413,6 @@
       "package": "@axrone/audio"
     },
     {
-      "name": "normalizeBreakLimit",
-      "kind": "function",
-      "code": "declare function normalizeBreakLimit(value: unknown): number;",
-      "package": "@axrone/physics-2d"
-    },
-    {
       "name": "normalizeColor",
       "kind": "const",
       "code": "declare const normalizeColor: (input: ColorInput | undefined, fallback: ReadonlyColor) => ReadonlyColor;",
@@ -53479,7 +52859,7 @@
     {
       "name": "PhysicsWorld2DComponent",
       "kind": "class",
-      "code": "declare class PhysicsWorld2DComponent extends Component { get physicsWorld(): PhysicsWorld2D | null; get gravity(): Readonly<Vec2>; set gravity(value: Readonly<Vec2>); onLoad(): void; fixedUpdate(deltaTime: number): void; onDestroy(): void; serialize(): Record<string, any>; deserialize(data: Record…",
+      "code": "declare class PhysicsWorld2DComponent extends Component { get physicsWorld(): PhysicsWorld2D | null; get gravity(): Readonly<Vec2>; set gravity(value: Readonly<Vec2>); awake(): void; fixedUpdate(deltaTime: number): void; onDestroy(): void; serialize(): Record<string, any>; deserialize(data: Record<…",
       "package": "@axrone/physics-2d"
     },
     {
@@ -53505,12 +52885,6 @@
       "kind": "function",
       "code": "declare function pipe<T, U>(source: IObservableSubject<T>, transform: (data: T) => U | Promise<U>): IObservableSubject<U>;",
       "package": "@axrone/observer"
-    },
-    {
-      "name": "planSceneFramebufferPasses",
-      "kind": "const",
-      "code": "declare const planSceneFramebufferPasses: (materialPassIds: ReadonlySet<string> | readonly string[] | undefined) => readonly SceneFramebufferPassDefinition[];",
-      "package": "@axrone/scene-runtime"
     },
     {
       "name": "pointInConvexPolygon",
@@ -54149,12 +53523,6 @@
       "package": "@axrone/asset-shader"
     },
     {
-      "name": "REFRACTION_COPY_PASS_ID",
-      "kind": "const",
-      "code": "declare const REFRACTION_COPY_PASS_ID = \"refraction-copy\";",
-      "package": "@axrone/scene-runtime"
-    },
-    {
       "name": "registerCustomAlgorithm",
       "kind": "function",
       "code": "declare function registerCustomAlgorithm<H extends HashValue>(name: HashAlgorithmName, ctor: new (seed?: Seed32) => IHasher<H>, metadata: HashAlgorithmMetadata): void;",
@@ -54509,12 +53877,6 @@
       "package": "@axrone/animation"
     },
     {
-      "name": "resolveAnimationClipAssets",
-      "kind": "const",
-      "code": "declare const resolveAnimationClipAssets: (references: readonly (string | AnimatorClipAssetReference)[], library?: SceneAnimationClipAssetLibrary) => readonly AnimatorClipConfig[];",
-      "package": "@axrone/scene-runtime"
-    },
-    {
       "name": "resolveAssetMessage",
       "kind": "const",
       "code": "declare const resolveAssetMessage: (descriptor: Readonly<AssetMessageDescriptor>, locale: string, resolver?: AssetMessageResolver) => string;",
@@ -54543,12 +53905,6 @@
       "kind": "const",
       "code": "declare const resolveBlend2DWeightsWithContext: (x: number, y: number, children: readonly Readonly<IVec2Like>[], context: AnimationMotionEvaluationContext, depth: number, triangles?: Int32Array) => number[];",
       "package": "@axrone/animation"
-    },
-    {
-      "name": "resolveBridgePhysicsWorld2D",
-      "kind": "function",
-      "code": "declare function resolveBridgePhysicsWorld2D(): PhysicsWorld2D | null;",
-      "package": "@axrone/physics-2d"
     },
     {
       "name": "resolveCameraCullingMessage",
@@ -54809,12 +54165,6 @@
       "package": "@axrone/ui"
     },
     {
-      "name": "resolveTilemapCameraRect",
-      "kind": "const",
-      "code": "declare const resolveTilemapCameraRect: (cameraFrame: SceneCameraFrameState | null, viewportWidth: number, viewportHeight: number) => WorldRect | null;",
-      "package": "@axrone/scene-runtime"
-    },
-    {
       "name": "resolveUIFrame",
       "kind": "const",
       "code": "declare const resolveUIFrame: <TPayload>(producer: UIFrameProducer<TPayload>, viewport: Readonly<SizeLike>) => UIFrame<TPayload> | null;",
@@ -54957,12 +54307,6 @@
       "kind": "const",
       "code": "declare const roundFloat32ForJson: (value: number) => number;",
       "package": "@axrone/numeric"
-    },
-    {
-      "name": "RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES",
-      "kind": "const",
-      "code": "declare const RUNTIME_PROFILE_2D_CAPABILITY_PACKAGES: readonly string[];",
-      "package": "@axrone/runtime-profile-2d"
     },
     {
       "name": "RUNTIME_PROFILE_3D_CAPABILITY_PACKAGES",
@@ -55115,33 +54459,9 @@
       "package": "@axrone/scene-runtime"
     },
     {
-      "name": "SCENE_COLOR_COPY_TEXTURE_ID",
-      "kind": "const",
-      "code": "declare const SCENE_COLOR_COPY_TEXTURE_ID = \"scene:framebuffer-scene-color-copy\";",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "SCENE_COLOR_COPY_UNIFORM_NAME",
-      "kind": "const",
-      "code": "declare const SCENE_COLOR_COPY_UNIFORM_NAME = \"_SceneColorTexture\";",
-      "package": "@axrone/scene-runtime"
-    },
-    {
       "name": "SCENE_CORE_BUILT_IN_MANIFEST",
       "kind": "const",
       "code": "declare const SCENE_CORE_BUILT_IN_MANIFEST: SceneBuiltInManifest<readonly [\"Hierarchy\", \"Transform\", \"PrefabNodeBinding\"]>;",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "SCENE_FRAMEBUFFER_PASS_DEFINITIONS",
-      "kind": "const",
-      "code": "declare const SCENE_FRAMEBUFFER_PASS_DEFINITIONS: readonly SceneFramebufferPassDefinition[];",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "SCENE_FRAMEBUFFER_RENDERER_PASS_ID",
-      "kind": "const",
-      "code": "declare const SCENE_FRAMEBUFFER_RENDERER_PASS_ID = \"framebuffer\";",
       "package": "@axrone/scene-runtime"
     },
     {
@@ -55160,12 +54480,6 @@
       "name": "SCENE_RUNTIME_PROFILER_PHASES",
       "kind": "const",
       "code": "declare const SCENE_RUNTIME_PROFILER_PHASES: readonly [\"preUpdate\", \"fixedUpdate\", \"update\", \"postUpdate\", \"render\"];",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "SCENE_TILEMAP_BUILT_IN_MANIFEST",
-      "kind": "const",
-      "code": "declare const SCENE_TILEMAP_BUILT_IN_MANIFEST: SceneBuiltInManifest<readonly [\"TilemapRenderer\", \"TilemapCollider2D\", \"TilemapAgent\"]>;",
       "package": "@axrone/scene-runtime"
     },
     {
@@ -55201,25 +54515,13 @@
     {
       "name": "SceneActorLifecycleRunner",
       "kind": "class",
-      "code": "declare class SceneActorLifecycleRunner { constructor(_options: SceneActorLifecycleRunnerOptions); fixedUpdate(deltaSeconds: number): void; update(deltaSeconds: number): void; lateUpdate(deltaSeconds: number): void; … }",
+      "code": "declare class SceneActorLifecycleRunner { constructor(_options: SceneActorLifecycleRunnerOptions); fixedUpdate(deltaMs: number): void; update(deltaMs: number): void; lateUpdate(deltaMs: number): void; … }",
       "package": "@axrone/scene-runtime"
     },
     {
       "name": "SceneActorRuntime",
       "kind": "class",
       "code": "declare class SceneActorRuntime<R extends ComponentRegistry = Record<string, never>> { constructor(options: SceneActorRuntimeOptions<R>); isComponentRegistered(componentTypeOrName: string | ComponentConstructor): boolean; getRegisteredComponentNames(): readonly string[]; createActor(config?: ActorC…",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "SceneAnimationClipAssetLibrary",
-      "kind": "class",
-      "code": "declare class SceneAnimationClipAssetLibrary { get size(): number; register(asset: SceneAnimationClipAsset): this; has(id: string): boolean; get(id: string): readonly AnimatorClipConfig[] | undefined; unregister(id: string): boolean; clear(): void; … }",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "sceneAnimationClipAssets",
-      "kind": "const",
-      "code": "declare const sceneAnimationClipAssets: SceneAnimationClipAssetLibrary;",
       "package": "@axrone/scene-runtime"
     },
     {
@@ -55286,12 +54588,6 @@
       "name": "SceneFogUniformBinder",
       "kind": "class",
       "code": "declare class SceneFogUniformBinder { constructor(_writer: SceneUniformWriteTarget); apply(shader: SceneShaderResource, fog: SceneFogState): void; … }",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "SceneFramebufferPassRuntime",
-      "kind": "class",
-      "code": "declare class SceneFramebufferPassRuntime { constructor(gl: WebGL2RenderingContext); beginFrame(width: number, height: number): void; get sceneColorTexture(): ITexture | null; get sssBlurTexture(): ITexture | null; getTextureBindings(): SceneFramebufferTextureBindings; execute(plan: readonly SceneF…",
       "package": "@axrone/scene-runtime"
     },
     {
@@ -55433,12 +54729,6 @@
       "package": "@axrone/scene-prefab"
     },
     {
-      "name": "SceneRagdollPoseSource",
-      "kind": "class",
-      "code": "declare class SceneRagdollPoseSource { get count(): number; bind(animator: Animator, boneActors: readonly Actor[]): void; unbind(animator: Animator): boolean; has(animator: Animator): boolean; capture(): number; apply(weight?: number): number; clear(): void; … }",
-      "package": "@axrone/scene-runtime"
-    },
-    {
       "name": "SceneRenderFrameState",
       "kind": "class",
       "code": "declare class SceneRenderFrameState { begin(frame: number): this; setTrackActiveRenderers(value: boolean): this; markActiveRenderer(rendererId: string): void; recordDraw(mesh: Pick<SceneMeshResource, 'topology' | 'indexCount' | 'vertexCount'>): void; recordTriangles(triangleCount: number, drawCalls…",
@@ -55465,7 +54755,7 @@
     {
       "name": "SceneRenderPipeline",
       "kind": "class",
-      "code": "declare class SceneRenderPipeline { constructor(options: SceneRenderPipelineOptions); get framebufferTextureBindings(): SceneFramebufferTextureBindings | null; render(params: SceneRenderPipelineParams): SceneRenderPlanningStats; reset(): void; invalidateContextResources(): void; dispose(): void; … }",
+      "code": "declare class SceneRenderPipeline { constructor(options: SceneRenderPipelineOptions); render(params: SceneRenderPipelineParams): SceneRenderPlanningStats; reset(): void; invalidateContextResources(): void; dispose(): void; … }",
       "package": "@axrone/scene-runtime"
     },
     {
@@ -55537,7 +54827,7 @@
     {
       "name": "SceneSkinningUniformBinder",
       "kind": "class",
-      "code": "declare class SceneSkinningUniformBinder { constructor(_writer: SceneUniformWriteTarget, _gl?: WebGL2RenderingContext | undefined); apply(shader: SceneShaderResource, renderer: SceneSkinningUniformSource): void; … }",
+      "code": "declare class SceneSkinningUniformBinder { constructor(_writer: SceneUniformWriteTarget); apply(shader: SceneShaderResource, renderer: SceneSkinningUniformSource): void; … }",
       "package": "@axrone/scene-runtime"
     },
     {
@@ -56233,7 +55523,7 @@
     {
       "name": "SpringJoint2D",
       "kind": "class",
-      "code": "declare class SpringJoint2D extends Joint2D { get distance(): number; set distance(value: number); get stiffness(): number; set stiffness(value: number); get damping(): number; set damping(value: number); get anchorA(): Vec2; set anchorA(value: Vec2); get anchorB(): Vec2; … }",
+      "code": "declare class SpringJoint2D extends Joint2D { get distance(): number; set distance(value: number); get stiffness(): number; set stiffness(value: number); get damping(): number; set damping(value: number); serialize(): Record<string, any>; deserialize(data: Record<string, any>): void; … }",
       "package": "@axrone/physics-2d"
     },
     {
@@ -56283,24 +55573,6 @@
       "kind": "const",
       "code": "declare const SQRT2: number;",
       "package": "@axrone/numeric"
-    },
-    {
-      "name": "SSS_BLUR_PASS_ID",
-      "kind": "const",
-      "code": "declare const SSS_BLUR_PASS_ID = \"sss-blur\";",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "SSS_BLUR_TEXTURE_ID",
-      "kind": "const",
-      "code": "declare const SSS_BLUR_TEXTURE_ID = \"scene:framebuffer-sss-blur\";",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "SSS_BLUR_UNIFORM_NAME",
-      "kind": "const",
-      "code": "declare const SSS_BLUR_UNIFORM_NAME = \"_SubsurfaceBlurTexture\";",
-      "package": "@axrone/scene-runtime"
     },
     {
       "name": "Stack",
@@ -56843,18 +56115,6 @@
       "package": "@axrone/tilemap"
     },
     {
-      "name": "TILEMAP_SCENE_BUILT_IN_MANIFESTS",
-      "kind": "const",
-      "code": "declare const TILEMAP_SCENE_BUILT_IN_MANIFESTS: readonly SceneBuiltInManifest[];",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "TilemapAgent",
-      "kind": "class",
-      "code": "declare class TilemapAgent extends Component { constructor(config?: TilemapAgentConfig); get mapId(): string; set mapId(value: string); get speed(): number; set speed(value: number); get pathRequestId(): string | null; get moving(): boolean; get waypointCount(): number; get waypointIndex(): number;…",
-      "package": "@axrone/scene-runtime"
-    },
-    {
       "name": "tilemapAssetError",
       "kind": "const",
       "code": "declare const tilemapAssetError: (code: TilemapAssetErrorCode, message: string, options?: TilemapAssetErrorOptions) => TilemapAssetError;",
@@ -56891,12 +56151,6 @@
       "package": "@axrone/asset-tilemap"
     },
     {
-      "name": "TilemapCollider2D",
-      "kind": "class",
-      "code": "declare class TilemapCollider2D extends Component { constructor(config?: TilemapCollider2DConfig); get mapId(): string; set mapId(value: string); get collisionLayer(): string; set collisionLayer(value: string); get oneWay(): boolean; set oneWay(value: boolean); get physicsWorld(): PhysicsWorld2D | …",
-      "package": "@axrone/scene-runtime"
-    },
-    {
       "name": "TilemapEngine",
       "kind": "class",
       "code": "declare class TilemapEngine<L extends readonly LayerSpec[] = readonly LayerSpec[]> implements Disposable { constructor(options: TilemapEngineOptions<L>); get projection(): Readonly<ProjectionSpec>; get layers(): readonly Readonly<LayerSpec>[]; get chunkShift(): ValidChunkShift; get chunkSize(): num…",
@@ -56919,36 +56173,6 @@
       "kind": "class",
       "code": "declare class TilemapFault extends Error { constructor(message: string, code?: TilemapErrorCode, details?: Readonly<Record<string, unknown>>); … }",
       "package": "@axrone/tilemap"
-    },
-    {
-      "name": "TilemapInstanceSource",
-      "kind": "class",
-      "code": "declare class TilemapInstanceSource { constructor(options: TilemapInstanceSourceOptions); get drawCount(): number; get groupRanges(): Int32Array; get groupTextureOffsets(): Int32Array; get groupTextureIds(): readonly string[]; get groupCount(): number; get textureId(): string | null; get transformD…",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "TilemapRenderer",
-      "kind": "class",
-      "code": "declare class TilemapRenderer extends Component { constructor(config?: TilemapRendererConfig); get mapId(): string; set mapId(value: string); get tilesetId(): string; set tilesetId(value: string); get visibleLayers(): readonly string[] | null; set visibleLayers(value: readonly string[] | null); get…",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "TilemapRenderRuntime",
-      "kind": "class",
-      "code": "declare class TilemapRenderRuntime implements SceneTilemapRenderRuntimeLike { constructor(options: TilemapRenderRuntimeOptions); get diagnostic(): string | null; get source(): TilemapInstanceSource | null; prepare(cameraRect: WorldRect): TilemapInstanceSource | null; setTileset(tilesetId: string | …",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "TilemapRuntime",
-      "kind": "class",
-      "code": "declare class TilemapRuntime { get revision(): number; get layerOverrides(): readonly TilemapLayerOverride[]; get pendingChunkLoads(): number; setLayerOverride(name: string, override: Omit<TilemapLayerOverride, 'name'>): void; write(layer: string | number, gridX: number, gridY: number, word: Parame…",
-      "package": "@axrone/scene-runtime"
-    },
-    {
-      "name": "TilemapRuntimeSet",
-      "kind": "class",
-      "code": "declare class TilemapRuntimeSet { constructor(database: AssetDatabase<AssetTilemapSchema>); get size(): number; get(mapId: string): TilemapRuntime | undefined; require(mapId: string): TilemapRuntime; load(config: TilemapRuntimeConfig): Promise<Result<TilemapRuntime, TilemapAssetError>>; preUpdate(c…",
-      "package": "@axrone/scene-runtime"
     },
     {
       "name": "TILESET_FORMAT_VERSION",
@@ -57069,12 +56293,6 @@
       "kind": "function",
       "code": "declare function toQueueSize(value: number): QueueSize;",
       "package": "@axrone/memory"
-    },
-    {
-      "name": "toSceneRenderPassDefinitions",
-      "kind": "const",
-      "code": "declare const toSceneRenderPassDefinitions: (plan: readonly SceneFramebufferPassDefinition[]) => readonly SceneRenderPassDefinition[];",
-      "package": "@axrone/scene-runtime"
     },
     {
       "name": "toShaderEffectSource",

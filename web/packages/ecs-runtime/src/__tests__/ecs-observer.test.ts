@@ -1,6 +1,6 @@
 import { ECSObservables } from '@axrone/ecs-runtime';
-import type { Entity, ComponentRegistry } from '@axrone/ecs-runtime';
-import { Actor } from '@axrone/ecs-runtime';
+import type { EntityId, ComponentRegistry } from '@axrone/ecs-runtime';
+import { Entity } from '@axrone/ecs-runtime';
 import { World } from '@axrone/ecs-runtime';
 import { Component } from '@axrone/ecs-runtime';
 import { Transform } from '@axrone/ecs-runtime';
@@ -29,8 +29,8 @@ class PositionComponent extends Component {
 describe('ECSObservables', () => {
     let observables: ECSObservables<any>;
     let world: World<any>;
+    let mockEntityId: EntityId;
     let mockEntity: Entity;
-    let mockActor: Actor;
 
     beforeEach(() => {
         const registry = {
@@ -41,8 +41,8 @@ describe('ECSObservables', () => {
 
         world = new World(registry);
         observables = new ECSObservables();
-        mockEntity = 1 as Entity;
-        mockActor = new Actor(world, { name: 'TestActor' });
+        mockEntityId = 1 as EntityId;
+        mockEntity = new Entity(world, { name: 'TestEntity' });
     });
 
     afterEach(() => {
@@ -52,13 +52,13 @@ describe('ECSObservables', () => {
 
     describe('entity lifecycle observables', () => {
         it('should notify entity creation', () => {
-            const createdEntities: Array<{ entity: Entity; actor: Actor }> = [];
+            const createdEntities: Array<{ entityId: EntityId; entity: Entity }> = [];
 
             observables.entityCreated.addObserver((data) => {
                 createdEntities.push(data);
             });
 
-            const testData = { entity: mockEntity, actor: mockActor };
+            const testData = { entityId: mockEntityId, entity: mockEntity };
             observables.entityCreated.notify(testData);
 
             expect(createdEntities).toHaveLength(1);
@@ -66,13 +66,13 @@ describe('ECSObservables', () => {
         });
 
         it('should notify entity destruction', () => {
-            const destroyedEntities: Array<{ entity: Entity; actor: Actor }> = [];
+            const destroyedEntities: Array<{ entityId: EntityId; entity: Entity }> = [];
 
             observables.entityDestroyed.addObserver((data) => {
                 destroyedEntities.push(data);
             });
 
-            const testData = { entity: mockEntity, actor: mockActor };
+            const testData = { entityId: mockEntityId, entity: mockEntity };
             observables.entityDestroyed.notify(testData);
 
             expect(destroyedEntities).toHaveLength(1);
@@ -93,8 +93,8 @@ describe('ECSObservables', () => {
                 destroyedCount++;
             });
 
-            observables.entityCreated.notify({ entity: mockEntity, actor: mockActor });
-            observables.entityDestroyed.notify({ entity: mockEntity, actor: mockActor });
+            observables.entityCreated.notify({ entityId: mockEntityId, entity: mockEntity });
+            observables.entityDestroyed.notify({ entityId: mockEntityId, entity: mockEntity });
 
             expect(createdCount).toBe(2);
             expect(destroyedCount).toBe(1);
@@ -126,7 +126,7 @@ describe('ECSObservables', () => {
             });
 
             const testComponent = new TestComponent(42);
-            const testData = { entity: mockEntity, component: testComponent, actor: mockActor };
+            const testData = { entityId: mockEntityId, component: testComponent, entity: mockEntity };
             componentObs.added.notify(testData);
 
             expect(addedComponents).toHaveLength(1);
@@ -142,7 +142,7 @@ describe('ECSObservables', () => {
             });
 
             const testComponent = new TestComponent(42);
-            const testData = { entity: mockEntity, component: testComponent, actor: mockActor };
+            const testData = { entityId: mockEntityId, component: testComponent, entity: mockEntity };
             componentObs.removed.notify(testData);
 
             expect(removedComponents).toHaveLength(1);
@@ -306,45 +306,45 @@ describe('ECSObservables', () => {
 
     describe('entity filtering', () => {
         it('should filter entities by predicate', () => {
-            const filteredEntities: Array<{ entity: Entity; actor: Actor }> = [];
+            const filteredEntities: Array<{ entityId: EntityId; entity: Entity }> = [];
 
             const filtered = observables.createEntityFilter(
-                ({ actor }) => actor.name === 'SpecialActor'
+                ({ entity }) => entity.name === 'SpecialEntity'
             );
             filtered.addObserver((data) => {
                 filteredEntities.push(data);
             });
 
-            const specialActor = new Actor(world, { name: 'SpecialActor' });
-            const normalActor = new Actor(world, { name: 'NormalActor' });
+            const specialEntity = new Entity(world, { name: 'SpecialEntity' });
+            const normalEntity = new Entity(world, { name: 'NormalEntity' });
 
-            observables.entityCreated.notify({ entity: 1 as Entity, actor: specialActor });
-            observables.entityCreated.notify({ entity: 2 as Entity, actor: normalActor });
+            observables.entityCreated.notify({ entityId: 1 as EntityId, entity: specialEntity });
+            observables.entityCreated.notify({ entityId: 2 as EntityId, entity: normalEntity });
 
             expect(filteredEntities).toHaveLength(1);
-            expect(filteredEntities[0].actor.name).toBe('SpecialActor');
+            expect(filteredEntities[0].entity.name).toBe('SpecialEntity');
         });
 
         it('should handle complex filtering predicates', () => {
-            const filteredEntities: Array<{ entity: Entity; actor: Actor }> = [];
+            const filteredEntities: Array<{ entityId: EntityId; entity: Entity }> = [];
 
             const filtered = observables.createEntityFilter(
-                ({ actor, entity }) => actor.name.startsWith('Test') && entity > 5
+                ({ entityId, entity }) => entity.name.startsWith('Test') && entityId > 5
             );
             filtered.addObserver((data) => {
                 filteredEntities.push(data);
             });
 
-            const testActor1 = new Actor(world, { name: 'TestActor1' });
-            const testActor2 = new Actor(world, { name: 'TestActor2' });
-            const otherActor = new Actor(world, { name: 'OtherActor' });
+            const testActor1 = new Entity(world, { name: 'TestEntity1' });
+            const testActor2 = new Entity(world, { name: 'TestEntity2' });
+            const otherActor = new Entity(world, { name: 'OtherActor' });
 
-            observables.entityCreated.notify({ entity: 3 as Entity, actor: testActor1 });
-            observables.entityCreated.notify({ entity: 10 as Entity, actor: testActor2 });
-            observables.entityCreated.notify({ entity: 15 as Entity, actor: otherActor });
+            observables.entityCreated.notify({ entityId: 3 as EntityId, entity: testActor1 });
+            observables.entityCreated.notify({ entityId: 10 as EntityId, entity: testActor2 });
+            observables.entityCreated.notify({ entityId: 15 as EntityId, entity: otherActor });
 
             expect(filteredEntities).toHaveLength(1);
-            expect(filteredEntities[0].entity).toBe(10);
+            expect(filteredEntities[0].entityId).toBe(10);
         });
     });
 
@@ -358,7 +358,7 @@ describe('ECSObservables', () => {
             });
 
             const testComponent = new TestComponent(42);
-            const testData = { entity: mockEntity, component: testComponent, actor: mockActor };
+            const testData = { entityId: mockEntityId, component: testComponent, entity: mockEntity };
 
             stream.added.notify(testData);
             stream.removed.notify(testData);
@@ -381,7 +381,7 @@ describe('ECSObservables', () => {
             });
 
             const testComponent = new TestComponent(42);
-            const testData = { entity: mockEntity, component: testComponent, actor: mockActor };
+            const testData = { entityId: mockEntityId, component: testComponent, entity: mockEntity };
 
             stream.added.notify(testData);
             stream.added.notify(testData);
@@ -479,62 +479,58 @@ describe('ECSObservables', () => {
                 allEvents.push(data);
             });
 
-            observables.entityCreated.notify({ entity: mockEntity, actor: mockActor });
-            observables.entityDestroyed.notify({ entity: mockEntity, actor: mockActor });
+            observables.entityCreated.notify({ entityId: mockEntityId, entity: mockEntity });
+            observables.entityDestroyed.notify({ entityId: mockEntityId, entity: mockEntity });
 
             expect(allEvents).toHaveLength(2);
-            expect(allEvents[0]).toEqual({
-                entity: mockEntity,
-                actor: mockActor,
+            expect(allEvents[0]).toEqual({ entityId: mockEntityId, entity: mockEntity,
                 action: 'created',
             });
-            expect(allEvents[1]).toEqual({
-                entity: mockEntity,
-                actor: mockActor,
+            expect(allEvents[1]).toEqual({ entityId: mockEntityId, entity: mockEntity,
                 action: 'destroyed',
             });
         });
 
-        it('should filter by actor name', () => {
+        it('should filter by entity name', () => {
             const lifecycle = observables.createEntityLifecycle();
             const namedEvents: any[] = [];
 
-            const namedStream = lifecycle.byName('SpecialActor');
+            const namedStream = lifecycle.byName('SpecialEntity');
             namedStream.created.addObserver((data) => {
                 namedEvents.push(data);
             });
 
-            const specialActor = new Actor(world, { name: 'SpecialActor' });
-            const normalActor = new Actor(world, { name: 'NormalActor' });
+            const specialEntity = new Entity(world, { name: 'SpecialEntity' });
+            const normalEntity = new Entity(world, { name: 'NormalEntity' });
 
-            observables.entityCreated.notify({ entity: 1 as Entity, actor: specialActor });
-            observables.entityCreated.notify({ entity: 2 as Entity, actor: normalActor });
+            observables.entityCreated.notify({ entityId: 1 as EntityId, entity: specialEntity });
+            observables.entityCreated.notify({ entityId: 2 as EntityId, entity: normalEntity });
 
             expect(namedEvents).toHaveLength(1);
-            expect(namedEvents[0].actor.name).toBe('SpecialActor');
+            expect(namedEvents[0].entity.name).toBe('SpecialEntity');
         });
 
         it('should route destroyed name filters through entityDestroyed', () => {
             const lifecycle = observables.createEntityLifecycle();
             const destroyedEvents: any[] = [];
 
-            const namedStream = lifecycle.byName('SpecialActor');
+            const namedStream = lifecycle.byName('SpecialEntity');
             namedStream.destroyed.addObserver((data) => {
                 destroyedEvents.push(data);
             });
 
-            const specialActor = new Actor(world, { name: 'SpecialActor' });
-            const normalActor = new Actor(world, { name: 'NormalActor' });
+            const specialEntity = new Entity(world, { name: 'SpecialEntity' });
+            const normalEntity = new Entity(world, { name: 'NormalEntity' });
 
-            observables.entityCreated.notify({ entity: 1 as Entity, actor: specialActor });
-            observables.entityDestroyed.notify({ entity: 2 as Entity, actor: normalActor });
-            observables.entityDestroyed.notify({ entity: 3 as Entity, actor: specialActor });
+            observables.entityCreated.notify({ entityId: 1 as EntityId, entity: specialEntity });
+            observables.entityDestroyed.notify({ entityId: 2 as EntityId, entity: normalEntity });
+            observables.entityDestroyed.notify({ entityId: 3 as EntityId, entity: specialEntity });
 
             expect(destroyedEvents).toHaveLength(1);
-            expect(destroyedEvents[0]).toEqual({ entity: 3 as Entity, actor: specialActor });
+            expect(destroyedEvents[0]).toEqual({ entityId: 3 as EntityId, entity: specialEntity });
         });
 
-        it('should filter by actor tag', () => {
+        it('should filter by entity tag', () => {
             const lifecycle = observables.createEntityLifecycle();
             const taggedEvents: any[] = [];
 
@@ -543,17 +539,17 @@ describe('ECSObservables', () => {
                 taggedEvents.push(data);
             });
 
-            const enemyActor = new Actor(world, { tag: 'enemy' as any });
-            const playerActor = new Actor(world, { tag: 'player' as any });
+            const enemyActor = new Entity(world, { tag: 'enemy' as any });
+            const playerActor = new Entity(world, { tag: 'player' as any });
 
-            observables.entityCreated.notify({ entity: 1 as Entity, actor: enemyActor });
-            observables.entityCreated.notify({ entity: 2 as Entity, actor: playerActor });
+            observables.entityCreated.notify({ entityId: 1 as EntityId, entity: enemyActor });
+            observables.entityCreated.notify({ entityId: 2 as EntityId, entity: playerActor });
 
             expect(taggedEvents).toHaveLength(1);
-            expect(taggedEvents[0].actor.tag).toBe('enemy');
+            expect(taggedEvents[0].entity.tag).toBe('enemy');
         });
 
-        it('should filter by actor layer', () => {
+        it('should filter by entity layer', () => {
             const lifecycle = observables.createEntityLifecycle();
             const layeredEvents: any[] = [];
 
@@ -562,14 +558,14 @@ describe('ECSObservables', () => {
                 layeredEvents.push(data);
             });
 
-            const layer5Actor = new Actor(world, { layer: 5 as any });
-            const layer1Actor = new Actor(world, { layer: 1 as any });
+            const layer5Entity = new Entity(world, { layer: 5 as any });
+            const layer1Entity = new Entity(world, { layer: 1 as any });
 
-            observables.entityCreated.notify({ entity: 1 as Entity, actor: layer5Actor });
-            observables.entityCreated.notify({ entity: 2 as Entity, actor: layer1Actor });
+            observables.entityCreated.notify({ entityId: 1 as EntityId, entity: layer5Entity });
+            observables.entityCreated.notify({ entityId: 2 as EntityId, entity: layer1Entity });
 
             expect(layeredEvents).toHaveLength(1);
-            expect(layeredEvents[0].actor.layer).toBe(5);
+            expect(layeredEvents[0].entity.layer).toBe(5);
         });
     });
 
@@ -614,7 +610,7 @@ describe('ECSObservables', () => {
                 observables.entityCreated.addObserver(() => {});
             }
 
-            observables.entityCreated.notify({ entity: mockEntity, actor: mockActor });
+            observables.entityCreated.notify({ entityId: mockEntityId, entity: mockEntity });
 
             const endTime = performance.now();
             expect(endTime - startTime).toBeLessThan(100);
@@ -630,7 +626,7 @@ describe('ECSObservables', () => {
             const notifications = 5;
 
             for (let i = 0; i < notifications; i++) {
-                observables.entityCreated.notify({ entity: i as Entity, actor: mockActor });
+                observables.entityCreated.notify({ entityId: i as EntityId, entity: mockEntity });
             }
 
             const endTime = performance.now();

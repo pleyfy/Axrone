@@ -56,7 +56,7 @@ describe('scene framebuffer pass planning', () => {
         expect(planSceneFramebufferPasses([])).toBe(planSceneFramebufferPasses(undefined));
     });
 
-    it('keeps the offscreen passes off the actor draw path', () => {
+    it('keeps the offscreen passes off the entity draw path', () => {
         // No MeshRenderer publishes this pass id, so the render-item collector
         // finds zero primitives: the offscreen work can never re-draw or
         // re-blend opaque or non-transmissive geometry.

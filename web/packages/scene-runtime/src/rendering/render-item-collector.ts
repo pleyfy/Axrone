@@ -1,5 +1,5 @@
 import type { BoundingSphere, CameraFrustum } from '@axrone/geometry';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { EntityId } from '@axrone/ecs-runtime';
 import { Transform } from '@axrone/ecs-runtime';
 import { Vec3 } from '@axrone/numeric';
 import { MeshRenderer } from '../components/mesh-renderer';
@@ -90,7 +90,7 @@ export class SceneRenderItemCollector {
     };
 
     collect(
-        actors: readonly Actor[],
+        entities: readonly EntityId[],
         passId: string,
         sortOptions: SceneRenderItemSortOptions = {}
     ): readonly SceneRenderItem[] {
@@ -102,13 +102,13 @@ export class SceneRenderItemCollector {
         const evaluateBlended = sortOptions.isBlended;
         const cullingEnabled = Boolean(sortOptions.cameraFrustum && sortOptions.resolveBounds);
 
-        for (const actor of actors) {
-            if (!actor.active) {
+        for (const entity of entities) {
+            if (!entity.active) {
                 continue;
             }
 
-            const transform = actor.getComponent(Transform);
-            const renderer = actor.getComponent(MeshRenderer);
+            const transform = entity.getComponent(Transform);
+            const renderer = entity.getComponent(MeshRenderer);
 
             if (
                 !transform ||

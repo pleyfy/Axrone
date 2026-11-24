@@ -13,8 +13,8 @@
  * dynamic frame bumps it once per moving sprite.
  *
  * A world always owns exactly one clock; components receive a reference when
- * they are attached to an actor and drop it when they are removed. Standalone
- * components (never added to an actor) have no clock and simply skip the bump.
+ * they are attached to an entity and drop it when they are removed. Standalone
+ * components (never added to an entity) have no clock and simply skip the bump.
  */
 export interface RenderMutationClock {
     value: number;

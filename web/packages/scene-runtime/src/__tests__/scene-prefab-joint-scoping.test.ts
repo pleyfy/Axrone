@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { PrefabNodeBinding } from '@axrone/scene-prefab';
 import { MeshRenderer } from '../components/mesh-renderer';
 import { SceneComponentCatalog } from '../component-catalog';
-import { SceneActorRuntime } from '../scene-actor-runtime';
+import { SceneEntityRuntime } from '../scene-entity-runtime';
 import { createSceneRegistry } from '../scene-registry';
 import { encodeSceneValue } from '../serialization';
 import type { ScenePrefabDefinition } from '@axrone/scene-prefab';
@@ -20,7 +20,7 @@ import type { ScenePrefabDefinition } from '@axrone/scene-prefab';
 const createSkinnedPrefabDefinition = (): ScenePrefabDefinition => ({
     id: 'prefab/skinned-character',
     kind: 'prefab',
-    actors: [
+    entities: [
         {
             nodeId: 'skeleton-root',
             name: 'SkeletonRoot',
@@ -137,41 +137,41 @@ const createTestHarness = () => {
         },
     });
     const world = new World(registry);
-    const actorRuntime = new SceneActorRuntime({
+    const entityRuntime = new SceneEntityRuntime({
         world,
         componentCatalog: new SceneComponentCatalog(registry),
     });
 
-    actorRuntime.registerComponent(Transform);
-    actorRuntime.registerComponent(PrefabNodeBinding);
-    actorRuntime.registerComponent(MeshRenderer);
+    entityRuntime.registerComponent(Transform);
+    entityRuntime.registerComponent(PrefabNodeBinding);
+    entityRuntime.registerComponent(MeshRenderer);
 
-    return { world, registry, actorRuntime };
+    return { world, registry, entityRuntime };
 };
 
 describe('scene-prefab jointNodeIds scoping', () => {
     it('each prefab instance resolves joints within its own scope', async () => {
-        const { world, actorRuntime } = createTestHarness();
+        const { world, entityRuntime } = createTestHarness();
         const definition = createSkinnedPrefabDefinition();
 
         // Instantiate two copies of the same prefab
-        const instance1Actors = await actorRuntime.instantiatePrefab(definition, {
+        const instance1Entities = await entityRuntime.instantiatePrefab(definition, {
             namePrefix: 'Instance1_',
         });
-        const instance2Actors = await actorRuntime.instantiatePrefab(definition, {
+        const instance2Entities = await entityRuntime.instantiatePrefab(definition, {
             namePrefix: 'Instance2_',
         });
 
-        expect(instance1Actors.length).toBeGreaterThan(0);
-        expect(instance2Actors.length).toBeGreaterThan(0);
+        expect(instance1Entities.length).toBeGreaterThan(0);
+        expect(instance2Entities.length).toBeGreaterThan(0);
 
         // Find MeshRenderers in each instance
-        const allActors = world.getAllActors();
-        const meshRenderers = allActors
-            .map((actor) => ({
-                actor,
-                renderer: actor.getComponent(MeshRenderer),
-                binding: actor.getComponent(PrefabNodeBinding),
+        const allEntities = world.getAllEntities();
+        const meshRenderers = allEntities
+            .map((entity) => ({
+                entity,
+                renderer: entity.getComponent(MeshRenderer),
+                binding: entity.getComponent(PrefabNodeBinding),
             }))
             .filter((entry) => entry.renderer != null);
 
@@ -195,10 +195,10 @@ describe('scene-prefab jointNodeIds scoping', () => {
                 continue;
             }
 
-            // Collect all PrefabNodeBindings for actors in the same instance
+            // Collect all PrefabNodeBindings for entities in the same instance
             const sameInstanceNodeIds = new Set<string>();
-            for (const actor of allActors) {
-                const binding = actor.getComponent(PrefabNodeBinding);
+            for (const entity of allEntities) {
+                const binding = entity.getComponent(PrefabNodeBinding);
                 if (binding && binding.instanceId === myInstanceId && binding.nodeId) {
                     sameInstanceNodeIds.add(binding.nodeId);
                 }
@@ -212,15 +212,15 @@ describe('scene-prefab jointNodeIds scoping', () => {
     });
 
     it('different instances have distinct PrefabNodeBinding instanceIds', async () => {
-        const { world, actorRuntime } = createTestHarness();
+        const { world, entityRuntime } = createTestHarness();
         const definition = createSkinnedPrefabDefinition();
 
-        await actorRuntime.instantiatePrefab(definition, { namePrefix: 'A_' });
-        await actorRuntime.instantiatePrefab(definition, { namePrefix: 'B_' });
+        await entityRuntime.instantiatePrefab(definition, { namePrefix: 'A_' });
+        await entityRuntime.instantiatePrefab(definition, { namePrefix: 'B_' });
 
-        const allActors = world.getAllActors();
-        const bindings = allActors
-            .map((actor) => actor.getComponent(PrefabNodeBinding))
+        const allEntities = world.getAllEntities();
+        const bindings = allEntities
+            .map((entity) => entity.getComponent(PrefabNodeBinding))
             .filter((b): b is PrefabNodeBinding => b != null);
 
         const instanceIds = new Set(

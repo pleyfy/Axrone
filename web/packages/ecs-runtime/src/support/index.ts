@@ -1,4 +1,4 @@
-export { ActorRegistry } from './actor-registry';
+export { EntityRegistry } from './entity-registry';
 export { SingletonRegistry } from './singleton-registry';
 export type { SingletonEntry } from './singleton-registry';
 export type {

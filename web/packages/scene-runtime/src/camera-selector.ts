@@ -1,15 +1,15 @@
-import type { Actor } from '@axrone/ecs-runtime';
+import type { EntityId } from '@axrone/ecs-runtime';
 import { Camera } from './components/camera';
 
-export const selectSceneCamera = (actors: readonly Actor[]): Camera | undefined => {
+export const selectSceneCamera = (entities: readonly EntityId[]): Camera | undefined => {
     let fallback: Camera | undefined;
 
-    for (const actor of actors) {
-        if (!actor.active) {
+    for (const entity of entities) {
+        if (!entity.active) {
             continue;
         }
 
-        const camera = actor.getComponent(Camera);
+        const camera = entity.getComponent(Camera);
         if (!camera || !camera.enabled) {
             continue;
         }

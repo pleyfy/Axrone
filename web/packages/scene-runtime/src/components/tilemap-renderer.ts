@@ -23,7 +23,7 @@ const toColor = (value: TilemapRendererTint | undefined): Color => {
 };
 
 /**
- * Opt-in component that binds an actor to a `TilemapRuntime` map. It stores
+ * Opt-in component that binds an entity to a `TilemapRuntime` map. It stores
  * only stable IDs and presentation settings; map data and chunk streaming live
  * in the runtime, not in the component.
  */

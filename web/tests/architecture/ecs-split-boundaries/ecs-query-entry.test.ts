@@ -8,6 +8,6 @@ describe('ecs-runtime query subpath entry', () => {
         expect('World' in ecsQuery).toBe(false);
         expect('WorldStorageRuntime' in ecsQuery).toBe(false);
         expect('WorldEventRuntime' in ecsQuery).toBe(false);
-        expect('Actor' in ecsQuery).toBe(false);
+        expect('Entity' in ecsQuery).toBe(false);
     });
 });

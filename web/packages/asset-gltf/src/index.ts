@@ -85,7 +85,7 @@ export type {
     AssetSelector,
 } from './asset-contract';
 export type {
-    GltfActorSnapshot,
+    GltfEntitySnapshot,
     GltfComponentSnapshot,
     GltfMaterialDefinition,
     GltfMeshDefinition,

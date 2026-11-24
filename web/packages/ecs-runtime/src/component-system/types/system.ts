@@ -1,9 +1,9 @@
-import type { ComponentRegistry, SystemId, Entity, ComponentInstance } from './core';
+import type { ComponentRegistry, SystemId, EntityId, ComponentInstance } from './core';
 
 export type SystemQuery<R extends ComponentRegistry> = readonly (keyof R)[];
 
 export type QueryResult<R extends ComponentRegistry, Q extends readonly (keyof R)[]> = {
-    readonly entity: Entity;
+    readonly entity: EntityId;
     readonly components: {
         readonly [K in Q[number]]: ComponentInstance<R[K]>;
     };

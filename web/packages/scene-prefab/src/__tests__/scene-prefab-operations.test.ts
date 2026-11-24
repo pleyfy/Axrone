@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
     createScenePrefabState,
-    materializeScenePrefabActors,
+    materializeScenePrefabEntities,
     materializeScenePrefabDefinition,
     materializeScenePrefabResolvedDefinition,
     applyScenePrefabOverrideOperations,
     applyScenePrefabOverrides,
     validateScenePrefabState,
-    scopeScenePrefabActors,
+    scopeScenePrefabEntities,
     scopeScenePrefabOverrideOperations,
     readSceneSerializedValueAtPath,
-    mergeScenePrefabActors,
+    mergeScenePrefabEntities,
     type ScenePrefabState,
 } from '../scene-prefab-operations';
 import { ScenePrefabValidationError } from '../errors';
 import type {
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     SceneComponentSnapshot,
     ScenePrefabDefinition,
     ScenePrefabOverrideOperation,
@@ -25,12 +25,12 @@ import type {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-const makeActor = (
+const makeEntity = (
     nodeId: string,
-    name = 'Actor',
+    name = 'Entity',
     parentNodeId: string | null = null,
     components: SceneComponentSnapshot[] = [],
-): SceneActorSnapshot => ({
+): SceneEntitySnapshot => ({
     nodeId,
     parentNodeId,
     name,
@@ -54,11 +54,11 @@ const makeComponent = (
 
 const makeDefinition = (
     id: string,
-    actors: SceneActorSnapshot[],
+    entities: SceneEntitySnapshot[],
 ): ScenePrefabDefinition => ({
     id,
     kind: 'prefab',
-    actors,
+    entities,
 });
 
 const idSelector = (componentId: string) => ({ kind: 'id' as const, componentId });
@@ -69,70 +69,70 @@ const typeSelector = (type: string, occurrence?: number) =>
 // createScenePrefabState
 // ---------------------------------------------------------------------------
 describe('createScenePrefabState', () => {
-    it('creates mutable state with actor index', () => {
+    it('creates mutable state with entity index', () => {
         const def = makeDefinition('p1', [
-            makeActor('root'),
-            makeActor('child', 'Child', 'root'),
+            makeEntity('root'),
+            makeEntity('child', 'Child', 'root'),
         ]);
         const state = createScenePrefabState(def);
         expect(state.id).toBe('p1');
-        expect(state.actors).toHaveLength(2);
-        expect(state.actorIndex.size).toBe(2);
-        expect(state.actorIndex.get('root')).toBeDefined();
-        expect(state.actorIndex.get('child')).toBeDefined();
+        expect(state.entities).toHaveLength(2);
+        expect(state.entityIndex.size).toBe(2);
+        expect(state.entityIndex.get('root')).toBeDefined();
+        expect(state.entityIndex.get('child')).toBeDefined();
     });
 
     it('throws on duplicate nodeId', () => {
         const def = makeDefinition('p1', [
-            makeActor('dup'),
-            makeActor('dup'),
+            makeEntity('dup'),
+            makeEntity('dup'),
         ]);
         expect(() => createScenePrefabState(def)).toThrow(ScenePrefabValidationError);
     });
 
     it('throws on missing nodeId', () => {
         const def = makeDefinition('p1', [
-            { ...makeActor('ok'), nodeId: undefined },
+            { ...makeEntity('ok'), nodeId: undefined },
         ]);
         expect(() => createScenePrefabState(def)).toThrow(ScenePrefabValidationError);
     });
 
     it('throws on empty/whitespace nodeId', () => {
         const def = makeDefinition('p1', [
-            makeActor('  '),
+            makeEntity('  '),
         ]);
         expect(() => createScenePrefabState(def)).toThrow(ScenePrefabValidationError);
     });
 
-    it('deep-clones actor data during creation', () => {
-        const original = makeActor('root', 'Root', null, [makeComponent('Transform', { x: 1 })]);
+    it('deep-clones entity data during creation', () => {
+        const original = makeEntity('root', 'Root', null, [makeComponent('Transform', { x: 1 })]);
         const def = makeDefinition('p1', [original]);
         const state = createScenePrefabState(def);
-        // Mutate state actor — should not affect original
-        state.actors[0]!.name = 'Mutated';
+        // Mutate state entity — should not affect original
+        state.entities[0]!.name = 'Mutated';
         expect(original.name).toBe('Root');
     });
 });
 
 // ---------------------------------------------------------------------------
-// materializeScenePrefabActors
+// materializeScenePrefabEntities
 // ---------------------------------------------------------------------------
-describe('materializeScenePrefabActors', () => {
+describe('materializeScenePrefabEntities', () => {
     it('produces immutable snapshots', () => {
-        const def = makeDefinition('p1', [makeActor('root')]);
+        const def = makeDefinition('p1', [makeEntity('root')]);
         const state = createScenePrefabState(def);
-        const actors = materializeScenePrefabActors(state);
-        expect(actors).toHaveLength(1);
-        expect(actors[0]!.nodeId).toBe('root');
+        const entities = materializeScenePrefabEntities(state);
+        expect(entities).toHaveLength(1);
+        expect(entities[0]!.nodeId).toBe('root');
     });
 
     it('deep-clones data (mutations do not affect state)', () => {
         const def = makeDefinition('p1', [
-            makeActor('root', 'Root', null, [makeComponent('Transform', { pos: [1, 2, 3] })]),
+            makeEntity('root', 'Root', null, [makeComponent('Transform', { pos: [1, 2, 3] })]),
         ]);
         const state = createScenePrefabState(def);
-        const snap1 = materializeScenePrefabActors(state);
-        const snap2 = materializeScenePrefabActors(state);
+        const snap1 = materializeScenePrefabEntities(state);
+        const snap2 = materializeScenePrefabEntities(state);
         expect(snap1[0]!.components[0]).not.toBe(snap2[0]!.components[0]);
     });
 });
@@ -141,12 +141,12 @@ describe('materializeScenePrefabActors', () => {
 // materializeScenePrefabDefinition
 // ---------------------------------------------------------------------------
 describe('materializeScenePrefabDefinition', () => {
-    it('returns a definition with materialized actors', () => {
-        const def = makeDefinition('p1', [makeActor('root')]);
+    it('returns a definition with materialized entities', () => {
+        const def = makeDefinition('p1', [makeEntity('root')]);
         const state = createScenePrefabState(def);
         const result = materializeScenePrefabDefinition(def, state);
         expect(result.id).toBe('p1');
-        expect(result.actors).toHaveLength(1);
+        expect(result.entities).toHaveLength(1);
     });
 });
 
@@ -155,7 +155,7 @@ describe('materializeScenePrefabDefinition', () => {
 // ---------------------------------------------------------------------------
 describe('materializeScenePrefabResolvedDefinition', () => {
     it('returns kind: resolved with lineage', () => {
-        const def = makeDefinition('p1', [makeActor('root')]);
+        const def = makeDefinition('p1', [makeEntity('root')]);
         const state = createScenePrefabState(def);
         const result = materializeScenePrefabResolvedDefinition(def, state, ['p1', 'base']);
         expect(result.kind).toBe('resolved');
@@ -164,23 +164,23 @@ describe('materializeScenePrefabResolvedDefinition', () => {
 });
 
 // ---------------------------------------------------------------------------
-// mergeScenePrefabActors
+// mergeScenePrefabEntities
 // ---------------------------------------------------------------------------
-describe('mergeScenePrefabActors', () => {
-    it('replaces existing actors by nodeId', () => {
-        const def = makeDefinition('p1', [makeActor('root', 'Old')]);
+describe('mergeScenePrefabEntities', () => {
+    it('replaces existing entities by nodeId', () => {
+        const def = makeDefinition('p1', [makeEntity('root', 'Old')]);
         const state = createScenePrefabState(def);
-        mergeScenePrefabActors(state, [makeActor('root', 'New')], 'p1');
-        expect(state.actors).toHaveLength(1);
-        expect(state.actors[0]!.name).toBe('New');
+        mergeScenePrefabEntities(state, [makeEntity('root', 'New')], 'p1');
+        expect(state.entities).toHaveLength(1);
+        expect(state.entities[0]!.name).toBe('New');
     });
 
-    it('adds new actors', () => {
-        const def = makeDefinition('p1', [makeActor('root')]);
+    it('adds new entities', () => {
+        const def = makeDefinition('p1', [makeEntity('root')]);
         const state = createScenePrefabState(def);
-        mergeScenePrefabActors(state, [makeActor('child', 'Child')], 'p1');
-        expect(state.actors).toHaveLength(2);
-        expect(state.actorIndex.has('child')).toBe(true);
+        mergeScenePrefabEntities(state, [makeEntity('child', 'Child')], 'p1');
+        expect(state.entities).toHaveLength(2);
+        expect(state.entityIndex.has('child')).toBe(true);
     });
 });
 
@@ -188,195 +188,195 @@ describe('mergeScenePrefabActors', () => {
 // Override operations
 // ---------------------------------------------------------------------------
 describe('override operations', () => {
-    const baseActors = (): SceneActorSnapshot[] => [
-        makeActor('root', 'Root', null, [makeComponent('Transform', { position: [0, 0, 0] }, 't-1')]),
-        makeActor('child', 'Child', 'root', [makeComponent('Script', { enabled: true }, 's-1')]),
+    const baseEntities = (): SceneEntitySnapshot[] => [
+        makeEntity('root', 'Root', null, [makeComponent('Transform', { position: [0, 0, 0] }, 't-1')]),
+        makeEntity('child', 'Child', 'root', [makeComponent('Script', { enabled: true }, 's-1')]),
     ];
 
-    const createState = () => createScenePrefabState(makeDefinition('test', baseActors()));
+    const createState = () => createScenePrefabState(makeDefinition('test', baseEntities()));
 
-    describe('add-actor', () => {
-        it('appends actor at end', () => {
+    describe('add-entity', () => {
+        it('appends entity at end', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
-                kind: 'add-actor',
-                actor: makeActor('new', 'New'),
+                kind: 'add-entity',
+                entity: makeEntity('new', 'New'),
             }]);
-            expect(state.actors).toHaveLength(3);
-            expect(state.actors[2]!.nodeId).toBe('new');
+            expect(state.entities).toHaveLength(3);
+            expect(state.entities[2]!.nodeId).toBe('new');
         });
 
-        it('inserts after specified actor', () => {
+        it('inserts after specified entity', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
-                kind: 'add-actor',
-                actor: makeActor('inserted', 'Inserted'),
+                kind: 'add-entity',
+                entity: makeEntity('inserted', 'Inserted'),
                 afterNodeId: 'root',
             }]);
-            expect(state.actors).toHaveLength(3);
-            expect(state.actors[1]!.nodeId).toBe('inserted');
+            expect(state.entities).toHaveLength(3);
+            expect(state.entities[1]!.nodeId).toBe('inserted');
         });
 
         it('throws on duplicate nodeId', () => {
             const state = createState();
             expect(() => applyScenePrefabOverrideOperations(state, [{
-                kind: 'add-actor',
-                actor: makeActor('root', 'Dup'),
+                kind: 'add-entity',
+                entity: makeEntity('root', 'Dup'),
             }])).toThrow(ScenePrefabValidationError);
         });
     });
 
-    describe('remove-actor', () => {
-        it('removes actor and its children', () => {
+    describe('remove-entity', () => {
+        it('removes entity and its children', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
-                kind: 'remove-actor',
+                kind: 'remove-entity',
                 nodeId: 'root',
             }]);
             // root + child (child's parent is root) both removed
-            expect(state.actors).toHaveLength(0);
+            expect(state.entities).toHaveLength(0);
         });
 
-        it('removes only the targeted actor when no children', () => {
+        it('removes only the targeted entity when no children', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
-                kind: 'remove-actor',
+                kind: 'remove-entity',
                 nodeId: 'child',
             }]);
-            expect(state.actors).toHaveLength(1);
-            expect(state.actors[0]!.nodeId).toBe('root');
+            expect(state.entities).toHaveLength(1);
+            expect(state.entities[0]!.nodeId).toBe('root');
         });
 
         it('throws on missing nodeId', () => {
             const state = createState();
             expect(() => applyScenePrefabOverrideOperations(state, [{
-                kind: 'remove-actor',
+                kind: 'remove-entity',
                 nodeId: 'nonexistent',
             }])).toThrow(ScenePrefabValidationError);
         });
     });
 
-    describe('reparent-actor', () => {
+    describe('reparent-entity', () => {
         it('reparents to a valid parent', () => {
             const state = createState();
-            // Add a new actor then reparent it under child
+            // Add a new entity then reparent it under child
             applyScenePrefabOverrideOperations(state, [
-                { kind: 'add-actor', actor: makeActor('new', 'New') },
-                { kind: 'reparent-actor', nodeId: 'new', parentNodeId: 'child' },
+                { kind: 'add-entity', entity: makeEntity('new', 'New') },
+                { kind: 'reparent-entity', nodeId: 'new', parentNodeId: 'child' },
             ]);
-            const actor = state.actorIndex.get('new');
-            expect(actor!.parentNodeId).toBe('child');
+            const entity = state.entityIndex.get('new');
+            expect(entity!.parentNodeId).toBe('child');
         });
 
         it('reparents to root (null parentNodeId)', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
-                kind: 'reparent-actor',
+                kind: 'reparent-entity',
                 nodeId: 'child',
                 parentNodeId: null,
             }]);
-            expect(state.actorIndex.get('child')!.parentNodeId).toBeNull();
+            expect(state.entityIndex.get('child')!.parentNodeId).toBeNull();
         });
 
         it('throws when target parent does not exist', () => {
             const state = createState();
             expect(() => applyScenePrefabOverrideOperations(state, [{
-                kind: 'reparent-actor',
+                kind: 'reparent-entity',
                 nodeId: 'child',
                 parentNodeId: 'ghost',
             }])).toThrow(ScenePrefabValidationError);
         });
     });
 
-    describe('set-actor-field', () => {
+    describe('set-entity-field', () => {
         it('sets name', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
-                kind: 'set-actor-field', nodeId: 'root', field: 'name', value: 'Renamed',
+                kind: 'set-entity-field', nodeId: 'root', field: 'name', value: 'Renamed',
             }]);
-            expect(state.actorIndex.get('root')!.name).toBe('Renamed');
+            expect(state.entityIndex.get('root')!.name).toBe('Renamed');
         });
 
         it('sets layer', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
-                kind: 'set-actor-field', nodeId: 'root', field: 'layer', value: 5,
+                kind: 'set-entity-field', nodeId: 'root', field: 'layer', value: 5,
             }]);
-            expect(state.actorIndex.get('root')!.layer).toBe(5);
+            expect(state.entityIndex.get('root')!.layer).toBe(5);
         });
 
         it('sets tag', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
-                kind: 'set-actor-field', nodeId: 'root', field: 'tag', value: 'hero',
+                kind: 'set-entity-field', nodeId: 'root', field: 'tag', value: 'hero',
             }]);
-            expect(state.actorIndex.get('root')!.tag).toBe('hero');
+            expect(state.entityIndex.get('root')!.tag).toBe('hero');
         });
 
         it('sets active', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
-                kind: 'set-actor-field', nodeId: 'root', field: 'active', value: false,
+                kind: 'set-entity-field', nodeId: 'root', field: 'active', value: false,
             }]);
-            expect(state.actorIndex.get('root')!.active).toBe(false);
+            expect(state.entityIndex.get('root')!.active).toBe(false);
         });
 
         it('sets persistent', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
-                kind: 'set-actor-field', nodeId: 'root', field: 'persistent', value: true,
+                kind: 'set-entity-field', nodeId: 'root', field: 'persistent', value: true,
             }]);
-            expect(state.actorIndex.get('root')!.persistent).toBe(true);
+            expect(state.entityIndex.get('root')!.persistent).toBe(true);
         });
 
         it('sets pooled', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
-                kind: 'set-actor-field', nodeId: 'root', field: 'pooled', value: true,
+                kind: 'set-entity-field', nodeId: 'root', field: 'pooled', value: true,
             }]);
-            expect(state.actorIndex.get('root')!.pooled).toBe(true);
+            expect(state.entityIndex.get('root')!.pooled).toBe(true);
         });
 
         it('throws on type mismatch for name (string expected)', () => {
             const state = createState();
             expect(() => applyScenePrefabOverrideOperations(state, [{
-                kind: 'set-actor-field', nodeId: 'root', field: 'name', value: 123 as any,
+                kind: 'set-entity-field', nodeId: 'root', field: 'name', value: 123 as any,
             }])).toThrow(ScenePrefabValidationError);
         });
 
         it('throws on type mismatch for layer (number expected)', () => {
             const state = createState();
             expect(() => applyScenePrefabOverrideOperations(state, [{
-                kind: 'set-actor-field', nodeId: 'root', field: 'layer', value: 'bad' as any,
+                kind: 'set-entity-field', nodeId: 'root', field: 'layer', value: 'bad' as any,
             }])).toThrow(ScenePrefabValidationError);
         });
 
         it('throws on type mismatch for active (boolean expected)', () => {
             const state = createState();
             expect(() => applyScenePrefabOverrideOperations(state, [{
-                kind: 'set-actor-field', nodeId: 'root', field: 'active', value: 'yes' as any,
+                kind: 'set-entity-field', nodeId: 'root', field: 'active', value: 'yes' as any,
             }])).toThrow(ScenePrefabValidationError);
         });
 
         it('throws on Infinity for layer', () => {
             const state = createState();
             expect(() => applyScenePrefabOverrideOperations(state, [{
-                kind: 'set-actor-field', nodeId: 'root', field: 'layer', value: Infinity,
+                kind: 'set-entity-field', nodeId: 'root', field: 'layer', value: Infinity,
             }])).toThrow(ScenePrefabValidationError);
         });
     });
 
     describe('add-component', () => {
-        it('appends component to actor', () => {
+        it('appends component to entity', () => {
             const state = createState();
             applyScenePrefabOverrideOperations(state, [{
                 kind: 'add-component',
                 nodeId: 'root',
                 component: makeComponent('RigidBody', { mass: 10 }),
             }]);
-            const actor = state.actorIndex.get('root')!;
-            expect(actor.components).toHaveLength(2);
-            expect(actor.components[1]!.type).toBe('RigidBody');
+            const entity = state.entityIndex.get('root')!;
+            expect(entity.components).toHaveLength(2);
+            expect(entity.components[1]!.type).toBe('RigidBody');
         });
 
         it('inserts at specified index', () => {
@@ -387,8 +387,8 @@ describe('override operations', () => {
                 component: makeComponent('First'),
                 index: 0,
             }]);
-            const actor = state.actorIndex.get('root')!;
-            expect(actor.components[0]!.type).toBe('First');
+            const entity = state.entityIndex.get('root')!;
+            expect(entity.components[0]!.type).toBe('First');
         });
 
         it('clamps negative index to 0', () => {
@@ -399,8 +399,8 @@ describe('override operations', () => {
                 component: makeComponent('First'),
                 index: -5,
             }]);
-            const actor = state.actorIndex.get('root')!;
-            expect(actor.components[0]!.type).toBe('First');
+            const entity = state.entityIndex.get('root')!;
+            expect(entity.components[0]!.type).toBe('First');
         });
 
         it('throws on duplicate component id', () => {
@@ -431,7 +431,7 @@ describe('override operations', () => {
                 nodeId: 'root',
                 selector: idSelector('t-1'),
             }]);
-            expect(state.actorIndex.get('root')!.components).toHaveLength(0);
+            expect(state.entityIndex.get('root')!.components).toHaveLength(0);
         });
 
         it('removes by type selector', () => {
@@ -441,7 +441,7 @@ describe('override operations', () => {
                 nodeId: 'root',
                 selector: typeSelector('Transform'),
             }]);
-            expect(state.actorIndex.get('root')!.components).toHaveLength(0);
+            expect(state.entityIndex.get('root')!.components).toHaveLength(0);
         });
 
         it('throws on missing component', () => {
@@ -463,7 +463,7 @@ describe('override operations', () => {
                 selector: idSelector('t-1'),
                 component: makeComponent('NewTransform', { y: 99 }, 't-1'),
             }]);
-            const comp = state.actorIndex.get('root')!.components[0]!;
+            const comp = state.entityIndex.get('root')!.components[0]!;
             expect(comp.type).toBe('NewTransform');
         });
 
@@ -479,7 +479,7 @@ describe('override operations', () => {
                     component: makeComponent('Replaced', { z: 2 }),
                 },
             ]);
-            const comps = state.actorIndex.get('root')!.components;
+            const comps = state.entityIndex.get('root')!.components;
             expect(comps[0]!.type).toBe('Transform'); // first unchanged
             expect(comps[1]!.type).toBe('Replaced'); // second replaced
         });
@@ -495,7 +495,7 @@ describe('override operations', () => {
                 path: ['position', 'x'],
                 value: 42,
             }]);
-            const data = state.actorIndex.get('root')!.components[0]!.data;
+            const data = state.entityIndex.get('root')!.components[0]!.data;
             expect((data as any).position.x).toBe(42);
         });
 
@@ -508,7 +508,7 @@ describe('override operations', () => {
                 path: ['deep', 'nested', 'value'],
                 value: 'hello',
             }]);
-            const data = state.actorIndex.get('root')!.components[0]!.data;
+            const data = state.entityIndex.get('root')!.components[0]!.data;
             expect((data as any).deep.nested.value).toBe('hello');
         });
 
@@ -521,7 +521,7 @@ describe('override operations', () => {
                 path: [],
                 value: { completely: 'new' },
             }]);
-            const data = state.actorIndex.get('root')!.components[0]!.data;
+            const data = state.entityIndex.get('root')!.components[0]!.data;
             expect(data).toEqual({ completely: 'new' });
         });
 
@@ -542,7 +542,7 @@ describe('override operations', () => {
                 path: [1],
                 value: 99,
             }]);
-            const data = state.actorIndex.get('root')!.components[0]!.data;
+            const data = state.entityIndex.get('root')!.components[0]!.data;
             expect(data).toEqual([10, 99, 30]);
         });
     });
@@ -564,7 +564,7 @@ describe('override operations', () => {
                 selector: idSelector('t-1'),
                 path: ['b'],
             }]);
-            const data = state.actorIndex.get('root')!.components[0]!.data;
+            const data = state.entityIndex.get('root')!.components[0]!.data;
             expect(data).toEqual({ a: 1, c: 3 });
         });
 
@@ -583,7 +583,7 @@ describe('override operations', () => {
                 selector: idSelector('t-1'),
                 path: [1],
             }]);
-            const data = state.actorIndex.get('root')!.components[0]!.data;
+            const data = state.entityIndex.get('root')!.components[0]!.data;
             expect(data).toEqual([10, 30]);
         });
 
@@ -595,7 +595,7 @@ describe('override operations', () => {
                 selector: idSelector('t-1'),
                 path: [],
             }]);
-            const data = state.actorIndex.get('root')!.components[0]!.data;
+            const data = state.entityIndex.get('root')!.components[0]!.data;
             expect(data).toBeNull();
         });
     });
@@ -607,17 +607,17 @@ describe('override operations', () => {
 describe('applyScenePrefabOverrides', () => {
     it('applies multiple operations and returns a new definition', () => {
         const def = makeDefinition('p1', [
-            makeActor('root', 'Root', null, [makeComponent('Transform', { x: 0 }, 't-1')]),
+            makeEntity('root', 'Root', null, [makeComponent('Transform', { x: 0 }, 't-1')]),
         ]);
         const result = applyScenePrefabOverrides(def, [
-            { kind: 'set-actor-field', nodeId: 'root', field: 'name', value: 'Renamed' },
+            { kind: 'set-entity-field', nodeId: 'root', field: 'name', value: 'Renamed' },
             { kind: 'set-component-property', nodeId: 'root', selector: idSelector('t-1'), path: ['x'], value: 42 },
-            { kind: 'add-actor', actor: makeActor('child', 'Child', 'root') },
+            { kind: 'add-entity', entity: makeEntity('child', 'Child', 'root') },
         ]);
-        expect(result.actors).toHaveLength(2);
-        expect(result.actors[0]!.name).toBe('Renamed');
-        expect((result.actors[0]!.components[0]!.data as any).x).toBe(42);
-        expect(result.actors[1]!.nodeId).toBe('child');
+        expect(result.entities).toHaveLength(2);
+        expect(result.entities[0]!.name).toBe('Renamed');
+        expect((result.entities[0]!.components[0]!.data as any).x).toBe(42);
+        expect(result.entities[1]!.nodeId).toBe('child');
     });
 });
 
@@ -632,8 +632,8 @@ describe('validateScenePrefabState', () => {
 
     it('throws on missing parent reference', () => {
         const def = makeDefinition('p1', [
-            makeActor('root'),
-            makeActor('orphan', 'Orphan', 'ghost'),
+            makeEntity('root'),
+            makeEntity('orphan', 'Orphan', 'ghost'),
         ]);
         const state = createScenePrefabState(def);
         // Manually bypass — the state creation doesn't validate parents
@@ -645,8 +645,8 @@ describe('validateScenePrefabState', () => {
     it('throws on hierarchy cycle', () => {
         // Create a state with a cycle: a -> b -> a
         const def = makeDefinition('p1', [
-            makeActor('a', 'A', 'b'),
-            makeActor('b', 'B', 'a'),
+            makeEntity('a', 'A', 'b'),
+            makeEntity('b', 'B', 'a'),
         ]);
         const state = createScenePrefabState(def);
         expect(() => validateScenePrefabState(state)).toThrow(/cycle/i);
@@ -654,50 +654,50 @@ describe('validateScenePrefabState', () => {
 });
 
 // ---------------------------------------------------------------------------
-// scopeScenePrefabActors
+// scopeScenePrefabEntities
 // ---------------------------------------------------------------------------
-describe('scopeScenePrefabActors', () => {
+describe('scopeScenePrefabEntities', () => {
     it('prefixes nodeIds with instanceId', () => {
-        const actors = [makeActor('root'), makeActor('child', 'Child', 'root')];
+        const entities = [makeEntity('root'), makeEntity('child', 'Child', 'root')];
         const nested: ScenePrefabNestedInstance = {
             instanceId: 'inst-1',
             reference: { kind: 'registry', prefabId: 'p1' },
         };
-        const scoped = scopeScenePrefabActors(actors, nested, 'p1');
+        const scoped = scopeScenePrefabEntities(entities, nested, 'p1');
         expect(scoped[0]!.nodeId).toBe('inst-1::root');
         expect(scoped[1]!.nodeId).toBe('inst-1::child');
         expect(scoped[1]!.parentNodeId).toBe('inst-1::root');
     });
 
-    it('uses nested parentNodeId for root actors', () => {
-        const actors = [makeActor('root')];
+    it('uses nested parentNodeId for root entities', () => {
+        const entities = [makeEntity('root')];
         const nested: ScenePrefabNestedInstance = {
             instanceId: 'inst-1',
             reference: { kind: 'registry', prefabId: 'p1' },
             parentNodeId: 'parent-outside',
         };
-        const scoped = scopeScenePrefabActors(actors, nested, 'p1');
+        const scoped = scopeScenePrefabEntities(entities, nested, 'p1');
         expect(scoped[0]!.parentNodeId).toBe('parent-outside');
     });
 
     it('applies namePrefix', () => {
-        const actors = [makeActor('root', 'Root')];
+        const entities = [makeEntity('root', 'Root')];
         const nested: ScenePrefabNestedInstance = {
             instanceId: 'inst-1',
             reference: { kind: 'registry', prefabId: 'p1' },
             namePrefix: 'Copy_',
         };
-        const scoped = scopeScenePrefabActors(actors, nested, 'p1');
+        const scoped = scopeScenePrefabEntities(entities, nested, 'p1');
         expect(scoped[0]!.name).toBe('Copy_Root');
     });
 
     it('sets source instancePath', () => {
-        const actors = [makeActor('root')];
+        const entities = [makeEntity('root')];
         const nested: ScenePrefabNestedInstance = {
             instanceId: 'inst-1',
             reference: { kind: 'registry', prefabId: 'p1' },
         };
-        const scoped = scopeScenePrefabActors(actors, nested, 'p1');
+        const scoped = scopeScenePrefabEntities(entities, nested, 'p1');
         expect(scoped[0]!.source).toBeDefined();
         expect(scoped[0]!.source!.instancePath).toContain('inst-1');
     });
@@ -712,21 +712,21 @@ describe('scopeScenePrefabOverrideOperations', () => {
         reference: { kind: 'registry', prefabId: 'p1' },
     };
 
-    it('scopes remove-actor nodeId', () => {
-        const ops: ScenePrefabOverrideOperation[] = [{ kind: 'remove-actor', nodeId: 'root' }];
+    it('scopes remove-entity nodeId', () => {
+        const ops: ScenePrefabOverrideOperation[] = [{ kind: 'remove-entity', nodeId: 'root' }];
         const scoped = scopeScenePrefabOverrideOperations(ops, nested, 'p1');
-        expect(scoped[0]!.kind).toBe('remove-actor');
-        if (scoped[0]!.kind === 'remove-actor') {
+        expect(scoped[0]!.kind).toBe('remove-entity');
+        if (scoped[0]!.kind === 'remove-entity') {
             expect(scoped[0]!.nodeId).toBe('inst-1::root');
         }
     });
 
-    it('scopes set-actor-field nodeId', () => {
+    it('scopes set-entity-field nodeId', () => {
         const ops: ScenePrefabOverrideOperation[] = [{
-            kind: 'set-actor-field', nodeId: 'root', field: 'name', value: 'X',
+            kind: 'set-entity-field', nodeId: 'root', field: 'name', value: 'X',
         }];
         const scoped = scopeScenePrefabOverrideOperations(ops, nested, 'p1');
-        if (scoped[0]!.kind === 'set-actor-field') {
+        if (scoped[0]!.kind === 'set-entity-field') {
             expect(scoped[0]!.nodeId).toBe('inst-1::root');
         }
     });
@@ -745,39 +745,39 @@ describe('scopeScenePrefabOverrideOperations', () => {
         }
     });
 
-    it('scopes add-actor with afterNodeId', () => {
+    it('scopes add-entity with afterNodeId', () => {
         const ops: ScenePrefabOverrideOperation[] = [{
-            kind: 'add-actor',
-            actor: makeActor('new'),
+            kind: 'add-entity',
+            entity: makeEntity('new'),
             afterNodeId: 'root',
         }];
         const scoped = scopeScenePrefabOverrideOperations(ops, nested, 'p1');
-        if (scoped[0]!.kind === 'add-actor') {
+        if (scoped[0]!.kind === 'add-entity') {
             expect(scoped[0]!.afterNodeId).toBe('inst-1::root');
         }
     });
 
-    it('scopes reparent-actor parentNodeId', () => {
+    it('scopes reparent-entity parentNodeId', () => {
         const ops: ScenePrefabOverrideOperation[] = [{
-            kind: 'reparent-actor', nodeId: 'child', parentNodeId: 'root',
+            kind: 'reparent-entity', nodeId: 'child', parentNodeId: 'root',
         }];
         const scoped = scopeScenePrefabOverrideOperations(ops, nested, 'p1');
-        if (scoped[0]!.kind === 'reparent-actor') {
+        if (scoped[0]!.kind === 'reparent-entity') {
             expect(scoped[0]!.nodeId).toBe('inst-1::child');
             expect(scoped[0]!.parentNodeId).toBe('inst-1::root');
         }
     });
 
-    it('scopes reparent-actor to root (null parentNodeId uses nested.parentNodeId)', () => {
+    it('scopes reparent-entity to root (null parentNodeId uses nested.parentNodeId)', () => {
         const nestedWithParent: ScenePrefabNestedInstance = {
             ...nested,
             parentNodeId: 'outside-parent',
         };
         const ops: ScenePrefabOverrideOperation[] = [{
-            kind: 'reparent-actor', nodeId: 'child', parentNodeId: null,
+            kind: 'reparent-entity', nodeId: 'child', parentNodeId: null,
         }];
         const scoped = scopeScenePrefabOverrideOperations(ops, nestedWithParent, 'p1');
-        if (scoped[0]!.kind === 'reparent-actor') {
+        if (scoped[0]!.kind === 'reparent-entity') {
             expect(scoped[0]!.parentNodeId).toBe('outside-parent');
         }
     });
@@ -867,7 +867,7 @@ describe('readSceneSerializedValueAtPath', () => {
 
 function createState() {
     return createScenePrefabState(makeDefinition('test', [
-        makeActor('root', 'Root', null, [makeComponent('Transform', { position: [0, 0, 0] }, 't-1')]),
-        makeActor('child', 'Child', 'root', [makeComponent('Script', { enabled: true }, 's-1')]),
+        makeEntity('root', 'Root', null, [makeComponent('Transform', { position: [0, 0, 0] }, 't-1')]),
+        makeEntity('child', 'Child', 'root', [makeComponent('Script', { enabled: true }, 's-1')]),
     ]));
 }

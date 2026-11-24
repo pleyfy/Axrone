@@ -1,7 +1,7 @@
 import {
     Transform,
-    type Actor,
-    type ActorConfig,
+    type EntityId,
+    type EntityConfig,
     type ComponentConstructor,
 } from '@axrone/ecs-runtime';
 import type { World } from '@axrone/ecs-runtime';
@@ -15,22 +15,22 @@ export interface SceneProfilerProbe {
     resolveHotRefsMs?: number;
 }
 
-interface SceneActorBatchComponentEntry {
+interface SceneEntityBatchComponentEntry {
     readonly type: ComponentConstructor;
     readonly args?: readonly unknown[];
 }
 
-interface SceneActorBatchEntry {
-    readonly actorConfig?: ActorConfig;
-    readonly components?: readonly SceneActorBatchComponentEntry[];
+interface SceneEntityBatchEntry {
+    readonly entityConfig?: EntityConfig;
+    readonly components?: readonly SceneEntityBatchComponentEntry[];
 }
 
 interface Scene3DActorRuntimeHost<R extends ComponentRegistry = Record<string, never>> {
-    createActor(config?: ActorConfig): Actor<World<SceneRegistry<R>>>;
-    createActorsWithComponents(
-        configs: readonly SceneActorBatchEntry[],
+    createEntity(config?: EntityConfig): EntityId<World<SceneRegistry<R>>>;
+    createEntitiesWithComponents(
+        configs: readonly SceneEntityBatchEntry[],
         profiling?: SceneProfilerProbe
-    ): readonly Actor<World<SceneRegistry<R>>>[];
+    ): readonly Entity<World<SceneRegistry<R>>>[];
     runInStructureBatch<T>(callback: () => T): T;
     isComponentRegistered(componentTypeOrName: string | ComponentConstructor): boolean;
 }
@@ -38,71 +38,71 @@ interface Scene3DActorRuntimeHost<R extends ComponentRegistry = Record<string, n
 export interface Scene3DActorRuntimeOptions<
     R extends ComponentRegistry = Record<string, never>,
 > {
-    readonly actors: Scene3DActorRuntimeHost<R>;
+    readonly entities: Scene3DActorRuntimeHost<R>;
 }
 
-export interface SceneRenderableActorCreateOptions {
-    readonly actorConfig?: ActorConfig;
+export interface SceneRenderableEntityCreateOptions {
+    readonly entityConfig?: EntityConfig;
     readonly rendererConfig?: MeshRendererConfig;
 }
 
-export interface SceneRenderableActorInstance<
+export interface SceneRenderableEntityInstance<
     R extends ComponentRegistry = Record<string, never>,
 > {
-    readonly actor: Actor<World<SceneRegistry<R>>>;
+    readonly entity: EntityId<World<SceneRegistry<R>>>;
     readonly transform: Transform;
     readonly renderer: MeshRenderer;
 }
 
 export class Scene3DActorRuntime<R extends ComponentRegistry = Record<string, never>> {
-    private readonly _actors: Scene3DActorRuntimeHost<R>;
+    private readonly _entities: Scene3DActorRuntimeHost<R>;
 
     constructor(options: Scene3DActorRuntimeOptions<R>) {
-        this._actors = options.actors;
+        this._entities = options.entities;
     }
 
-    createCameraActor(
-        actorConfig: ActorConfig = {},
+    createCameraEntity(
+        entityConfig: EntityConfig = {},
         cameraConfig: CameraConfig = {}
-    ): Actor<World<SceneRegistry<R>>> {
+    ): EntityId<World<SceneRegistry<R>>> {
         requireRegisteredComponent(
-            this._actors,
+            this._entities,
             Camera,
-            'camera actor creation requires the 3D scene capability/profile'
+            'camera entity creation requires the 3D scene capability/profile'
         );
-        const actor = this._actors.createActor(actorConfig);
-        actor.addComponent(Camera, cameraConfig);
-        return actor;
+        const entity = this._entities.createEntity(entityConfig);
+        entity.addComponent(Camera, cameraConfig);
+        return entity;
     }
 
-    createRenderableActor(
-        actorConfig: ActorConfig = {},
+    createRenderableEntity(
+        entityConfig: EntityConfig = {},
         rendererConfig: MeshRendererConfig = {}
-    ): Actor<World<SceneRegistry<R>>> {
+    ): EntityId<World<SceneRegistry<R>>> {
         requireRegisteredComponent(
-            this._actors,
+            this._entities,
             MeshRenderer,
-            'renderable actor creation requires the 3D scene capability/profile'
+            'renderable entity creation requires the 3D scene capability/profile'
         );
-        const actor = this._actors.createActor(actorConfig);
-        actor.addComponent(MeshRenderer, rendererConfig);
-        return actor;
+        const entity = this._entities.createEntity(entityConfig);
+        entity.addComponent(MeshRenderer, rendererConfig);
+        return entity;
     }
 
-    createRenderableActors(
-        configs: readonly SceneRenderableActorCreateOptions[],
+    createRenderableEntities(
+        configs: readonly SceneRenderableEntityCreateOptions[],
         profiling?: SceneProfilerProbe
-    ): readonly SceneRenderableActorInstance<R>[] {
+    ): readonly SceneRenderableEntityInstance<R>[] {
         requireRegisteredComponent(
-            this._actors,
+            this._entities,
             MeshRenderer,
-            'renderable actor creation requires the 3D scene capability/profile'
+            'renderable entity creation requires the 3D scene capability/profile'
         );
 
-        return this._actors.runInStructureBatch(() => {
-            const actors = this._actors.createActorsWithComponents(
+        return this._entities.runInStructureBatch(() => {
+            const entities = this._entities.createEntitiesWithComponents(
                 configs.map((config) => ({
-                    actorConfig: config.actorConfig ?? {},
+                    entityConfig: config.entityConfig ?? {},
                     components: [
                         {
                             type: MeshRenderer,
@@ -114,11 +114,11 @@ export class Scene3DActorRuntime<R extends ComponentRegistry = Record<string, ne
             );
 
             const startedAt = profiling ? performance.now() : 0;
-            const created = actors.map((actor) => {
-                const renderer = actor.requireComponent(MeshRenderer);
-                const transform = actor.requireComponent(Transform);
+            const created = entities.map((entity) => {
+                const renderer = entity.requireComponent(MeshRenderer);
+                const transform = entity.requireComponent(Transform);
 
-                return { actor, transform, renderer };
+                return { entity, transform, renderer };
             });
 
             if (profiling) {

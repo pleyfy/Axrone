@@ -55,7 +55,7 @@ export interface LODLevel {
  *         { screenRelativeTransitionHeight: 0.1, renderers: ['low-detail'] },
  *     ],
  * });
- * actor.addComponent(LODGroup, lod);
+ * entity.addComponent(LODGroup, lod);
  * ```
  */
 @script({

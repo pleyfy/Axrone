@@ -1,6 +1,6 @@
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
-import { type ActorConfig } from '@axrone/ecs-runtime';
-import type { SceneActorRuntime, SceneOptions } from '@axrone/scene-runtime';
+import { type EntityConfig } from '@axrone/ecs-runtime';
+import type { SceneEntityRuntime, SceneOptions } from '@axrone/scene-runtime';
 import { SceneAssetFacade } from '@axrone/scene-runtime/scene-asset-facade';
 import type { CameraConfig } from '@axrone/scene-runtime/scene-camera';
 import {
@@ -8,7 +8,7 @@ import {
     type SpriteMaskConfig,
     type SpriteRendererConfig,
 } from '@axrone/scene-runtime/scene-2d-support';
-import { Scene2DActorRuntime, type Scene2DBulkSpriteConfig } from './scene-2d-actor-runtime';
+import { Scene2DActorRuntime, type Scene2DBulkSpriteConfig } from './scene-2d-entity-runtime';
 import type { Scene2DAnimationRuntime } from './scene-2d-animation-runtime';
 
 /**
@@ -21,7 +21,7 @@ export interface Scene2DActorComposition<
     R extends ComponentRegistry = Record<string, never>,
 > {
     readonly createAnimation?: (
-        actors: SceneActorRuntime<R>
+        entities: SceneEntityRuntime<R>
     ) => Scene2DAnimationRuntime<R>;
 }
 
@@ -30,65 +30,65 @@ export interface Scene2DActorComposition<
  * composition; root and lean entries supply their own through subclasses.
  */
 export class Scene2D<R extends ComponentRegistry = Record<string, never>> extends SceneAssetFacade<R> {
-    private readonly _actors2d: Scene2DActorRuntime<R>;
+    private readonly _entitys2d: Scene2DActorRuntime<R>;
 
     constructor(
         options: SceneOptions<R> = {},
-        actorsComposition: Scene2DActorComposition<R> = {}
+        entitysComposition: Scene2DActorComposition<R> = {}
     ) {
         super(options);
-        const actors = this._kernel.actors;
-        this._actors2d = new Scene2DActorRuntime({
-            actors,
+        const entities = this._kernel.entities;
+        this._entitys2d = new Scene2DActorRuntime({
+            entities,
             // The bulk sprite path resolves one archetype for the whole batch.
             world: this._kernel.world,
-            animation: actorsComposition.createAnimation?.(actors),
+            animation: entitysComposition.createAnimation?.(entities),
         });
     }
 
-    createCameraActor(
-        actorConfig: ActorConfig = {},
+    createCameraEntity(
+        entityConfig: EntityConfig = {},
         cameraConfig: CameraConfig = {}
     ) {
         this.assertNotDisposed();
-        return this._actors2d.createCameraActor(actorConfig, cameraConfig);
+        return this._entitys2d.createCameraEntity(entityConfig, cameraConfig);
     }
 
-    createSpriteActor(
-        actorConfig: ActorConfig = {},
+    createSpriteEntity(
+        entityConfig: EntityConfig = {},
         spriteConfig: SpriteRendererConfig = {}
     ) {
         this.assertNotDisposed();
-        return this._actors2d.createSpriteActor(actorConfig, spriteConfig);
+        return this._entitys2d.createSpriteEntity(entityConfig, spriteConfig);
     }
 
     /**
-     * Creates many sprite actors through the single-archetype bulk path.
-     * Prefer this over a `createSpriteActor` loop for large sprite fields.
+     * Creates many sprite entities through the single-archetype bulk path.
+     * Prefer this over a `createSpriteEntity` loop for large sprite fields.
      */
-    createSpriteActors(configs: readonly Scene2DBulkSpriteConfig[]) {
+    createSpriteEntities(configs: readonly Scene2DBulkSpriteConfig[]) {
         this.assertNotDisposed();
-        return this._actors2d.createSpriteActors(configs);
+        return this._entitys2d.createSpriteEntities(configs);
     }
 
-    createAnimatedSpriteActor(
-        actorConfig: ActorConfig = {},
+    createAnimatedSpriteEntity(
+        entityConfig: EntityConfig = {},
         spriteConfig: SpriteRendererConfig = {},
         animatorConfig: SpriteAnimatorConfig = {}
     ) {
         this.assertNotDisposed();
-        return this._actors2d.createAnimatedSpriteActor(
-            actorConfig,
+        return this._entitys2d.createAnimatedSpriteEntity(
+            entityConfig,
             spriteConfig,
             animatorConfig
         );
     }
 
-    createMaskActor(
-        actorConfig: ActorConfig = {},
+    createMaskEntity(
+        entityConfig: EntityConfig = {},
         maskConfig: SpriteMaskConfig = {}
     ) {
         this.assertNotDisposed();
-        return this._actors2d.createMaskActor(actorConfig, maskConfig);
+        return this._entitys2d.createMaskEntity(entityConfig, maskConfig);
     }
 }

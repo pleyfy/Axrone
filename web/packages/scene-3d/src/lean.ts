@@ -2,7 +2,7 @@
  * Lean `@axrone/scene-3d` entry point.
  *
  * Exposes only the 3D scene facade surface a render-only consumer needs:
- * `Scene`, the renderable-actor runtime and its instance types, the geometry
+ * `Scene`, the renderable-entity runtime and its instance types, the geometry
  * mesh builder, the built-in unlit color shader, and the accompanying config
  * and resource types.
  *
@@ -18,9 +18,9 @@ export {
     Scene3DActorRuntime,
     type Scene3DActorRuntimeOptions,
     type SceneProfilerProbe,
-    type SceneRenderableActorCreateOptions,
-    type SceneRenderableActorInstance,
-} from './scene-3d-actor-runtime';
+    type SceneRenderableEntityCreateOptions,
+    type SceneRenderableEntityInstance,
+} from './scene-3d-entity-runtime';
 export { Camera, type CameraConfig } from '@axrone/scene-runtime/scene-camera';
 export {
     MeshRenderer,

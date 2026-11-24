@@ -1,4 +1,4 @@
-import { Actor, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Transform, World } from '@axrone/ecs-runtime';
 import { Quat, Vec3 } from '@axrone/numeric';
 import { describe, expect, it } from 'vitest';
 import { DirectionalLight } from '../components/directional-light';
@@ -22,9 +22,9 @@ describe('DirectionalLight — verification tests for reported bugs', () => {
 
         it('returns Vec3.FORWARD (0,0,1) with identity rotation', () => {
             const world = createWorld();
-            const actor = new Actor(world);
-            const light = actor.addComponent(DirectionalLight, {});
-            actor.requireComponent(Transform);
+            const entity = new Entity(world);
+            const light = entity.addComponent(DirectionalLight, {});
+            entity.requireComponent(Transform);
 
             const dir = light.getDirection();
             // Vec3.FORWARD = (0, 0, 1) in this engine
@@ -35,9 +35,9 @@ describe('DirectionalLight — verification tests for reported bugs', () => {
 
         it('rotates direction correctly with 90-degree Y rotation', () => {
             const world = createWorld();
-            const actor = new Actor(world);
-            const light = actor.addComponent(DirectionalLight, {});
-            const transform = actor.requireComponent(Transform);
+            const entity = new Entity(world);
+            const light = entity.addComponent(DirectionalLight, {});
+            const transform = entity.requireComponent(Transform);
             transform.rotation = Quat.fromEuler(0, 90, 0, new Quat());
 
             const dir = light.getDirection();
@@ -49,9 +49,9 @@ describe('DirectionalLight — verification tests for reported bugs', () => {
 
         it('throws Error (not NaN) on degenerate zero-length quaternion', () => {
             const world = createWorld();
-            const actor = new Actor(world);
-            const light = actor.addComponent(DirectionalLight, {});
-            const transform = actor.requireComponent(Transform);
+            const entity = new Entity(world);
+            const light = entity.addComponent(DirectionalLight, {});
+            const transform = entity.requireComponent(Transform);
             (transform as any)._rotation = new Quat(0, 0, 0, 0);
             (transform as any)._worldDirty = true;
 
@@ -118,21 +118,21 @@ describe('DirectionalLight — verification tests for reported bugs', () => {
             const world = createWorld();
             const collector = new SceneLightingCollector(4);
 
-            const highIntensity = new Actor(world);
+            const highIntensity = new Entity(world);
             highIntensity.addComponent(DirectionalLight, {
                 color: [1, 0, 0],
                 intensity: 10,
                 primary: false,
             });
 
-            const lowIntensityPrimary = new Actor(world);
+            const lowIntensityPrimary = new Entity(world);
             lowIntensityPrimary.addComponent(DirectionalLight, {
                 color: [0, 1, 0],
                 intensity: 1,
                 primary: true,
             });
 
-            const lighting = collector.collect(world.getAllActors(), Vec3.ZERO);
+            const lighting = collector.collect(world.getAllEntities(), Vec3.ZERO);
 
             expect(lighting.stats.selectedDirectionalCount).toBe(1);
             // primary=true → priority=1000000 → score=1000000*1024+1=1024000001
@@ -145,48 +145,48 @@ describe('DirectionalLight — verification tests for reported bugs', () => {
     });
 
     describe('collector coexisting light types', () => {
-        it('collects both PointLight and SpotLight when they coexist on the same actor', () => {
+        it('collects both PointLight and SpotLight when they coexist on the same entity', () => {
             const world = createWorld();
             const collector = new SceneLightingCollector(4);
 
-            const multiLightActor = new Actor(world);
-            multiLightActor.addComponent(PointLight, {
+            const multiLightEntity = new Entity(world);
+            multiLightEntity.addComponent(PointLight, {
                 color: [1, 0, 0],
                 intensity: 3,
                 range: 5,
             });
-            multiLightActor.addComponent(SpotLight, {
+            multiLightEntity.addComponent(SpotLight, {
                 color: [0, 0, 1],
                 intensity: 8,
                 range: 12,
                 innerConeAngle: 0.2,
                 outerConeAngle: 0.6,
             });
-            multiLightActor.requireComponent(Transform).position = new Vec3(1, 0, 0);
+            multiLightEntity.requireComponent(Transform).position = new Vec3(1, 0, 0);
 
-            const lighting = collector.collect(world.getAllActors(), Vec3.ZERO);
+            const lighting = collector.collect(world.getAllEntities(), Vec3.ZERO);
 
-            // Both PointLight and SpotLight are collected from the same actor
+            // Both PointLight and SpotLight are collected from the same entity
             expect(lighting.stats.selectedPointCount).toBe(1);
             expect(lighting.stats.selectedSpotCount).toBe(1);
             expect(lighting.stats.selectedLocalLightCount).toBe(2);
         });
 
-        it('collects SpotLight when no PointLight is on the same actor', () => {
+        it('collects SpotLight when no PointLight is on the same entity', () => {
             const world = createWorld();
             const collector = new SceneLightingCollector(4);
 
-            const spotOnlyActor = new Actor(world);
-            spotOnlyActor.addComponent(SpotLight, {
+            const spotOnlyEntity = new Entity(world);
+            spotOnlyEntity.addComponent(SpotLight, {
                 color: [0, 0, 1],
                 intensity: 8,
                 range: 12,
                 innerConeAngle: 0.2,
                 outerConeAngle: 0.6,
             });
-            spotOnlyActor.requireComponent(Transform).position = new Vec3(1, 0, 0);
+            spotOnlyEntity.requireComponent(Transform).position = new Vec3(1, 0, 0);
 
-            const lighting = collector.collect(world.getAllActors(), Vec3.ZERO);
+            const lighting = collector.collect(world.getAllEntities(), Vec3.ZERO);
 
             expect(lighting.stats.selectedSpotCount).toBe(1);
             expect(lighting.stats.selectedLocalLightCount).toBe(1);

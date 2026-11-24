@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Actor, World } from '@axrone/ecs-runtime';
+import { Entity, World } from '@axrone/ecs-runtime';
 import { LODGroup } from '../components/lod-group';
 import { createSceneRegistry } from '../scene-registry';
 
@@ -11,8 +11,8 @@ const LEVELS = [
 
 function createGroup() {
     const world = new World(createSceneRegistry());
-    const actor = new Actor(world);
-    const group = actor.addComponent(LODGroup, { lodLevels: LEVELS });
+    const entity = new Entity(world);
+    const group = entity.addComponent(LODGroup, { lodLevels: LEVELS });
     return { group };
 }
 

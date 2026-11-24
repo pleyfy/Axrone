@@ -130,7 +130,7 @@ describe('SceneRenderPipeline', () => {
         const frameState = new SceneRenderFrameState().begin(1);
 
         const stats = pipeline.render({
-            actors: [],
+            entities: [],
             frame: 1,
             deltaSeconds: 1 / 60,
             viewportWidth: 640,
@@ -219,7 +219,7 @@ describe('SceneRenderPipeline', () => {
         const frameState = new SceneRenderFrameState().begin(1);
 
         const stats = pipeline.render({
-            actors: [],
+            entities: [],
             frame: 1,
             deltaSeconds: 1 / 60,
             viewportWidth: 640,
@@ -319,7 +319,7 @@ describe('SceneRenderPipeline', () => {
         const frameState = new SceneRenderFrameState().begin(1);
 
         const stats = pipeline.render({
-            actors: [{} as any],
+            entities: [{} as any],
             frame: 1,
             deltaSeconds: 1 / 60,
             viewportWidth: 640,
@@ -462,7 +462,7 @@ describe('SceneRenderPipeline', () => {
 
         const renderFrame = (materialRevision: number, shaderRevision = 0) =>
             pipeline.render({
-                actors: [{} as any],
+                entities: [{} as any],
                 frame: 1,
                 deltaSeconds: 1 / 60,
                 viewportWidth: 640,
@@ -562,7 +562,7 @@ describe('SceneRenderPipeline', () => {
 
         const renderFrame = () =>
             pipeline.render({
-                actors: [{} as any],
+                entities: [{} as any],
                 frame: 1,
                 deltaSeconds: 1 / 60,
                 viewportWidth: 640,
@@ -607,7 +607,7 @@ describe('SceneRenderPipeline offscreen multi-pass scheduling', () => {
         frame: number,
         enabledMaterialPassIds?: readonly string[]
     ): any => ({
-        actors: [] as any[],
+        entities: [] as any[],
         frame,
         deltaSeconds: 1 / 60,
         viewportWidth: 640,

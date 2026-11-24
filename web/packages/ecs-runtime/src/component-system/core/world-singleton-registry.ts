@@ -1,4 +1,4 @@
 import { SingletonRegistry } from '../../support/singleton-registry';
-import type { Entity } from '../types/core';
+import type { EntityId } from '../types/core';
 
-export class WorldSingletonRegistry extends SingletonRegistry<Entity> {}
+export class WorldSingletonRegistry extends SingletonRegistry<EntityId> {}

@@ -44,9 +44,9 @@ function buildMeshSnapshot(overrides?: Partial<SceneSnapshot>): SceneSnapshot {
         materials: [{ id: 'mem-mat', shaderId: 'mem/shader' }],
         prefab: {
             id: 'mem-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'MeshActor',
+                    name: 'MeshEntity',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -104,9 +104,9 @@ function buildTexturedSnapshot(overrides?: Partial<SceneSnapshot>): SceneSnapsho
         ],
         prefab: {
             id: 'mem-tex-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'TexturedActor',
+                    name: 'TexturedEntity',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -159,9 +159,9 @@ function buildRttSnapshot(overrides?: Partial<SceneSnapshot>): SceneSnapshot {
         materials: [{ id: 'mem-rtt-mat', shaderId: 'mem/rtt-shader' }],
         prefab: {
             id: 'mem-rtt-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'RttActor',
+                    name: 'RttEntity',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -200,9 +200,9 @@ function buildSnapshotA(): SceneSnapshot {
         materials: [{ id: 'scene-a-mat', shaderId: 'scene-a/shader' }],
         prefab: {
             id: 'scene-a-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'ActorA',
+                    name: 'EntityA',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -240,9 +240,9 @@ function buildSnapshotB(): SceneSnapshot {
         materials: [{ id: 'scene-b-mat', shaderId: 'scene-b/shader' }],
         prefab: {
             id: 'scene-b-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'ActorB',
+                    name: 'EntityB',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -592,7 +592,7 @@ describe('Memory Leak Detection Suite', () => {
     // ─── Group 6: Component Disposal ─────────────────────────────────────────
 
     describe('Component Disposal', () => {
-        it('all GL resources released after actors destroyed and scene disposed', async () => {
+        it('all GL resources released after entities destroyed and scene disposed', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
             const gl = getGlFromScene(scene);
@@ -606,11 +606,11 @@ describe('Memory Leak Detection Suite', () => {
             expect(buffersCreated).toBeGreaterThan(0);
             expect(vaosCreated).toBeGreaterThan(0);
 
-            // Destroy all actors
-            const actors = scene.world.getAllActors();
-            expect(actors.length).toBeGreaterThan(0);
-            for (const actor of actors) {
-                actor.destroy(true);
+            // Destroy all entities
+            const entities = scene.world.getAllEntities();
+            expect(entities.length).toBeGreaterThan(0);
+            for (const entity of entities) {
+                entity.destroy(true);
             }
 
             // Dispose scene — releases all remaining GL resources
@@ -627,7 +627,7 @@ describe('Memory Leak Detection Suite', () => {
             expect(gl._vertexArrays.size).toBe(0);
         });
 
-        it('does not throw when scene is disposed after actors are destroyed', async () => {
+        it('does not throw when scene is disposed after entities are destroyed', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
@@ -635,10 +635,10 @@ describe('Memory Leak Detection Suite', () => {
             scene.start(0);
             scheduler.flush(16);
 
-            // Destroy all actors first
-            const actors = scene.world.getAllActors();
-            for (const actor of actors) {
-                actor.destroy(true);
+            // Destroy all entities first
+            const entities = scene.world.getAllEntities();
+            for (const entity of entities) {
+                entity.destroy(true);
             }
 
             // Now dispose the scene — should not throw even if resources already released
@@ -646,7 +646,7 @@ describe('Memory Leak Detection Suite', () => {
             expect(scene.isDisposed).toBe(true);
         });
 
-        it('component onDestroy is called when actor is destroyed', async () => {
+        it('component onDestroy is called when entity is destroyed', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
@@ -659,19 +659,19 @@ describe('Memory Leak Detection Suite', () => {
 
             scene.registerComponent(DisposableTracker);
 
-            const actor = scene.createActor({ name: 'TrackDispose' });
-            const tracker = actor.addComponent(DisposableTracker);
+            const entity = scene.createEntity({ name: 'TrackDispose' });
+            const tracker = entity.addComponent(DisposableTracker);
 
             expect(tracker.destroyed).toBe(false);
 
-            actor.destroy();
+            entity.destroy();
 
             expect(tracker.destroyed).toBe(true);
 
             scene.dispose();
         });
 
-        it('no double-dispose when actors destroyed then scene disposed', async () => {
+        it('no double-dispose when entities destroyed then scene disposed', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
             const gl = getGlFromScene(scene);
@@ -682,12 +682,12 @@ describe('Memory Leak Detection Suite', () => {
 
             const buffersCreated = countMockCalls(gl.createBuffer);
 
-            // Destroy actors (releases mesh resources)
-            for (const actor of scene.world.getAllActors()) {
-                actor.destroy(true);
+            // Destroy entities (releases mesh resources)
+            for (const entity of scene.world.getAllEntities()) {
+                entity.destroy(true);
             }
 
-            const buffersAfterActorDestroy = countMockCalls(gl.deleteBuffer);
+            const buffersAfterEntityDestroy = countMockCalls(gl.deleteBuffer);
 
             // Dispose scene (should not re-delete already freed resources)
             scene.dispose();
@@ -696,8 +696,8 @@ describe('Memory Leak Detection Suite', () => {
 
             // Total deletes should match total creates (no double-delete)
             expect(buffersAfterSceneDispose).toBeLessThanOrEqual(buffersCreated);
-            // But should be at least as many as were deleted during actor destroy
-            expect(buffersAfterSceneDispose).toBeGreaterThanOrEqual(buffersAfterActorDestroy);
+            // But should be at least as many as were deleted during entity destroy
+            expect(buffersAfterSceneDispose).toBeGreaterThanOrEqual(buffersAfterEntityDestroy);
         });
     });
 
@@ -920,10 +920,10 @@ describe('Memory Leak Detection Suite', () => {
             expect(() => scheduler.flush(32)).not.toThrow();
             expect(() => scheduler.flush(48)).not.toThrow();
 
-            // Should still be able to create actors
-            const actor = scene.createActor({ name: 'PostRecovery' });
-            expect(actor).toBeDefined();
-            expect(actor.name).toBe('PostRecovery');
+            // Should still be able to create entities
+            const entity = scene.createEntity({ name: 'PostRecovery' });
+            expect(entity).toBeDefined();
+            expect(entity.name).toBe('PostRecovery');
 
             scene.dispose();
         });

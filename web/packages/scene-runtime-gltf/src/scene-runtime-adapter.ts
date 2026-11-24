@@ -1,4 +1,4 @@
-import type { Actor, ComponentRegistry } from '@axrone/ecs-runtime';
+import type { EntityId, ComponentRegistry } from '@axrone/ecs-runtime';
 import type {
     AssetDatabase,
     AssetSelector,
@@ -16,7 +16,7 @@ export interface LoadGltfSceneIntoSceneOptions
         Pick<SceneSnapshotLoadOptions, 'clearExisting' | 'componentArgsResolver' | 'namePrefix'> {}
 
 export interface LoadGltfSceneIntoSceneResult extends GltfSceneSnapshotResult {
-    readonly actors: readonly Actor[];
+    readonly entities: readonly EntityId[];
 }
 
 export const loadGltfSceneIntoScene = async <R extends ComponentRegistry = Record<string, never>>(
@@ -26,7 +26,7 @@ export const loadGltfSceneIntoScene = async <R extends ComponentRegistry = Recor
     options: LoadGltfSceneIntoSceneOptions = {}
 ): Promise<LoadGltfSceneIntoSceneResult> => {
     const built = createGltfSceneSnapshot(database, selector, options);
-    const actors = await scene.loadScene(built.snapshot, {
+    const entities = await scene.loadScene(built.snapshot, {
         clearExisting: options.clearExisting,
         componentArgsResolver: options.componentArgsResolver,
         namePrefix: options.namePrefix,
@@ -34,6 +34,6 @@ export const loadGltfSceneIntoScene = async <R extends ComponentRegistry = Recor
 
     return {
         ...built,
-        actors,
+        entities,
     };
 };

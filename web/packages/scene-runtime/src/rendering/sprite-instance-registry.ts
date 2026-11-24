@@ -1,4 +1,4 @@
-import { Hierarchy, Transform, type Actor, type RenderMutationClock } from '@axrone/ecs-runtime';
+import { Hierarchy, Transform, type EntityId, type RenderMutationClock } from '@axrone/ecs-runtime';
 import { Mat4, Vec3 } from '@axrone/numeric';
 import type { SceneCameraFrameState } from '../camera-frame-state';
 import { SpriteMask } from '../components/sprite-mask';
@@ -15,21 +15,21 @@ const QUAT_LENGTH_EPSILON = 1e-8;
 const DEFAULT_TEXTURE_SLOT_BUDGET = 16;
 
 /**
- * Per-actor render cache entry. Holds direct component references so the
+ * Per-entity render cache entry. Holds direct component references so the
  * frame path never does `getComponent` lookups, plus the last-seen revisions
  * used to decide whether transform/static streams must be rewritten.
  */
 interface SceneSpriteInstanceEntry {
-    actor: Actor;
+    entity: EntityId;
     transform: Transform;
     renderer: SpriteRenderer;
     hierarchy: Hierarchy | null;
     /** Non-self ancestors, only when the sprite is parented. */
-    ancestors: Actor[] | null;
+    ancestors: EntityId[] | null;
     ancestorsRevision: number[];
     isRoot: boolean;
     textureId: string;
-    actorRevision: number;
+    entityRevision: number;
     transformRevision: number;
     rendererRevision: number;
     hidden: boolean;
@@ -57,16 +57,16 @@ interface SceneSpriteInstanceEntry {
 }
 
 /**
- * An actor that was in the pass but produced no entry — inactive, missing
+ * An entity that was in the pass but produced no entry — inactive, missing
  * components, or a renderer that was disabled/invisible/sourceless at build
  * time. Revisions are snapshotted so a later revalidation can tell, without
  * component lookups, whether any of them became renderable again.
  */
 interface SceneSpriteInstanceExcludedEntry {
-    actor: Actor;
+    entity: EntityId;
     transform: Transform | null;
     renderer: SpriteRenderer | null;
-    actorRevision: number;
+    entityRevision: number;
     transformRevision: number;
     rendererRevision: number;
 }
@@ -75,7 +75,7 @@ export type SceneSpriteInstanceSyncStatus = 'ready' | 'empty' | 'ineligible';
 type SceneSpriteInstanceReclassify = 'ok' | 'ineligible';
 
 const createEntry = (): SceneSpriteInstanceEntry => ({
-    actor: null as unknown as Actor,
+    entity: null as unknown as EntityId,
     transform: null as unknown as Transform,
     renderer: null as unknown as SpriteRenderer,
     hierarchy: null,
@@ -83,7 +83,7 @@ const createEntry = (): SceneSpriteInstanceEntry => ({
     ancestorsRevision: [],
     isRoot: false,
     textureId: '',
-    actorRevision: -1,
+    entityRevision: -1,
     transformRevision: -1,
     rendererRevision: -1,
     hidden: false,
@@ -113,7 +113,7 @@ const createEntry = (): SceneSpriteInstanceEntry => ({
  * Derived, per-pass instance registry for homogeneous 2D sprite passes.
  *
  * This is a render cache, not a second scene model: every entry points at the
- * actor's own `Transform`/`SpriteRenderer`, and every frame revalidates those
+ * entity's own `Transform`/`SpriteRenderer`, and every frame revalidates those
  * components by revision. It exists so the homogeneous path can write a
  * persistent instance stream directly instead of collecting render items,
  * sorting them and allocating one submission object per sprite every frame.
@@ -144,21 +144,21 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
     private _groupCount = 0;
     private _groupCapacity = 0;
     private _passId = '';
-    private _actorsRef: readonly Actor[] | null = null;
-    private _actorCount = -1;
+    private _entitysRef: readonly EntityId[] | null = null;
+    private _registeredEntityCount = -1;
     private _empty = false;
     private _needsRebuild = true;
     private _rebuiltThisFrame = false;
     /**
-     * World render-mutation clock captured from the pass's actors. `null` when
-     * the actor set has no world (mocked or detached actors), in which case
+     * World render-mutation clock captured from the pass's entities. `null` when
+     * the entity set has no world (mocked or detached entities), in which case
      * every refresh runs the full per-entry sweep.
      */
     private _worldClock: RenderMutationClock | null = null;
     /** Clock value at the end of the last completed refresh. */
     private _worldRevision = -1;
-    private _ineligibleActorsRef: readonly Actor[] | null = null;
-    private _ineligibleActorCount = -1;
+    private _ineligibleEntitiesRef: readonly EntityId[] | null = null;
+    private _ineligibleEntityCount = -1;
     private _ineligiblePassId = '';
     private _ineligible = false;
     private _drawnCount = 0;
@@ -266,15 +266,15 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
     }
 
     /**
-     * Rebuilds the entry list when the actor set or pass changed. Cached
-     * ineligibility is scoped to the exact actor array + pass so a scene that
+     * Rebuilds the entry list when the entity set or pass changed. Cached
+     * ineligibility is scoped to the exact entity array + pass so a scene that
      * needs the general path does not get rescanned every frame.
      */
-    sync(actors: readonly Actor[], passId: string): SceneSpriteInstanceSyncStatus {
+    sync(entities: readonly EntityId[], passId: string): SceneSpriteInstanceSyncStatus {
         if (
             this._ineligible &&
-            this._ineligibleActorsRef === actors &&
-            this._ineligibleActorCount === actors.length &&
+            this._ineligibleEntitiesRef === entities &&
+            this._ineligibleEntityCount === entities.length &&
             this._ineligiblePassId === passId
         ) {
             return 'ineligible';
@@ -282,14 +282,14 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
 
         if (
             !this._needsRebuild &&
-            this._actorsRef === actors &&
-            this._actorCount === actors.length &&
+            this._entitysRef === entities &&
+            this._registeredEntityCount === entities.length &&
             this._passId === passId
         ) {
             return this._empty ? 'empty' : 'ready';
         }
 
-        return this._build(actors, passId);
+        return this._build(entities, passId);
     }
 
     /**
@@ -316,12 +316,12 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
             return true;
         }
 
-        // An actor that was not renderable when the entries were built can
+        // An entity that was not renderable when the entries were built can
         // become renderable again (activated, enabled, given a texture or a
         // `SpriteRenderer`) without any of the existing entries changing, and
         // it is not represented in the sweep below. Revisions are compared
         // instead of components so this stays allocation-free; scenes with no
-        // excluded actors pay nothing.
+        // excluded entities pay nothing.
         if (this._excludedChanged()) {
             this._needsRebuild = true;
             return false;
@@ -350,7 +350,7 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
         for (let index = 0; index < count; index += 1) {
             const entry = entries[index]!;
 
-            if (entry.actor.revision !== entry.actorRevision) {
+            if (entry.entity.revision !== entry.entityRevision) {
                 this._needsRebuild = true;
                 return false;
             }
@@ -495,15 +495,15 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
         this._capacity = 0;
         this._textureId = null;
         this._passId = '';
-        this._actorsRef = null;
-        this._actorCount = -1;
+        this._entitysRef = null;
+        this._registeredEntityCount = -1;
         this._empty = false;
         this._needsRebuild = true;
         this._rebuiltThisFrame = false;
         this._worldClock = null;
         this._worldRevision = -1;
-        this._ineligibleActorsRef = null;
-        this._ineligibleActorCount = -1;
+        this._ineligibleEntitiesRef = null;
+        this._ineligibleEntityCount = -1;
         this._ineligiblePassId = '';
         this._ineligible = false;
         this._drawnCount = 0;
@@ -515,33 +515,33 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
         this._hasCameraMatrix = false;
     }
 
-    private _build(actors: readonly Actor[], passId: string): SceneSpriteInstanceSyncStatus {
+    private _build(entities: readonly EntityId[], passId: string): SceneSpriteInstanceSyncStatus {
         this._passId = passId;
-        this._actorsRef = actors;
-        this._actorCount = actors.length;
+        this._entitysRef = entities;
+        this._registeredEntityCount = entities.length;
         this._needsRebuild = false;
         this._empty = false;
         this._ineligible = false;
         this._textureId = null;
         this._drawnCount = 0;
-        this._worldClock = resolveRenderMutationClock(actors[0]);
+        this._worldClock = resolveRenderMutationClock(entities[0]);
 
         const entries = this._entries;
         let count = 0;
         let excludedCount = 0;
-        const hierarchyType = resolveHierarchyType(actors[0]);
+        const hierarchyType = resolveHierarchyType(entities[0]);
 
-        for (let index = 0; index < actors.length; index += 1) {
-            const actor = actors[index]!;
-            if (!actor.active) {
-                excludedCount = this._recordExcluded(excludedCount, actor, null, null);
+        for (let index = 0; index < entities.length; index += 1) {
+            const entity = entities[index]!;
+            if (!entity.active) {
+                excludedCount = this._recordExcluded(excludedCount, entity, null, null);
                 continue;
             }
 
-            const transform = actor.getComponent(Transform);
-            const renderer = actor.getComponent(SpriteRenderer);
+            const transform = entity.getComponent(Transform);
+            const renderer = entity.getComponent(SpriteRenderer);
             if (!transform || !renderer) {
-                excludedCount = this._recordExcluded(excludedCount, actor, transform ?? null, renderer ?? null);
+                excludedCount = this._recordExcluded(excludedCount, entity, transform ?? null, renderer ?? null);
                 continue;
             }
             if (
@@ -550,7 +550,7 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
                 !renderer.hasRenderableSource ||
                 renderer.passId !== passId
             ) {
-                excludedCount = this._recordExcluded(excludedCount, actor, transform, renderer);
+                excludedCount = this._recordExcluded(excludedCount, entity, transform, renderer);
                 continue;
             }
             if (renderer.materialId !== null || renderer.textureId === null) {
@@ -560,8 +560,8 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
                 return this._markIneligible();
             }
 
-            const hierarchy = hierarchyType ? actor.getComponent(hierarchyType) ?? null : null;
-            const chain = this._resolveMaskChain(actor);
+            const hierarchy = hierarchyType ? entity.getComponent(hierarchyType) ?? null : null;
+            const chain = this._resolveMaskChain(entity);
             if (!chain) {
                 return this._markIneligible();
             }
@@ -572,7 +572,7 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
                 entries[count] = entry;
             }
 
-            entry.actor = actor;
+            entry.entity = entity;
             entry.transform = transform;
             entry.renderer = renderer;
             entry.hierarchy = hierarchy;
@@ -588,7 +588,7 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
                 entry.ancestorsRevision.length = 0;
             }
             entry.textureId = renderer.textureId;
-            entry.actorRevision = actor.revision;
+            entry.entityRevision = entity.revision;
             entry.transformRevision = transform.revision;
             entry.rendererRevision = renderer.revision;
             entry.hidden = false;
@@ -631,8 +631,8 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
 
     private _markIneligible(): 'ineligible' {
         this._ineligible = true;
-        this._ineligibleActorsRef = this._actorsRef;
-        this._ineligibleActorCount = this._actorCount;
+        this._ineligibleEntitiesRef = this._entitysRef;
+        this._ineligibleEntityCount = this._registeredEntityCount;
         this._ineligiblePassId = this._passId;
         this._entries.length = 0;
         this._excluded.length = 0;
@@ -654,21 +654,21 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
      * front instead of risking an unmasked frame.
      */
     private _resolveMaskChain(
-        actor: Actor
-    ): { isRoot: boolean; ancestors: Actor[] | null } | null {
-        if (actor.getComponent(SpriteMask)) {
+        entity: EntityId
+    ): { isRoot: boolean; ancestors: EntityId[] | null } | null {
+        if (entity.getComponent(SpriteMask)) {
             return null;
         }
 
-        const firstParent = actor.parent;
+        const firstParent = entity.parent;
         if (!firstParent) {
-            // Hierarchy is a core component on every actor; a missing one still
+            // Hierarchy is a core component on every entity; a missing one still
             // means "no parent" for the frame check below.
             return { isRoot: true, ancestors: null };
         }
 
-        const ancestors: Actor[] = [];
-        let current: Actor | undefined = firstParent;
+        const ancestors: EntityId[] = [];
+        let current: EntityId | undefined = firstParent;
         while (current) {
             if (current.getComponent(SpriteMask)) {
                 return null;
@@ -682,7 +682,7 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
 
     private _recordExcluded(
         count: number,
-        actor: Actor,
+        entity: EntityId,
         transform: Transform | null,
         renderer: SpriteRenderer | null
     ): number {
@@ -690,27 +690,27 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
         let entry = excluded[count];
         if (!entry) {
             entry = {
-                actor: null as unknown as Actor,
+                entity: null as unknown as EntityId,
                 transform: null,
                 renderer: null,
-                actorRevision: -1,
+                entityRevision: -1,
                 transformRevision: -1,
                 rendererRevision: -1,
             };
             excluded[count] = entry;
         }
 
-        entry.actor = actor;
+        entry.entity = entity;
         entry.transform = transform;
         entry.renderer = renderer;
-        entry.actorRevision = actor.revision;
+        entry.entityRevision = entity.revision;
         entry.transformRevision = transform ? transform.revision : -1;
         entry.rendererRevision = renderer ? renderer.revision : -1;
         return count + 1;
     }
 
     /**
-     * True when an excluded actor gained something that can make it
+     * True when an excluded entity gained something that can make it
      * renderable again. Transform revisions are deliberately ignored: moving a
      * deactivated/pooled sprite cannot change why it was excluded, and
      * checking it would force a rebuild on every frame a sprite pool idles.
@@ -719,7 +719,7 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
         const excluded = this._excluded;
         for (let index = 0; index < this._excludedCount; index += 1) {
             const entry = excluded[index]!;
-            if (entry.actor.revision !== entry.actorRevision) {
+            if (entry.entity.revision !== entry.entityRevision) {
                 return true;
             }
             if (entry.renderer !== null && entry.renderer.revision !== entry.rendererRevision) {
@@ -760,7 +760,7 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
         if (renderer.isNineSlice) {
             return 'ineligible';
         }
-        if (entry.actor.getComponent(SpriteMask)) {
+        if (entry.entity.getComponent(SpriteMask)) {
             return 'ineligible';
         }
         // A texture swap no longer rebuilds the pass: the entry adopts the new
@@ -1135,25 +1135,25 @@ export class SceneSpriteInstanceRegistry implements SceneSpriteInstanceDrawView 
 }
 
 /**
- * Resolves the world render-mutation clock from an actor. Detached or mocked
- * actors have no world clock; the registry then keeps the conservative
+ * Resolves the world render-mutation clock from an entity. Detached or mocked
+ * entities have no world clock; the registry then keeps the conservative
  * full-sweep behaviour instead of skipping work it cannot prove unnecessary.
  */
-const resolveRenderMutationClock = (actor: Actor | undefined): RenderMutationClock | null => {
-    if (!actor) {
+const resolveRenderMutationClock = (entity: EntityId | undefined): RenderMutationClock | null => {
+    if (!entity) {
         return null;
     }
 
     const world = (
-        actor as unknown as { world?: { renderMutationClock?: RenderMutationClock } }
+        entity as unknown as { world?: { renderMutationClock?: RenderMutationClock } }
     ).world;
     return world?.renderMutationClock ?? null;
 };
 
 /** Resolves the world-registered Hierarchy type (falls back to the core class). */
-const resolveHierarchyType = (actor: Actor | undefined): typeof Hierarchy | null => {
-    const registry = actor
-        ? (actor.world as unknown as { registry?: Record<string, unknown> } | undefined)?.registry
+const resolveHierarchyType = (entity: EntityId | undefined): typeof Hierarchy | null => {
+    const registry = entity
+        ? (entity.world as unknown as { registry?: Record<string, unknown> } | undefined)?.registry
         : undefined;
     const registered = registry?.Hierarchy as typeof Hierarchy | undefined;
     return registered ?? (Hierarchy as typeof Hierarchy) ?? null;

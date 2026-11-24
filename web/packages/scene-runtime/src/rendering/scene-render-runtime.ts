@@ -2,7 +2,7 @@ import type { IGLStateCache } from '@axrone/render-webgl2';
 import { createLightingUniformValueMap } from '@axrone/lighting';
 import type { LightingUniformValueMap } from '@axrone/lighting';
 import { Vec3, Vec4 } from '@axrone/numeric';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { EntityId } from '@axrone/ecs-runtime';
 import { MeshRenderer } from '../components/mesh-renderer';
 import { selectSceneCamera } from '../camera-selector';
 import { Animator } from '../components/animator';
@@ -55,7 +55,7 @@ import type {
 } from '../types';
 import { SceneUniformWriter } from '../uniform-writer';
 
-const EMPTY_ACTORS: readonly Actor[] = Object.freeze([]);
+const EMPTY_ACTORS: readonly EntityId[] = Object.freeze([]);
 const EMPTY_RENDER_ITEMS: readonly SceneRenderItem[] = Object.freeze([]);
 const OUTLINE_MATERIAL_PASS_ID = 'outline';
 const EMPTY_OPTIONAL_MATERIAL_PASSES: ReadonlySet<string> = new Set<string>();
@@ -73,7 +73,7 @@ export interface SceneRenderRuntimeOptions {
     readonly skyLight: Vec3;
     readonly groundLight: Vec3;
     readonly defaultClearColor: Vec4;
-    readonly getActors: () => readonly Actor[];
+    readonly getEntitys: () => readonly EntityId[];
     readonly createMeshResource: (definition: SceneMeshDefinition) => SceneMeshResource;
     readonly disposeMesh: (mesh: SceneMeshResource) => void;
     readonly applyMissingVertexAttributeDefaults: (mesh: SceneMeshResource) => void;
@@ -151,7 +151,7 @@ export class SceneRenderRuntime {
     private readonly _capabilities: SceneRenderCapabilities;
     /**
      * Environment-only lighting resolved once for scenes whose registry has no
-     * light components; re-collecting it per frame would scan every actor.
+     * light components; re-collecting it per frame would scan every entity.
      */
     private _staticLighting: SceneLightingState | null = null;
     /**
@@ -172,11 +172,11 @@ export class SceneRenderRuntime {
     /**
      * Memoized per-renderer blend resolution.
      *
-     * The scene collector asks every actor's renderer whether it is blended on
+     * The scene collector asks every entity's renderer whether it is blended on
      * every collection pass (which dynamic scenes run every frame). The answer
      * only depends on the material/shader resources and the pass, so caching
      * it keyed by those identities removes three registry lookups plus a
-     * material-pass resolution per actor per frame.
+     * material-pass resolution per entity per frame.
      */
     private readonly _blendedCache = new WeakMap<
         import('../components/mesh-renderer').MeshRenderer,
@@ -403,7 +403,7 @@ export class SceneRenderRuntime {
      * Optional material passes (outline, offscreen framebuffer effects) the
      * scene's materials declare, keyed by material-registry revision. One
      * traversal feeds every conditional scene pass so adding a gated effect
-     * does not add a per-frame actor scan.
+     * does not add a per-frame entity scan.
      */
     private _getOptionalMaterialPassIds(): ReadonlySet<string> {
         const materials = this._options.resources.materials;
@@ -485,17 +485,17 @@ export class SceneRenderRuntime {
     }
 
     private _scanOptionalMaterialPasses(): ReadonlySet<string> {
-        const actors = this._options.getActors();
+        const entities = this._options.getEntitys();
         const materials = this._options.resources.materials;
         const declared = new Set<string>();
 
-        for (let index = 0; index < actors.length; index += 1) {
-            const actor = actors[index];
-            if (!actor?.active) {
+        for (let index = 0; index < entities.length; index += 1) {
+            const entity = entities[index];
+            if (!entity?.active) {
                 continue;
             }
 
-            const materialId = actor.getComponent(MeshRenderer)?.materialId ?? null;
+            const materialId = entity.getComponent(MeshRenderer)?.materialId ?? null;
             if (materialId === null) {
                 continue;
             }
@@ -565,12 +565,12 @@ export class SceneRenderRuntime {
     }
 
     private _resolveLighting(
-        actors: readonly Actor[],
+        entities: readonly EntityId[],
         cameraPosition: Readonly<Vec3> | undefined
     ): SceneLightingState {
         if (this._capabilities.lights) {
             return this._lightingCollector.collect(
-                actors,
+                entities,
                 this._options.ambientLight,
                 this._options.skyLight,
                 this._options.groundLight,
@@ -578,7 +578,7 @@ export class SceneRenderRuntime {
             );
         }
 
-        // No light component is registered, so the actor scan can never find
+        // No light component is registered, so the entity scan can never find
         // one. Resolve the environment-only state once and reuse it.
         if (!this._staticLighting) {
             this._staticLighting = this._lightingCollector.collect(
@@ -597,22 +597,22 @@ export class SceneRenderRuntime {
         this._planningStats = SceneRenderRuntime._EMPTY_PLANNING_STATS;
         this._frameMaterialRevision = this._options.resources.materials.revision;
         this._frameShaderRevision = this._options.resources.shaders.revision;
-        const actors = this._options.getActors();
+        const entities = this._options.getEntitys();
         if (params.alpha !== undefined && params.alpha > 0) {
-            for (let index = 0; index < actors.length; index += 1) {
-                const animator = actors[index]!.getComponent(Animator);
+            for (let index = 0; index < entities.length; index += 1) {
+                const animator = entities[index]!.getComponent(Animator);
                 if (animator?.interpolateOnRender) {
                     animator.applyInterpolatedPose(params.alpha);
                 }
             }
         }
-        const camera = selectSceneCamera(actors);
+        const camera = selectSceneCamera(entities);
         const cameraFrame = this._cameraFrameCollector.collect(
             camera,
             params.viewportWidth,
             params.viewportHeight
         );
-        const lighting = this._resolveLighting(actors, cameraFrame?.position);
+        const lighting = this._resolveLighting(entities, cameraFrame?.position);
         // Derive the lighting uniform map once per frame — every mesh draw
         // in every pass below shares it instead of rebuilding it per draw.
         // Sprite / particle / line / billboard passes do not read it, so mesh-
@@ -672,14 +672,14 @@ export class SceneRenderRuntime {
             // Reuses the previous sorted item list when nothing render-relevant
             // changed; otherwise runs the full collect/cull/sort path. A
             // registry without mesh renderers cannot produce any item, so the
-            // collect path (two component probes per actor) is skipped.
+            // collect path (two component probes per entity) is skipped.
             let renderItems: readonly SceneRenderItem[] = EMPTY_RENDER_ITEMS;
             let renderListCacheHit = true;
             if (this._capabilities.meshRenderers) {
                 const renderListResult = this._renderListCache.resolve({
                     rendererPassId: renderPass.rendererPassId,
                     renderPass,
-                    actors,
+                    entities,
                     cameraFrame,
                     viewportWidth: params.viewportWidth,
                     viewportHeight: params.viewportHeight,
@@ -687,7 +687,7 @@ export class SceneRenderRuntime {
                     meshRevision,
                     shaderRevision,
                     collect: () =>
-                        this._renderItemCollector.collect(actors, renderPass.rendererPassId, {
+                        this._renderItemCollector.collect(entities, renderPass.rendererPassId, {
                             cameraPosition: cameraFrame.position,
                             cameraFrustum: cameraFrame.camera3D.frustum,
                             resolveBounds: (renderer) => {
@@ -708,7 +708,7 @@ export class SceneRenderRuntime {
                 deltaSeconds: params.deltaSeconds,
                 viewportWidth: params.viewportWidth,
                 viewportHeight: params.viewportHeight,
-                actors,
+                entities,
                 cameraFrame,
                 lighting,
                 renderPass,

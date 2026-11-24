@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vec3, Vec4, Quat } from '@axrone/numeric';
-import { Actor, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Transform, World } from '@axrone/ecs-runtime';
 import { OrbitCameraController } from '../components/orbit-camera-controller';
 import { TrailRenderer } from '../components/trail-renderer';
 import { PathAgent } from '../components/path-agent';
@@ -12,14 +12,14 @@ import { createSceneRegistry } from '../scene-registry';
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a World + Actor with a Transform and returns the actor + transform
+ * Creates a World + Entity with a Transform and returns the entity + transform
  * for use in component tests.
  */
-function createActorWithTransform(): { world: World; actor: Actor; transform: Transform } {
+function createEntityWithTransform(): { world: World; entity: EntityId; transform: Transform } {
     const world = new World(createSceneRegistry());
-    const actor = new Actor(world);
-    const transform = actor.getComponent(Transform)!;
-    return { world, actor, transform };
+    const entity = new Entity(world);
+    const transform = entity.getComponent(Transform)!;
+    return { world, entity, transform };
 }
 
 /**
@@ -197,17 +197,17 @@ class CharacterMovementPattern {
 
 describe('T-11: Script Performance Regression — CameraFollowControl pattern', () => {
     function createHarness() {
-        const { actor: targetActor, transform: targetTransform } = createActorWithTransform();
+        const { entity: targetEntity, transform: targetTransform } = createEntityWithTransform();
         targetTransform.position = new Vec3(10, 0, 0);
 
-        const { actor: cameraActor, transform: cameraTransform } = createActorWithTransform();
+        const { entity: cameraEntity, transform: cameraTransform } = createEntityWithTransform();
         cameraTransform.position = new Vec3(0, 5, -10);
 
         const script = new CameraFollowControlPattern();
         script.onLoad(cameraTransform);
         script.target = targetTransform;
 
-        return { script, cameraTransform, targetTransform, targetActor, cameraActor };
+        return { script, cameraTransform, targetTransform, targetEntity, cameraEntity };
     }
 
     it('_desiredPosition is the same object reference before and after lateUpdate()', () => {
@@ -238,7 +238,7 @@ describe('T-11: Script Performance Regression — CameraFollowControl pattern', 
         const script = new CameraFollowControlPattern();
         expect(script._testCachedTransform).toBeNull();
 
-        const { transform } = createActorWithTransform();
+        const { transform } = createEntityWithTransform();
         script.onLoad(transform);
         expect(script._testCachedTransform).not.toBeNull();
         expect(script._testCachedTransform).toBe(transform);
@@ -266,13 +266,13 @@ describe('T-11: Script Performance Regression — CameraFollowControl pattern', 
 
 describe('T-11: Script Performance Regression — CharacterMovement pattern', () => {
     function createHarness() {
-        const { actor, transform } = createActorWithTransform();
+        const { entity, transform } = createEntityWithTransform();
         transform.position = new Vec3(0, 0, 0);
 
         const script = new CharacterMovementPattern();
         script.onLoad(transform);
 
-        return { script, transform, actor };
+        return { script, transform, entity };
     }
 
     it('_moveDirection is the same object reference before and after update()', () => {
@@ -338,10 +338,10 @@ describe('T-11: Script Performance Regression — CharacterMovement pattern', ()
 
 describe('T-11: Script Performance Regression — OrbitCameraController', () => {
     function createHarness(autoRotateSpeed = 0) {
-        const { world, actor, transform } = createActorWithTransform();
+        const { world, entity, transform } = createEntityWithTransform();
         transform.position = new Vec3(0, 5, 10);
 
-        const controller = actor.addComponent(OrbitCameraController, {
+        const controller = entity.addComponent(OrbitCameraController, {
             target: [0, 0, 0],
             distance: 10,
             azimuth: 0.5,
@@ -349,7 +349,7 @@ describe('T-11: Script Performance Regression — OrbitCameraController', () => 
             autoRotateSpeed,
         });
 
-        return { world, actor, transform, controller };
+        return { world, entity, transform, controller };
     }
 
     /** Access private pre-allocated fields via bracket notation for testing. */
@@ -419,17 +419,17 @@ describe('T-11: Script Performance Regression — OrbitCameraController', () => 
 
 describe('T-11: Script Performance Regression — TrailRenderer', () => {
     function createHarness() {
-        const { world, actor, transform } = createActorWithTransform();
+        const { world, entity, transform } = createEntityWithTransform();
         transform.position = new Vec3(0, 0, 0);
 
-        const trail = actor.addComponent(TrailRenderer, {
+        const trail = entity.addComponent(TrailRenderer, {
             lifetime: 2,
             minVertexDistance: 0.5,
             startWidth: 1,
             endWidth: 0,
         });
 
-        return { world, actor, transform, trail };
+        return { world, entity, transform, trail };
     }
 
     function getPrivateField<T>(obj: object, field: string): T {
@@ -542,16 +542,16 @@ describe('T-11: Script Performance Regression — TrailRenderer', () => {
 
 describe('T-11: Script Performance Regression — PathAgent', () => {
     function createHarness() {
-        const { world, actor, transform } = createActorWithTransform();
+        const { world, entity, transform } = createEntityWithTransform();
         transform.position = new Vec3(0, 0, 0);
 
-        const agent = actor.addComponent(PathAgent, {
+        const agent = entity.addComponent(PathAgent, {
             speed: 5,
             angularSpeed: 120,
             stoppingDistance: 0.5,
         });
 
-        return { world, actor, transform, agent };
+        return { world, entity, transform, agent };
     }
 
     function getPrivateField<T>(obj: object, field: string): T {
@@ -614,8 +614,8 @@ describe('T-11: Script Performance Regression — PathAgent', () => {
 
 describe('T-11: Script Performance Regression — BillboardRenderer', () => {
     it('has no update() method — passive component with zero per-frame cost', () => {
-        const { actor } = createActorWithTransform();
-        const billboard = actor.addComponent(BillboardRenderer, {
+        const { entity } = createEntityWithTransform();
+        const billboard = entity.addComponent(BillboardRenderer, {
             width: 2,
             height: 4,
         });
@@ -626,8 +626,8 @@ describe('T-11: Script Performance Regression — BillboardRenderer', () => {
     });
 
     it('pre-allocated _pivot Vec3 is stable across property reads', () => {
-        const { actor } = createActorWithTransform();
-        const billboard = actor.addComponent(BillboardRenderer, {
+        const { entity } = createEntityWithTransform();
+        const billboard = entity.addComponent(BillboardRenderer, {
             pivot: [0.5, 0.5, 0],
         });
         const pivotBefore = billboard.pivot;
@@ -639,8 +639,8 @@ describe('T-11: Script Performance Regression — BillboardRenderer', () => {
     });
 
     it('getAdjustedUVs() returns consistent results without hidden state mutation', () => {
-        const { actor } = createActorWithTransform();
-        const billboard = actor.addComponent(BillboardRenderer, {
+        const { entity } = createEntityWithTransform();
+        const billboard = entity.addComponent(BillboardRenderer, {
             flipX: true,
             flipY: false,
         });
@@ -663,9 +663,9 @@ describe('T-11: Script Performance Regression — Frame Timing Consistency', () 
     const BUDGET_MS_PER_1000 = 50;
 
     it('CameraFollowControl pattern: 1000 lateUpdate() iterations within frame budget', () => {
-        const { actor: targetActor, transform: targetTransform } = createActorWithTransform();
+        const { entity: targetEntity, transform: targetTransform } = createEntityWithTransform();
         targetTransform.position = new Vec3(10, 0, 0);
-        const { transform: cameraTransform } = createActorWithTransform();
+        const { transform: cameraTransform } = createEntityWithTransform();
         cameraTransform.position = new Vec3(0, 5, -10);
 
         const script = new CameraFollowControlPattern();
@@ -681,7 +681,7 @@ describe('T-11: Script Performance Regression — Frame Timing Consistency', () 
     });
 
     it('CharacterMovement pattern: 1000 update() iterations within frame budget', () => {
-        const { transform } = createActorWithTransform();
+        const { transform } = createEntityWithTransform();
         const script = new CharacterMovementPattern();
         script.onLoad(transform);
         script.simulateKeys(['KeyW', 'KeyD']);
@@ -695,17 +695,17 @@ describe('T-11: Script Performance Regression — Frame Timing Consistency', () 
     });
 
     it('OrbitCameraController: 1000 update() iterations within frame budget', () => {
-        const { actor, controller } = (() => {
-            const { world, actor, transform } = createActorWithTransform();
+        const { entity, controller } = (() => {
+            const { world, entity, transform } = createEntityWithTransform();
             transform.position = new Vec3(0, 5, 10);
-            const ctrl = actor.addComponent(OrbitCameraController, {
+            const ctrl = entity.addComponent(OrbitCameraController, {
                 target: [0, 0, 0],
                 distance: 10,
                 azimuth: 0.5,
                 elevation: 0.35,
                 autoRotateSpeed: 1.0,
             });
-            return { world, actor, controller: ctrl };
+            return { world, entity, controller: ctrl };
         })();
 
         const start = performance.now();
@@ -717,8 +717,8 @@ describe('T-11: Script Performance Regression — Frame Timing Consistency', () 
     });
 
     it('TrailRenderer: 1000 update() iterations within frame budget', () => {
-        const { actor, transform } = createActorWithTransform();
-        const trail = actor.addComponent(TrailRenderer, {
+        const { entity, transform } = createEntityWithTransform();
+        const trail = entity.addComponent(TrailRenderer, {
             lifetime: 5,
             minVertexDistance: 0.1,
         });
@@ -733,8 +733,8 @@ describe('T-11: Script Performance Regression — Frame Timing Consistency', () 
     });
 
     it('PathAgent: 1000 update() iterations within frame budget', () => {
-        const { actor, transform } = createActorWithTransform();
-        const agent = actor.addComponent(PathAgent, { speed: 5 });
+        const { entity, transform } = createEntityWithTransform();
+        const agent = entity.addComponent(PathAgent, { speed: 5 });
         transform.position = new Vec3(0, 0, 0);
         agent.setDestination(new Vec3(100, 0, 0));
 
@@ -753,8 +753,8 @@ describe('T-11: Script Performance Regression — Frame Timing Consistency', () 
 
 describe('T-11: Script Performance Regression — zero-allocation pattern governance', () => {
     it('OrbitCameraController declares all temp fields as readonly', () => {
-        const { actor } = createActorWithTransform();
-        const controller = actor.addComponent(OrbitCameraController);
+        const { entity } = createEntityWithTransform();
+        const controller = entity.addComponent(OrbitCameraController);
 
         // Verify the pre-allocated fields exist and are Vec3/Quat instances
         const tempPosition = (controller as Record<string, unknown>)['_tempPosition'];
@@ -771,8 +771,8 @@ describe('T-11: Script Performance Regression — zero-allocation pattern govern
     });
 
     it('TrailRenderer declares all temp fields as readonly Vec3/Vec4', () => {
-        const { actor } = createActorWithTransform();
-        const trail = actor.addComponent(TrailRenderer);
+        const { entity } = createEntityWithTransform();
+        const trail = entity.addComponent(TrailRenderer);
 
         const tempPosition = (trail as Record<string, unknown>)['_tempPosition'];
         const tempColor = (trail as Record<string, unknown>)['_tempColor'];
@@ -788,8 +788,8 @@ describe('T-11: Script Performance Regression — zero-allocation pattern govern
     });
 
     it('PathAgent declares pre-allocated temp vectors as readonly Vec3', () => {
-        const { actor } = createActorWithTransform();
-        const agent = actor.addComponent(PathAgent);
+        const { entity } = createEntityWithTransform();
+        const agent = entity.addComponent(PathAgent);
 
         const tempToCorner = (agent as Record<string, unknown>)['_tempToCorner'];
         const tempVelocity = (agent as Record<string, unknown>)['_tempVelocity'];
@@ -799,8 +799,8 @@ describe('T-11: Script Performance Regression — zero-allocation pattern govern
     });
 
     it('TrailRenderer ring buffer TrailPoint objects contain pre-allocated Vec3 positions', () => {
-        const { actor } = createActorWithTransform();
-        const trail = actor.addComponent(TrailRenderer);
+        const { entity } = createEntityWithTransform();
+        const trail = entity.addComponent(TrailRenderer);
 
         const points = (trail as Record<string, unknown>)['_points'] as Array<{
             position: Vec3;

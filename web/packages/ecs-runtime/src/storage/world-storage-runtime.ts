@@ -134,8 +134,8 @@ export class WorldStorageRuntime<
         return { archetype, removedComponents };
     }
 
-    getAllEntities(): readonly TEntity[] {
-        return this._entityStore.getAllEntities();
+    getAllEntityIds(): readonly TEntity[] {
+        return this._entityStore.getAllEntityIds();
     }
 
     getArchetypes(): Iterable<Archetype<R, TEntity, TArchetypeId>> {

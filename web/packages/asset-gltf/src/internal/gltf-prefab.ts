@@ -15,13 +15,13 @@ import type {
     GltfRootJson,
     GltfSkinAsset,
 } from '../types';
-import type { GltfActorSnapshot, GltfComponentSnapshot, PrefabBuildContext, PrefabBuildResult, GltfSkinBinding, MeshRendererComponentData, AnimatorSerializableClip, AnimatorSerializableTrack, AnimatorComponentData } from './gltf-component-snapshot';
+import type { GltfEntitySnapshot, GltfComponentSnapshot, PrefabBuildContext, PrefabBuildResult, GltfSkinBinding, MeshRendererComponentData, AnimatorSerializableClip, AnimatorSerializableTrack, AnimatorComponentData } from './gltf-component-snapshot';
 import type { AnimationManifest } from './gltf-animation-types';
 import { GltfSchemaError } from '../errors';
 import { encodeGltfValue } from '../value-serialization';
 import { EMPTY_ARRAY, MAX_SCENE_LOCAL_LIGHTS } from './gltf-constants';
 import { sanitizeName, ensureArray } from './gltf-utils';
-import { createTransformSnapshot, createActorSnapshot, nodeIdFromIndex } from './gltf-scene-transform';
+import { createTransformSnapshot, createEntitySnapshot, nodeIdFromIndex } from './gltf-scene-transform';
 import { createCameraSnapshot } from './gltf-camera';
 import { createDirectionalLightSnapshot, createPointLightSnapshot, createSpotLightSnapshot, resolveNodeLight } from './gltf-light';
 import { createSkinBinding } from './gltf-skin';
@@ -229,7 +229,7 @@ export const buildPrefabDefinition = (context: PrefabBuildContext): PrefabBuildR
         throw new GltfSchemaError(`Missing scene ${sceneIndex}`);
     }
 
-    const actors: GltfActorSnapshot[] = [];
+    const entities: GltfEntitySnapshot[] = [];
     const rootNodeIds: string[] = [];
     const nodeIds: string[] = [];
     const meshKeys = new Set<string>();
@@ -334,7 +334,7 @@ export const buildPrefabDefinition = (context: PrefabBuildContext): PrefabBuildR
                     : EMPTY_ARRAY),
             ]);
 
-            actors.push(createActorSnapshot(baseNodeId, parentNodeId, nodeName, components));
+            entities.push(createEntitySnapshot(baseNodeId, parentNodeId, nodeName, components));
             nodeIds.push(baseNodeId);
 
             if (primitives.length === 1) {
@@ -347,8 +347,8 @@ export const buildPrefabDefinition = (context: PrefabBuildContext): PrefabBuildR
                 }
             }
         } else {
-            actors.push(
-                createActorSnapshot(
+            entities.push(
+                createEntitySnapshot(
                     baseNodeId,
                     parentNodeId,
                     nodeName,
@@ -363,8 +363,8 @@ export const buildPrefabDefinition = (context: PrefabBuildContext): PrefabBuildR
 
             for (let primitiveIndex = 0; primitiveIndex < primitives.length; primitiveIndex += 1) {
                 const primitiveNodeId = `${baseNodeId}/primitive/${primitiveIndex}`;
-                actors.push(
-                    createActorSnapshot(
+                entities.push(
+                    createEntitySnapshot(
                         primitiveNodeId,
                         baseNodeId,
                         `${nodeName} Primitive ${primitiveIndex}`,
@@ -463,12 +463,12 @@ export const buildPrefabDefinition = (context: PrefabBuildContext): PrefabBuildR
         skinJointNodeIds
     );
     if (animatorComponent) {
-        const firstRootActorIndex = actors.findIndex((actor) => actor.parentNodeId === null);
-        if (firstRootActorIndex >= 0) {
-            const firstRootActor = actors[firstRootActorIndex]!;
-            actors[firstRootActorIndex] = Object.freeze({
-                ...firstRootActor,
-                components: Object.freeze([...firstRootActor.components, animatorComponent]),
+        const firstRootEntityIndex = entities.findIndex((entity) => entity.parentNodeId === null);
+        if (firstRootEntityIndex >= 0) {
+            const firstRootEntity = entities[firstRootEntityIndex]!;
+            entities[firstRootEntityIndex] = Object.freeze({
+                ...firstRootEntity,
+                components: Object.freeze([...firstRootEntity.components, animatorComponent]),
             });
         }
     }
@@ -496,7 +496,7 @@ export const buildPrefabDefinition = (context: PrefabBuildContext): PrefabBuildR
     return {
         prefab: Object.freeze({
             id: `gltf/scene/${sceneIndex}`,
-            actors: Object.freeze(actors),
+            entities: Object.freeze(entities),
         }),
         rootNodeIds: Object.freeze(rootNodeIds),
         nodeIds: Object.freeze(nodeIds),

@@ -1,11 +1,11 @@
 import { Vec3 } from '@axrone/numeric';
-import { type Actor } from '@axrone/ecs-runtime';
+import { type EntityId } from '@axrone/ecs-runtime';
 import type { SceneCameraFrameState } from '../camera-frame-state';
 import { LODGroup } from '../components/lod-group';
 import { MeshRenderer } from '../components/mesh-renderer';
 
 export interface SceneLodEvaluateParams {
-    readonly actors: readonly Actor[];
+    readonly entities: readonly EntityId[];
     readonly cameraFrame: SceneCameraFrameState;
 }
 
@@ -71,11 +71,11 @@ export class SceneLodEvaluator {
     /**
      * Evaluates all active LODGroup components and updates MeshRenderer visibility.
      *
-     * @param params - The actors to evaluate and the current camera frame state.
+     * @param params - The entities to evaluate and the current camera frame state.
      * @returns Statistics about the evaluation pass.
      */
     evaluate(params: SceneLodEvaluateParams): SceneLodEvaluateStats {
-        const { actors, cameraFrame } = params;
+        const { entities, cameraFrame } = params;
         const fovRadians = resolveVerticalFieldOfViewRadians(cameraFrame);
         const tanHalfFov = Math.tan(fovRadians * 0.5);
 
@@ -85,17 +85,17 @@ export class SceneLodEvaluator {
 
         const cameraPosition = this._tempCameraPos;
 
-        // Phase 1: Collect all LOD-controlled renderer IDs per LODGroup actor.
+        // Phase 1: Collect all LOD-controlled renderer IDs per LODGroup entity.
         this._activeRendererIdSet.clear();
 
         let evaluatedGroupCount = 0;
 
-        for (const actor of actors) {
-            if (!actor.active) {
+        for (const entity of entities) {
+            if (!entity.active) {
                 continue;
             }
 
-            const lodGroup = actor.getComponent(LODGroup);
+            const lodGroup = entity.getComponent(LODGroup);
             if (!lodGroup || !lodGroup.enabled || !lodGroup.lodEnabled) {
                 continue;
             }
@@ -128,17 +128,17 @@ export class SceneLodEvaluator {
 
         // Phase 2: Build the set of all renderer IDs referenced by any LODGroup
         // so we know which MeshRenderers are under LOD control.
-        const allLodReferencedRendererIds = this._collectAllLodReferencedRendererIds(actors);
+        const allLodReferencedRendererIds = this._collectAllLodReferencedRendererIds(entities);
 
         // Phase 3: Apply visibility to MeshRenderers that are LOD-controlled.
         let controlledRendererCount = 0;
 
-        for (const actor of actors) {
-            if (!actor.active) {
+        for (const entity of entities) {
+            if (!entity.active) {
                 continue;
             }
 
-            const meshRenderer = actor.getComponent(MeshRenderer);
+            const meshRenderer = entity.getComponent(MeshRenderer);
             if (!meshRenderer) {
                 continue;
             }
@@ -189,15 +189,15 @@ export class SceneLodEvaluator {
      * LOD levels, not just the active level. This determines which
      * MeshRenderers are under LOD control.
      */
-    private _collectAllLodReferencedRendererIds(actors: readonly Actor[]): Set<string> {
+    private _collectAllLodReferencedRendererIds(entities: readonly EntityId[]): Set<string> {
         const referencedIds = new Set<string>();
 
-        for (const actor of actors) {
-            if (!actor.active) {
+        for (const entity of entities) {
+            if (!entity.active) {
                 continue;
             }
 
-            const lodGroup = actor.getComponent(LODGroup);
+            const lodGroup = entity.getComponent(LODGroup);
             if (!lodGroup || !lodGroup.enabled || !lodGroup.lodEnabled) {
                 continue;
             }

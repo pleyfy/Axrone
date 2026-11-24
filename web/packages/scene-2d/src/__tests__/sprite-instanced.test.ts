@@ -40,9 +40,9 @@ describe('Scene2D instanced sprite path', () => {
         const gl = scene.gl as any;
 
         await registerTexture(scene, 'hero');
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
         const sprites = Array.from({ length: 4 }, (_, index) =>
-            scene.createSpriteActor({ name: `Hero${index}` }, { textureId: 'hero' })
+            scene.createSpriteEntity({ name: `Hero${index}` }, { textureId: 'hero' })
         );
 
         try {
@@ -95,9 +95,9 @@ describe('Scene2D instanced sprite path', () => {
 
         await registerTexture(scene, 'hero-a');
         await registerTexture(scene, 'hero-b');
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        const first = scene.createSpriteActor({ name: 'A' }, { textureId: 'hero-a' });
-        const second = scene.createSpriteActor({ name: 'B' }, { textureId: 'hero-b' });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        const first = scene.createSpriteEntity({ name: 'A' }, { textureId: 'hero-a' });
+        const second = scene.createSpriteEntity({ name: 'B' }, { textureId: 'hero-b' });
 
         try {
             scene.renderNow();
@@ -124,20 +124,20 @@ describe('Scene2D instanced sprite path', () => {
         const gl = scene.gl as any;
 
         await registerTexture(scene, 'hero');
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        const maskActor = scene.createMaskActor(
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        const maskEntity = scene.createMaskEntity(
             { name: 'Mask' },
             { size: [4, 4], shape: 'circle' }
         );
-        const sprite = scene.createSpriteActor({ name: 'Hero' }, { textureId: 'hero' });
-        sprite.setParent(maskActor);
+        const sprite = scene.createSpriteEntity({ name: 'Hero' }, { textureId: 'hero' });
+        sprite.setParent(maskEntity);
 
         try {
             scene.renderNow();
             gl.drawElementsInstanced.mockClear();
             gl.drawElements.mockClear();
 
-            maskActor.getComponent(Transform)!.position = new Vec3(1, 0, 0);
+            maskEntity.getComponent(Transform)!.position = new Vec3(1, 0, 0);
             scene.renderNow();
 
             expect(gl.drawElementsInstanced).not.toHaveBeenCalled();

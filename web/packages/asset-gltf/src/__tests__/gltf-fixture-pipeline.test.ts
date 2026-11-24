@@ -387,32 +387,32 @@ describe('T-06: GLTF Fixture Pipeline — EN_Character_Stickman_01.glb', () => {
     // 8. Prefab / Node Hierarchy Validation
     // -----------------------------------------------------------------------
     describe('prefab definition', () => {
-        it('has at least one actor for the mesh-bearing node(s)', async () => {
+        it('has at least one entity for the mesh-bearing node(s)', async () => {
             const { prefab } = await importFixture();
-            expect(prefab!.data.definition.actors.length).toBeGreaterThanOrEqual(1);
+            expect(prefab!.data.definition.entities.length).toBeGreaterThanOrEqual(1);
         });
 
-        it('every actor has a Transform component', async () => {
+        it('every entity has a Transform component', async () => {
             const { prefab } = await importFixture();
-            for (const actor of prefab!.data.definition.actors) {
-                const transform = actor.components.find((c) => c.type === 'Transform');
+            for (const entity of prefab!.data.definition.entities) {
+                const transform = entity.components.find((c) => c.type === 'Transform');
                 expect(transform).toBeDefined();
             }
         });
 
         it('has valid parent-child relationships (parentNodeId references are valid)', async () => {
             const { prefab } = await importFixture();
-            const actorNodeIds = new Set(prefab!.data.definition.actors.map((a) => a.nodeId));
-            for (const actor of prefab!.data.definition.actors) {
-                if (actor.parentNodeId !== null) {
-                    expect(actorNodeIds.has(actor.parentNodeId)).toBe(true);
+            const entityNodeIds = new Set(prefab!.data.definition.entities.map((a) => a.nodeId));
+            for (const entity of prefab!.data.definition.entities) {
+                if (entity.parentNodeId !== null) {
+                    expect(entityNodeIds.has(entity.parentNodeId)).toBe(true);
                 }
             }
         });
 
-        it('has at least one actor with a MeshRenderer component', async () => {
+        it('has at least one entity with a MeshRenderer component', async () => {
             const { prefab } = await importFixture();
-            const meshRenderers = prefab!.data.definition.actors.filter((a) =>
+            const meshRenderers = prefab!.data.definition.entities.filter((a) =>
                 a.components.some((c) => c.type === 'MeshRenderer')
             );
             expect(meshRenderers.length).toBeGreaterThan(0);
@@ -423,8 +423,8 @@ describe('T-06: GLTF Fixture Pipeline — EN_Character_Stickman_01.glb', () => {
             const meshKeys = new Set(meshes.map((m) => m.key));
             const materialKeys = new Set(materials.map((m) => m.key));
 
-            for (const actor of prefab!.data.definition.actors) {
-                for (const comp of actor.components) {
+            for (const entity of prefab!.data.definition.entities) {
+                for (const comp of entity.components) {
                     if (comp.type === 'MeshRenderer') {
                         const data = comp.data as { meshId?: string; materialId?: string };
                         if (data.meshId) {
@@ -445,8 +445,8 @@ describe('T-06: GLTF Fixture Pipeline — EN_Character_Stickman_01.glb', () => {
     describe('component snapshots via visitComponent', () => {
         it('visitComponent correctly identifies Transform components', async () => {
             const { prefab } = await importFixture();
-            const rootActor = prefab!.data.definition.actors[0]!;
-            const transformComp = rootActor.components.find((c) => c.type === 'Transform');
+            const rootEntity = prefab!.data.definition.entities[0]!;
+            const transformComp = rootEntity.components.find((c) => c.type === 'Transform');
             expect(transformComp).toBeDefined();
 
             const result = visitComponent(
@@ -464,12 +464,12 @@ describe('T-06: GLTF Fixture Pipeline — EN_Character_Stickman_01.glb', () => {
 
         it('visitComponent correctly identifies MeshRenderer components', async () => {
             const { prefab } = await importFixture();
-            const meshActor = prefab!.data.definition.actors.find((a) =>
+            const meshEntity = prefab!.data.definition.entities.find((a) =>
                 a.components.some((c) => c.type === 'MeshRenderer')
             );
-            expect(meshActor).toBeDefined();
+            expect(meshEntity).toBeDefined();
 
-            const meshRendererComp = meshActor!.components.find((c) => c.type === 'MeshRenderer');
+            const meshRendererComp = meshEntity!.components.find((c) => c.type === 'MeshRenderer');
             const result = visitComponent(
                 meshRendererComp!,
                 {
@@ -485,8 +485,8 @@ describe('T-06: GLTF Fixture Pipeline — EN_Character_Stickman_01.glb', () => {
 
         it('visitComponent returns fallback for unknown component types', async () => {
             const { prefab } = await importFixture();
-            const rootActor = prefab!.data.definition.actors[0]!;
-            const transformComp = rootActor.components.find((c) => c.type === 'Transform');
+            const rootEntity = prefab!.data.definition.entities[0]!;
+            const transformComp = rootEntity.components.find((c) => c.type === 'Transform');
 
             const result = visitComponent(
                 transformComp!,
@@ -496,13 +496,13 @@ describe('T-06: GLTF Fixture Pipeline — EN_Character_Stickman_01.glb', () => {
             expect(result.type).toBe('fallback');
         });
 
-        it('mapComponents returns a new actor with transformed components', async () => {
+        it('mapComponents returns a new entity with transformed components', async () => {
             const { prefab } = await importFixture();
-            const rootActor = prefab!.data.definition.actors[0]!;
-            const mapped = mapComponents(rootActor, (comp) => comp);
-            expect(mapped.components.length).toBe(rootActor.components.length);
-            expect(mapped.nodeId).toBe(rootActor.nodeId);
-            expect(mapped.name).toBe(rootActor.name);
+            const rootEntity = prefab!.data.definition.entities[0]!;
+            const mapped = mapComponents(rootEntity, (comp) => comp);
+            expect(mapped.components.length).toBe(rootEntity.components.length);
+            expect(mapped.nodeId).toBe(rootEntity.nodeId);
+            expect(mapped.name).toBe(rootEntity.name);
         });
     });
 
@@ -523,21 +523,21 @@ describe('T-06: GLTF Fixture Pipeline — EN_Character_Stickman_01.glb', () => {
             const deserialized = JSON.parse(serialized);
             expect(deserialized).toBeDefined();
             expect(deserialized.id).toBe(definition.id);
-            expect(deserialized.actors.length).toBe(definition.actors.length);
+            expect(deserialized.entities.length).toBe(definition.entities.length);
         });
 
-        it('serialized prefab preserves actor hierarchy', async () => {
+        it('serialized prefab preserves entity hierarchy', async () => {
             const { prefab } = await importFixture();
             const definition = prefab!.data.definition;
 
             const serialized = JSON.parse(JSON.stringify(definition));
 
-            for (let i = 0; i < definition.actors.length; i++) {
-                expect(serialized.actors[i].nodeId).toBe(definition.actors[i]!.nodeId);
-                expect(serialized.actors[i].parentNodeId).toBe(definition.actors[i]!.parentNodeId);
-                expect(serialized.actors[i].name).toBe(definition.actors[i]!.name);
-                expect(serialized.actors[i].components.length).toBe(
-                    definition.actors[i]!.components.length
+            for (let i = 0; i < definition.entities.length; i++) {
+                expect(serialized.entities[i].nodeId).toBe(definition.entities[i]!.nodeId);
+                expect(serialized.entities[i].parentNodeId).toBe(definition.entities[i]!.parentNodeId);
+                expect(serialized.entities[i].name).toBe(definition.entities[i]!.name);
+                expect(serialized.entities[i].components.length).toBe(
+                    definition.entities[i]!.components.length
                 );
             }
         });
@@ -548,9 +548,9 @@ describe('T-06: GLTF Fixture Pipeline — EN_Character_Stickman_01.glb', () => {
 
             const serialized = JSON.parse(JSON.stringify(definition));
 
-            for (let i = 0; i < definition.actors.length; i++) {
-                const originalComponents = definition.actors[i]!.components;
-                const serializedComponents = serialized.actors[i].components;
+            for (let i = 0; i < definition.entities.length; i++) {
+                const originalComponents = definition.entities[i]!.components;
+                const serializedComponents = serialized.entities[i].components;
 
                 for (let j = 0; j < originalComponents.length; j++) {
                     expect(serializedComponents[j].type).toBe(originalComponents[j]!.type);

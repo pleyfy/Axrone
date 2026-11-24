@@ -11,6 +11,6 @@ describe('ecs-runtime storage subpath entry', () => {
         expect('World' in ecsStorage).toBe(false);
         expect('WorldQueryRuntime' in ecsStorage).toBe(false);
         expect('WorldEventRuntime' in ecsStorage).toBe(false);
-        expect('Actor' in ecsStorage).toBe(false);
+        expect('Entity' in ecsStorage).toBe(false);
     });
 });

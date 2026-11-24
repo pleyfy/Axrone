@@ -47,7 +47,7 @@ class ParentAwareComponent extends Component {
     parentNameAtOnLoad: string | null = null;
 
     onLoad(): void {
-        this.parentNameAtOnLoad = this.actor?.parent?.name ?? null;
+        this.parentNameAtOnLoad = this.entity?.parent?.name ?? null;
     }
 }
 
@@ -190,8 +190,8 @@ describe('Scene', () => {
             }),
         });
 
-        const actor = scene.createActor({ name: 'ProfileActor' });
-        const component = actor.addComponent(PulseComponent);
+        const entity = scene.createEntity({ name: 'ProfileEntity' });
+        const component = entity.addComponent(PulseComponent);
 
         scene.start(0);
         scheduler.flush(16);
@@ -207,8 +207,8 @@ describe('Scene', () => {
         const scene = new Scene(createSceneOptions(scheduler, canvas));
         scene.registerComponent(PulseComponent);
 
-        const actor = scene.createActor({ name: 'PulseActor' });
-        const component = actor.addComponent(PulseComponent);
+        const entity = scene.createEntity({ name: 'PulseEntity' });
+        const component = entity.addComponent(PulseComponent);
 
         scene.start(0);
         scheduler.flush(16);
@@ -309,22 +309,22 @@ void main() {
             blend: true,
         });
 
-        const cameraActor = scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        cameraActor.addComponent(OrbitCameraController, { distance: 5, azimuth: 0, elevation: 0 });
+        const cameraEntity = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        cameraEntity.addComponent(OrbitCameraController, { distance: 5, azimuth: 0, elevation: 0 });
 
-        const lightActor = scene.createActor({ name: 'Sun' });
-        lightActor.addComponent(DirectionalLight, {
+        const lightEntity = scene.createEntity({ name: 'Sun' });
+        lightEntity.addComponent(DirectionalLight, {
             color: [1, 0.9, 0.8],
             primary: true,
         });
 
-        const mainMesh = scene.createRenderableActor(
+        const mainMesh = scene.createRenderableEntity(
             { name: 'MainTriangle' },
             { meshId: 'triangle', materialId: 'triangle-material', passId: 'main' }
         );
         mainMesh.requireComponent(Transform).position = new Vec3(-0.5, 0, 0);
 
-        const overlayMesh = scene.createRenderableActor(
+        const overlayMesh = scene.createRenderableEntity(
             { name: 'OverlayTriangle' },
             { meshId: 'triangle', materialId: 'triangle-material', passId: 'overlay' }
         );
@@ -350,7 +350,7 @@ void main() {
         expect(colorData[1]).toBeCloseTo(0.9);
         expect(colorData[2]).toBeCloseTo(0.8);
 
-        expect(cameraActor.requireComponent(Transform).position.z).toBeGreaterThan(0);
+        expect(cameraEntity.requireComponent(Transform).position.z).toBeGreaterThan(0);
 
         scene.dispose();
     });
@@ -477,7 +477,7 @@ void main() {
         }
     });
 
-    it('serializes and reloads scene assets and prefab actors', async () => {
+    it('serializes and reloads scene assets and prefab entities', async () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));
         const gl = scene.gl as unknown as ReturnType<typeof createMockGL>;
@@ -522,8 +522,8 @@ void main() {
             },
         });
 
-        const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        const plane = scene.createRenderableActor(
+        const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        const plane = scene.createRenderableEntity(
             { name: 'Plane' },
             { meshId: 'plane', materialId: 'plane-material', passId: 'main' }
         );
@@ -531,11 +531,11 @@ void main() {
         plane.requireComponent(Transform).parent = camera.requireComponent(Transform);
 
         const snapshot = scene.serializeScene();
-        const serializedPlane = snapshot.prefab.actors.find(
-            (actor: { name: string }) => actor.name === 'Plane'
+        const serializedPlane = snapshot.prefab.entities.find(
+            (entity: { name: string }) => entity.name === 'Plane'
         );
 
-        expect(snapshot.prefab.actors.length).toBe(2);
+        expect(snapshot.prefab.entities.length).toBe(2);
         expect(snapshot.textures.length).toBe(1);
         expect(snapshot.materials[0].textures?.u_MainTex).toBe('solid');
         expect(serializedPlane?.parentNodeId).toBe(camera.id);
@@ -543,14 +543,14 @@ void main() {
         await scene.loadScene(snapshot);
         scene.renderNow();
 
-        expect(scene.world.getAllActors().length).toBe(snapshot.prefab.actors.length);
+        expect(scene.world.getAllEntities().length).toBe(snapshot.prefab.entities.length);
 
         const restoredPlane = scene.world
-            .getAllActors()
-            .find((actor: { name: string }) => actor.name === 'Plane');
+            .getAllEntities()
+            .find((entity: { name: string }) => entity.name === 'Plane');
         const restoredCamera = scene.world
-            .getAllActors()
-            .find((actor: { name: string }) => actor.name === 'Camera');
+            .getAllEntities()
+            .find((entity: { name: string }) => entity.name === 'Camera');
         expect(restoredPlane).toBeDefined();
         expect(restoredPlane?.getComponent(MeshRenderer)?.materialId).toBe('plane-material');
         expect(restoredPlane?.requireComponent(Transform).parent?.id).toBe(
@@ -567,11 +567,11 @@ void main() {
         const scene = new Scene(createSceneOptions(scheduler, canvas));
         scene.registerComponent(AliasedPrefabComponent);
 
-        const actor = scene.createActor({ name: 'AliasedActor' });
-        actor.addComponent(AliasedPrefabComponent).value = 42;
+        const entity = scene.createEntity({ name: 'AliasedEntity' });
+        entity.addComponent(AliasedPrefabComponent).value = 42;
 
-        const prefab = scene.createPrefab('aliased-prefab', [actor]);
-        const aliasedSnapshot = prefab.actors[0]?.components.find(
+        const prefab = scene.createPrefab('aliased-prefab', [entity]);
+        const aliasedSnapshot = prefab.entities[0]?.components.find(
             (component) => component.type === 'PrefabAlias'
         );
         expect(aliasedSnapshot?.type).toBe('PrefabAlias');
@@ -589,9 +589,9 @@ void main() {
     it('builds a stable view matrix even when camera scale is zero', () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));
-        const cameraActor = scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        const transform = cameraActor.requireComponent(Transform);
-        const camera = cameraActor.getComponent(Camera);
+        const cameraEntity = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        const transform = cameraEntity.requireComponent(Transform);
+        const camera = cameraEntity.getComponent(Camera);
 
         transform.position = new Vec3(2, 3, 4);
         transform.rotateEuler(0.1, 0.25, 0);
@@ -616,10 +616,10 @@ void main() {
     it('clamps orbit camera distance before computing look-at transforms', () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));
-        const cameraActor = scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        const transform = cameraActor.requireComponent(Transform);
+        const cameraEntity = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        const transform = cameraEntity.requireComponent(Transform);
 
-        cameraActor.addComponent(OrbitCameraController, {
+        cameraEntity.addComponent(OrbitCameraController, {
             distance: 0,
             minDistance: 0,
             maxDistance: 2,
@@ -638,13 +638,13 @@ void main() {
     it('centers the orbit target in clip space', () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));
-        const cameraActor = scene.createCameraActor(
+        const cameraEntity = scene.createCameraEntity(
             { name: 'Camera' },
             { primary: true, fieldOfView: 60 }
         );
-        const camera = cameraActor.requireComponent(Camera);
+        const camera = cameraEntity.requireComponent(Camera);
 
-        cameraActor.addComponent(OrbitCameraController, {
+        cameraEntity.addComponent(OrbitCameraController, {
             target: [0, 0, 0],
             distance: 5,
             azimuth: 0.5,
@@ -673,8 +673,8 @@ void main() {
             })
         );
 
-        const parent = scene.createActor({ name: 'Parent' });
-        const child = scene.createActor({ name: 'Child' });
+        const parent = scene.createEntity({ name: 'Parent' });
+        const child = scene.createEntity({ name: 'Child' });
         child.setParent(parent);
         child.addComponent(ParentAwareComponent);
 
@@ -682,7 +682,7 @@ void main() {
         const instantiated = scene.instantiatePrefab(prefab, {
             namePrefix: 'Copy ',
         });
-        const restoredChild = instantiated.find((actor) => actor.name === 'Copy Child');
+        const restoredChild = instantiated.find((entity) => entity.name === 'Copy Child');
         const restoredComponent = restoredChild?.getComponent(ParentAwareComponent);
 
         expect(restoredChild?.parent?.name).toBe('Copy Parent');
@@ -696,7 +696,7 @@ void main() {
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-        const templateRoot = scene.createActor({ name: 'AnimatedRoot' });
+        const templateRoot = scene.createEntity({ name: 'AnimatedRoot' });
         templateRoot.addComponent(PrefabNodeBinding, { nodeId: 'node/0' });
         templateRoot.addComponent(Animator, {
             clips: [
@@ -723,7 +723,7 @@ void main() {
             loop: false,
         });
 
-        const templateChild = scene.createActor({ name: 'AnimatedChild' });
+        const templateChild = scene.createEntity({ name: 'AnimatedChild' });
         templateChild.addComponent(PrefabNodeBinding, { nodeId: 'node/1' });
         templateChild.setParent(templateRoot);
 
@@ -734,9 +734,9 @@ void main() {
         const firstInstance = scene.instantiatePrefab(prefab, { namePrefix: 'A ' });
         const secondInstance = scene.instantiatePrefab(prefab, { namePrefix: 'B ' });
 
-        const firstChild = firstInstance.find((actor) => actor.name === 'A AnimatedChild');
-        const secondRoot = secondInstance.find((actor) => actor.name === 'B AnimatedRoot');
-        const secondChild = secondInstance.find((actor) => actor.name === 'B AnimatedChild');
+        const firstChild = firstInstance.find((entity) => entity.name === 'A AnimatedChild');
+        const secondRoot = secondInstance.find((entity) => entity.name === 'B AnimatedRoot');
+        const secondChild = secondInstance.find((entity) => entity.name === 'B AnimatedChild');
 
         secondRoot?.requireComponent(Animator).pause();
 
@@ -756,7 +756,7 @@ void main() {
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-        const templateRoot = scene.createActor({ name: 'MorphRoot' });
+        const templateRoot = scene.createEntity({ name: 'MorphRoot' });
         templateRoot.addComponent(PrefabNodeBinding, { nodeId: 'node/0' });
         templateRoot.addComponent(Animator, {
             clips: [
@@ -783,7 +783,7 @@ void main() {
             loop: false,
         });
 
-        const templateChild = scene.createActor({ name: 'MorphChild' });
+        const templateChild = scene.createEntity({ name: 'MorphChild' });
         templateChild.addComponent(PrefabNodeBinding, { nodeId: 'node/1' });
         templateChild.addComponent(MeshRenderer, {
             morph: {
@@ -799,9 +799,9 @@ void main() {
         const firstInstance = scene.instantiatePrefab(prefab, { namePrefix: 'A ' });
         const secondInstance = scene.instantiatePrefab(prefab, { namePrefix: 'B ' });
 
-        const firstChild = firstInstance.find((actor) => actor.name === 'A MorphChild');
-        const secondRoot = secondInstance.find((actor) => actor.name === 'B MorphRoot');
-        const secondChild = secondInstance.find((actor) => actor.name === 'B MorphChild');
+        const firstChild = firstInstance.find((entity) => entity.name === 'A MorphChild');
+        const secondRoot = secondInstance.find((entity) => entity.name === 'B MorphRoot');
+        const secondChild = secondInstance.find((entity) => entity.name === 'B MorphChild');
 
         secondRoot?.requireComponent(Animator).pause();
 
@@ -915,16 +915,16 @@ void main() {
             shaderId: 'test/skinned',
         });
 
-        const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
         camera.requireComponent(Transform).position = new Vec3(0, 0, 5);
 
-        const rigRoot = scene.createActor({ name: 'RigRoot' });
+        const rigRoot = scene.createEntity({ name: 'RigRoot' });
         rigRoot.addComponent(PrefabNodeBinding, {
             nodeId: 'node/0',
             instanceId: 'skin-instance',
         });
 
-        const joint = scene.createActor({ name: 'Joint' });
+        const joint = scene.createEntity({ name: 'Joint' });
         joint.addComponent(PrefabNodeBinding, {
             nodeId: 'node/1',
             instanceId: 'skin-instance',
@@ -932,7 +932,7 @@ void main() {
         joint.setParent(rigRoot);
         joint.requireComponent(Transform).position = new Vec3(0, 1, 0);
 
-        const meshActor = scene.createRenderableActor(
+        const meshEntity = scene.createRenderableEntity(
             { name: 'SkinnedMesh' },
             {
                 meshId: 'skinned-triangle',
@@ -948,12 +948,12 @@ void main() {
                 },
             }
         );
-        meshActor.addComponent(PrefabNodeBinding, {
+        meshEntity.addComponent(PrefabNodeBinding, {
             nodeId: 'node/2',
             instanceId: 'skin-instance',
         });
-        meshActor.setParent(rigRoot);
-        meshActor.requireComponent(Transform).position = new Vec3(0, 0, -2);
+        meshEntity.setParent(rigRoot);
+        meshEntity.requireComponent(Transform).position = new Vec3(0, 0, -2);
 
         scene.start(0);
         scheduler.flush(16);
@@ -1035,10 +1035,10 @@ void main() {
             shaderId: 'test/joint-defaults',
         });
 
-        const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
         camera.requireComponent(Transform).position = new Vec3(0, 0, 5);
 
-        scene.createRenderableActor(
+        scene.createRenderableEntity(
             { name: 'JointDefaultMesh' },
             {
                 meshId: 'joint-default-triangle',
@@ -1114,36 +1114,36 @@ void main() {
             shaderId: 'test/local-lights',
         });
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        const pointActor = scene.createActor({ name: 'Point' });
-        pointActor.addComponent(SpotLight, {
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        const pointEntity = scene.createEntity({ name: 'Point' });
+        pointEntity.addComponent(SpotLight, {
             color: [0.8, 0.7, 0.6],
             intensity: 4,
             range: 12,
             innerConeAngle: 0.2,
             outerConeAngle: 0.6,
         });
-        pointActor.requireComponent(Transform).position = new Vec3(2, 3, 4);
+        pointEntity.requireComponent(Transform).position = new Vec3(2, 3, 4);
 
-        const spotActor = scene.createActor({ name: 'Spot' });
-        spotActor.addComponent(SpotLight, {
+        const spotEntity = scene.createEntity({ name: 'Spot' });
+        spotEntity.addComponent(SpotLight, {
             color: [0.2, 0.4, 1],
             intensity: 8,
             range: 18,
             innerConeAngle: 0.15,
             outerConeAngle: 0.5,
         });
-        spotActor.requireComponent(Transform).position = new Vec3(-1, 5, 2);
+        spotEntity.requireComponent(Transform).position = new Vec3(-1, 5, 2);
 
-        const pointLightActor = scene.createActor({ name: 'PointLight' });
-        pointLightActor.addComponent(PointLight, {
+        const pointLightEntity = scene.createEntity({ name: 'PointLight' });
+        pointLightEntity.addComponent(PointLight, {
             color: [1, 0.5, 0.25],
             intensity: 3,
             range: 9,
         });
-        pointLightActor.requireComponent(Transform).position = new Vec3(1, 2, 3);
+        pointLightEntity.requireComponent(Transform).position = new Vec3(1, 2, 3);
 
-        const plane = scene.createRenderableActor(
+        const plane = scene.createRenderableEntity(
             { name: 'Plane' },
             { meshId: 'plane', materialId: 'plane-material', passId: 'main' }
         );
@@ -1194,48 +1194,48 @@ void main() {
         scene.dispose();
     });
 
-    it('throws when creating actors after disposal', () => {
+    it('throws when creating entities after disposal', () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));
         scene.dispose();
 
-        expect(() => scene.createCameraActor({ name: 'Camera' })).toThrow();
+        expect(() => scene.createCameraEntity({ name: 'Camera' })).toThrow();
         expect(() =>
-            scene.createRenderableActor(
+            scene.createRenderableEntity(
                 { name: 'Mesh' },
                 { meshId: 'mesh', materialId: 'material' }
             )
         ).toThrow();
         expect(() =>
-            scene.createRenderableActors([
+            scene.createRenderableEntities([
                 {
-                    actorConfig: { name: 'Batch' },
+                    entityConfig: { name: 'Batch' },
                     rendererConfig: { meshId: 'mesh', materialId: 'material' },
                 },
             ])
         ).toThrow();
     });
 
-    it('returns an empty array when batch-creating zero renderable actors', () => {
+    it('returns an empty array when batch-creating zero renderable entities', () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-        const created = scene.createRenderableActors([]);
+        const created = scene.createRenderableEntities([]);
 
         expect(created).toEqual([]);
 
         scene.dispose();
     });
 
-    it('creates renderable actors from configs with omitted optional keys', () => {
+    it('creates renderable entities from configs with omitted optional keys', () => {
         const canvas = document.createElement('canvas');
         const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-        const created = scene.createRenderableActors([{}, {}]);
+        const created = scene.createRenderableEntities([{}, {}]);
 
         expect(created).toHaveLength(2);
         for (const instance of created) {
-            expect(instance.actor).toBeDefined();
+            expect(instance.entity).toBeDefined();
             expect(instance.transform).toBeDefined();
             expect(instance.renderer).toBeDefined();
         }

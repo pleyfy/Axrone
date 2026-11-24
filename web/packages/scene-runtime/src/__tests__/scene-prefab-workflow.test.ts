@@ -9,20 +9,20 @@ import {
     mergeScenePrefabDefinitions,
 } from '../prefab';
 import { createSceneRegistry } from '../scene-registry';
-import { SceneActorRuntime } from '../scene-actor-runtime';
+import { SceneEntityRuntime } from '../scene-entity-runtime';
 import { encodeSceneValue } from '../serialization';
 import type { ScenePrefabDefinition } from '../types';
 
 const createPrefabHarness = () => {
     const registry = createSceneRegistry();
     const world = new World(registry);
-    const actors = new SceneActorRuntime({
+    const entities = new SceneEntityRuntime({
         world,
         componentCatalog: new SceneComponentCatalog(registry),
     });
 
     return {
-        actors,
+        entities,
         world,
     };
 };
@@ -47,7 +47,7 @@ const createTransformComponent = (
         id,
     );
 
-const createActorSnapshot = (
+const createEntitySnapshot = (
     nodeId: string,
     name: string,
     components: readonly ReturnType<typeof createPrefabComponent>[],
@@ -64,8 +64,8 @@ const createActorSnapshot = (
     components,
 });
 
-const getActorPosition = (actor: { getComponent(type: typeof Transform): Transform | null } | undefined) => {
-    const transform = actor?.getComponent(Transform);
+const getEntityPosition = (entity: { getComponent(type: typeof Transform): Transform | null } | undefined) => {
+    const transform = entity?.getComponent(Transform);
     return transform ? [transform.position.x, transform.position.y, transform.position.z] : null;
 };
 
@@ -74,11 +74,11 @@ describe('ScenePrefabWorkflow', () => {
         const weaponPrefab: ScenePrefabDefinition = {
             id: 'prefab/weapon',
             kind: 'prefab',
-            actors: [
-                createActorSnapshot('weapon-root', 'Weapon', [
+            entities: [
+                createEntitySnapshot('weapon-root', 'Weapon', [
                     createTransformComponent([1, 0, 0], 'cmp/weapon-transform'),
                 ]),
-                createActorSnapshot(
+                createEntitySnapshot(
                     'muzzle',
                     'Muzzle',
                     [createTransformComponent([0, 0, 1], 'cmp/muzzle-transform')],
@@ -90,11 +90,11 @@ describe('ScenePrefabWorkflow', () => {
         const characterPrefab: ScenePrefabDefinition = {
             id: 'prefab/character',
             kind: 'prefab',
-            actors: [
-                createActorSnapshot('character-root', 'Character', [
+            entities: [
+                createEntitySnapshot('character-root', 'Character', [
                     createTransformComponent([0, 0, 0], 'cmp/character-transform'),
                 ]),
-                createActorSnapshot(
+                createEntitySnapshot(
                     'hand-socket',
                     'Hand Socket',
                     [createTransformComponent([0.5, 1, 0], 'cmp/hand-transform')],
@@ -133,10 +133,10 @@ describe('ScenePrefabWorkflow', () => {
                 kind: 'registry',
                 prefabId: 'prefab/character',
             },
-            actors: [],
+            entities: [],
             overrides: [
                 {
-                    kind: 'set-actor-field',
+                    kind: 'set-entity-field',
                     nodeId: 'character-root',
                     field: 'name',
                     value: 'Elite Character',
@@ -159,11 +159,11 @@ describe('ScenePrefabWorkflow', () => {
             prefabs: [weaponPrefab, characterPrefab, eliteVariant],
         });
         const harness = createPrefabHarness();
-        const actors = harness.actors.instantiatePrefab(eliteVariant, {
+        const entities = harness.entities.instantiatePrefab(eliteVariant, {
             prefabResolver: workflow,
             liveOverrides: [
                 {
-                    kind: 'set-actor-field',
+                    kind: 'set-entity-field',
                     nodeId: createScenePrefabScopedNodeId('weapon-slot', 'weapon-root'),
                     field: 'name',
                     value: 'Runtime Weapon',
@@ -172,28 +172,28 @@ describe('ScenePrefabWorkflow', () => {
         });
 
         const findByNodeId = (nodeId: string) =>
-            actors.find((actor) => actor.getComponent(PrefabNodeBinding)?.nodeId === nodeId);
+            entities.find((entity) => entity.getComponent(PrefabNodeBinding)?.nodeId === nodeId);
 
         const characterRoot = findByNodeId('character-root');
         const handSocket = findByNodeId('hand-socket');
         const weaponRoot = findByNodeId(createScenePrefabScopedNodeId('weapon-slot', 'weapon-root'));
         const muzzle = findByNodeId(createScenePrefabScopedNodeId('weapon-slot', 'muzzle'));
 
-        expect(actors).toHaveLength(4);
+        expect(entities).toHaveLength(4);
         expect(characterRoot?.name).toBe('Elite Character');
         expect(weaponRoot?.name).toBe('Runtime Weapon');
-        expect(weaponRoot?.getComponent(Hierarchy)?.parentActor).toBe(handSocket);
-        expect(muzzle?.getComponent(Hierarchy)?.parentActor).toBe(weaponRoot);
-        expect(getActorPosition(weaponRoot)).toEqual([2, 0, 0]);
-        expect(getActorPosition(muzzle)).toEqual([0, 1, 2]);
+        expect(weaponRoot?.getComponent(Hierarchy)?.parentEntity).toBe(handSocket);
+        expect(muzzle?.getComponent(Hierarchy)?.parentEntity).toBe(weaponRoot);
+        expect(getEntityPosition(weaponRoot)).toEqual([2, 0, 0]);
+        expect(getEntityPosition(muzzle)).toEqual([0, 1, 2]);
     });
 
-    it('produces granular override operations for actor and component deltas', () => {
+    it('produces granular override operations for entity and component deltas', () => {
         const base: ScenePrefabDefinition = {
             id: 'prefab/base',
             kind: 'prefab',
-            actors: [
-                createActorSnapshot('hero', 'Hero', [
+            entities: [
+                createEntitySnapshot('hero', 'Hero', [
                     createTransformComponent([0, 0, 0], 'cmp/transform'),
                     createPrefabComponent(
                         'Stats',
@@ -212,8 +212,8 @@ describe('ScenePrefabWorkflow', () => {
         const target: ScenePrefabDefinition = {
             id: 'prefab/target',
             kind: 'prefab',
-            actors: [
-                createActorSnapshot('hero', 'Hero Prime', [
+            entities: [
+                createEntitySnapshot('hero', 'Hero Prime', [
                     createTransformComponent([1, 2, 3], 'cmp/transform'),
                     createPrefabComponent(
                         'Stats',
@@ -226,7 +226,7 @@ describe('ScenePrefabWorkflow', () => {
                         'cmp/stats',
                     ),
                 ]),
-                createActorSnapshot(
+                createEntitySnapshot(
                     'pet',
                     'Pet',
                     [createTransformComponent([0, 1, 0], 'cmp/pet-transform')],
@@ -240,7 +240,7 @@ describe('ScenePrefabWorkflow', () => {
         expect(diff.overrides).toEqual(
             expect.arrayContaining([
                 {
-                    kind: 'set-actor-field',
+                    kind: 'set-entity-field',
                     nodeId: 'hero',
                     field: 'name',
                     value: 'Hero Prime',
@@ -279,8 +279,8 @@ describe('ScenePrefabWorkflow', () => {
                     value: encodeSceneValue(true),
                 },
                 {
-                    kind: 'add-actor',
-                    actor: expect.objectContaining({
+                    kind: 'add-entity',
+                    entity: expect.objectContaining({
                         nodeId: 'pet',
                         parentNodeId: 'hero',
                     }),
@@ -293,8 +293,8 @@ describe('ScenePrefabWorkflow', () => {
         const base: ScenePrefabDefinition = {
             id: 'prefab/base',
             kind: 'prefab',
-            actors: [
-                createActorSnapshot('hero', 'Hero', [
+            entities: [
+                createEntitySnapshot('hero', 'Hero', [
                     createPrefabComponent(
                         'Stats',
                         {
@@ -313,8 +313,8 @@ describe('ScenePrefabWorkflow', () => {
         const local: ScenePrefabDefinition = {
             id: 'prefab/local',
             kind: 'prefab',
-            actors: [
-                createActorSnapshot('hero', 'Hero', [
+            entities: [
+                createEntitySnapshot('hero', 'Hero', [
                     createPrefabComponent(
                         'Stats',
                         {
@@ -333,8 +333,8 @@ describe('ScenePrefabWorkflow', () => {
         const incoming: ScenePrefabDefinition = {
             id: 'prefab/incoming',
             kind: 'prefab',
-            actors: [
-                createActorSnapshot('hero', 'Hero', [
+            entities: [
+                createEntitySnapshot('hero', 'Hero', [
                     createPrefabComponent(
                         'Stats',
                         {
@@ -357,7 +357,7 @@ describe('ScenePrefabWorkflow', () => {
 
         expect(manualMerge.resolved).toBe(false);
         expect(manualMerge.conflicts).toHaveLength(1);
-        expect(manualMerge.definition.actors[0]?.components[0]?.data).toEqual(
+        expect(manualMerge.definition.entities[0]?.components[0]?.data).toEqual(
             encodeSceneValue({
                 damage: 10,
                 recoil: {
@@ -369,7 +369,7 @@ describe('ScenePrefabWorkflow', () => {
 
         expect(preferLocalMerge.resolved).toBe(true);
         expect(preferLocalMerge.conflicts).toHaveLength(0);
-        expect(preferLocalMerge.definition.actors[0]?.components[0]?.data).toEqual(
+        expect(preferLocalMerge.definition.entities[0]?.components[0]?.data).toEqual(
             encodeSceneValue({
                 damage: 20,
                 recoil: {

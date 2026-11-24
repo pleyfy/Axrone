@@ -32,10 +32,10 @@ describe('SceneRuntimeKernel composition', () => {
         const kernel = createKernel();
 
         try {
-            expect(kernel.actors.getRegisteredComponentNames()).toEqual(
+            expect(kernel.entities.getRegisteredComponentNames()).toEqual(
                 expect.arrayContaining(['Hierarchy', 'Transform', 'PrefabNodeBinding'])
             );
-            expect(kernel.actors.getRegisteredComponentNames()).not.toContain('Camera');
+            expect(kernel.entities.getRegisteredComponentNames()).not.toContain('Camera');
             expect(kernel.physicsBridge3D).toBeNull();
             expect(kernel.physicsBridge2D).toBeNull();
         } finally {
@@ -56,7 +56,7 @@ describe('SceneRuntimeKernel composition', () => {
         });
 
         try {
-            expect(kernel.actors.getRegisteredComponentNames()).toEqual(['Transform']);
+            expect(kernel.entities.getRegisteredComponentNames()).toEqual(['Transform']);
         } finally {
             kernel.lifecycle.dispose();
         }
@@ -99,7 +99,7 @@ describe('SceneRuntimeKernel composition', () => {
         });
 
         try {
-            const names = kernel.actors.getRegisteredComponentNames();
+            const names = kernel.entities.getRegisteredComponentNames();
             expect(names).toEqual(
                 expect.arrayContaining([
                     'Hierarchy',
