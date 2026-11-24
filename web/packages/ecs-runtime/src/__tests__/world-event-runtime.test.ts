@@ -35,14 +35,12 @@ describe('WorldEventRuntime', () => {
             const handler = vi.fn();
             runtime.on('EntityCreated', handler);
 
-            await runtime.emit('EntityCreated', {
-                entity: 1,
-                actor: { name: 'A' } as any,
+            await runtime.emit('EntityCreated', { entityId: 1, entity: { name: 'A' } as any,
             } as any);
 
             expect(handler).toHaveBeenCalledTimes(1);
             expect(handler).toHaveBeenCalledWith(
-                expect.objectContaining({ entity: 1 })
+                expect.objectContaining({ entityId: 1 })
             );
         });
 
@@ -52,9 +50,7 @@ describe('WorldEventRuntime', () => {
 
             dispose();
 
-            await runtime.emit('EntityCreated', {
-                entity: 1,
-                actor: { name: 'A' } as any,
+            await runtime.emit('EntityCreated', { entityId: 1, entity: { name: 'A' } as any,
             } as any);
 
             expect(handler).not.toHaveBeenCalled();
@@ -65,9 +61,7 @@ describe('WorldEventRuntime', () => {
             runtime.on('EntityCreated', handler);
             runtime.off('EntityCreated', handler);
 
-            await runtime.emit('EntityCreated', {
-                entity: 1,
-                actor: { name: 'A' } as any,
+            await runtime.emit('EntityCreated', { entityId: 1, entity: { name: 'A' } as any,
             } as any);
 
             expect(handler).not.toHaveBeenCalled();
@@ -81,14 +75,10 @@ describe('WorldEventRuntime', () => {
             const handler = vi.fn();
             runtime.once('EntityCreated', handler);
 
-            await runtime.emit('EntityCreated', {
-                entity: 1,
-                actor: { name: 'A' } as any,
+            await runtime.emit('EntityCreated', { entityId: 1, entity: { name: 'A' } as any,
             } as any);
 
-            await runtime.emit('EntityCreated', {
-                entity: 2,
-                actor: { name: 'B' } as any,
+            await runtime.emit('EntityCreated', { entityId: 2, entity: { name: 'B' } as any,
             } as any);
 
             expect(handler).toHaveBeenCalledTimes(1);
@@ -102,9 +92,7 @@ describe('WorldEventRuntime', () => {
             const handler = vi.fn();
             runtime.on('EntityCreated', handler);
 
-            const result = await runtime.emit('EntityCreated', {
-                entity: 1,
-                actor: { name: 'A' } as any,
+            const result = await runtime.emit('EntityCreated', { entityId: 1, entity: { name: 'A' } as any,
             } as any);
 
             expect(result).toBe(true);
@@ -115,9 +103,7 @@ describe('WorldEventRuntime', () => {
             const handler = vi.fn();
             runtime.on('EntityCreated', handler);
 
-            const result = runtime.emitSync('EntityCreated', {
-                entity: 1,
-                actor: { name: 'A' } as any,
+            const result = runtime.emitSync('EntityCreated', { entityId: 1, entity: { name: 'A' } as any,
             } as any);
 
             expect(result).toBe(true);
@@ -136,9 +122,7 @@ describe('WorldEventRuntime', () => {
 
             runtime.on('EntityCreated', handler);
             expect(() =>
-                runtime.emitSafe('EntityCreated', {
-                    entity: 1,
-                    actor: { name: 'A' } as any,
+                runtime.emitSafe('EntityCreated', { entityId: 1, entity: { name: 'A' } as any,
                 } as any)
             ).not.toThrow();
 
@@ -165,9 +149,7 @@ describe('WorldEventRuntime', () => {
             const before = runtime.getEventMetrics('EntityCreated');
             expect(before.lastEmittedAt).toBeNull();
 
-            await runtime.emit('EntityCreated', {
-                entity: 1,
-                actor: { name: 'A' } as any,
+            await runtime.emit('EntityCreated', { entityId: 1, entity: { name: 'A' } as any,
             } as any);
 
             const after = runtime.getEventMetrics('EntityCreated');
@@ -197,9 +179,7 @@ describe('WorldEventRuntime', () => {
 
             runtime.pause();
 
-            await runtime.emit('EntityCreated', {
-                entity: 1,
-                actor: { name: 'A' } as any,
+            await runtime.emit('EntityCreated', { entityId: 1, entity: { name: 'A' } as any,
             } as any);
 
             // While paused, handler should not have been called
@@ -216,9 +196,7 @@ describe('WorldEventRuntime', () => {
             // only the emit issued after resume.
             handler.mockClear();
 
-            await runtime.emit('EntityCreated', {
-                entity: 2,
-                actor: { name: 'B' } as any,
+            await runtime.emit('EntityCreated', { entityId: 2, entity: { name: 'B' } as any,
             } as any);
 
             // After resume, new emits are delivered normally
@@ -282,10 +260,7 @@ describe('WorldEventRuntime', () => {
             await flushMicrotasks();
 
             // Simulate a TransformAdded event
-            runtime.emitSync('TransformAdded', {
-                entity: 1,
-                component: {},
-                actor: { name: 'A' } as any,
+            runtime.emitSync('TransformAdded', { entityId: 1, component: {}, entity: { name: 'A' } as any,
             } as any);
 
             await flushMicrotasks();
@@ -297,9 +272,7 @@ describe('WorldEventRuntime', () => {
         it('updates when EntityCreated event fires', async () => {
             runtime.createReactiveQuery('Health');
 
-            runtime.emitSync('EntityCreated', {
-                entity: 5,
-                actor: { name: 'New' } as any,
+            runtime.emitSync('EntityCreated', { entityId: 5, entity: { name: 'New' } as any,
             } as any);
 
             await flushMicrotasks();
@@ -330,10 +303,7 @@ describe('WorldEventRuntime', () => {
             const handler = vi.fn();
             runtime.on('NewComponentAdded' as any, handler);
 
-            await runtime.emit('NewComponentAdded' as any, {
-                entity: 1,
-                component: {},
-                actor: { name: 'A' } as any,
+            await runtime.emit('NewComponentAdded' as any, { entityId: 1, component: {}, entity: { name: 'A' } as any,
             } as any);
 
             expect(handler).toHaveBeenCalled();
@@ -379,16 +349,14 @@ describe('WorldEventRuntime', () => {
             const received: any[] = [];
             observables.entityCreated.addObserver((data) => received.push(data));
 
-            runtime.emitSync('EntityCreated', {
-                entity: 1,
-                actor: { name: 'A' } as any,
+            runtime.emitSync('EntityCreated', { entityId: 1, entity: { name: 'A' } as any,
             } as any);
 
             await flushMicrotasks();
 
             expect(received).toHaveLength(1);
             expect(received[0]).toEqual(
-                expect.objectContaining({ entity: 1 })
+                expect.objectContaining({ entityId: 1 })
             );
         });
 
@@ -396,9 +364,7 @@ describe('WorldEventRuntime', () => {
             const received: any[] = [];
             observables.entityDestroyed.addObserver((data) => received.push(data));
 
-            runtime.emitSync('EntityDestroyed', {
-                entity: 1,
-                actor: { name: 'A' } as any,
+            runtime.emitSync('EntityDestroyed', { entityId: 1, entity: { name: 'A' } as any,
             } as any);
 
             await flushMicrotasks();
@@ -411,17 +377,14 @@ describe('WorldEventRuntime', () => {
             const componentObs = observables.getComponentObservables('Transform');
             componentObs.added.addObserver((data) => received.push(data));
 
-            runtime.emitSync('TransformAdded', {
-                entity: 1,
-                component: { value: 42 },
-                actor: { name: 'A' } as any,
+            runtime.emitSync('TransformAdded', { entityId: 1, component: { value: 42 }, entity: { name: 'A' } as any,
             } as any);
 
             await flushMicrotasks();
 
             expect(received).toHaveLength(1);
             expect(received[0]).toEqual(
-                expect.objectContaining({ entity: 1 })
+                expect.objectContaining({ entityId: 1 })
             );
         });
 
@@ -430,10 +393,7 @@ describe('WorldEventRuntime', () => {
             const componentObs = observables.getComponentObservables('Health');
             componentObs.removed.addObserver((data) => received.push(data));
 
-            runtime.emitSync('HealthRemoved', {
-                entity: 1,
-                component: {},
-                actor: { name: 'A' } as any,
+            runtime.emitSync('HealthRemoved', { entityId: 1, component: {}, entity: { name: 'A' } as any,
             } as any);
 
             await flushMicrotasks();

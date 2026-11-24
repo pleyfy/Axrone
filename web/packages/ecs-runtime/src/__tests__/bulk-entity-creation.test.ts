@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { Actor, Component, Hierarchy, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Component, Hierarchy, Transform, World } from '@axrone/ecs-runtime';
 import { Vec3 } from '@axrone/numeric';
 
 class BulkProbe extends Component {
@@ -18,7 +18,7 @@ const createWorld = () =>
         BulkProbe,
     } as any);
 
-describe('Bulk actor creation', () => {
+describe('Bulk entity creation', () => {
     let world: World<any>;
 
     afterEach(() => {
@@ -66,7 +66,7 @@ describe('Bulk actor creation', () => {
         expect(world.getEntityCount()).toBe(0);
     });
 
-    it('creates real actors with lifecycle, identity and component access', () => {
+    it('creates real entities with lifecycle, identity and component access', () => {
         world = createWorld();
         let started = 0;
 
@@ -77,7 +77,7 @@ describe('Bulk actor creation', () => {
         }
 
         const configs = [{ name: 'A' }, { name: 'B' }];
-        const componentsPerActor = configs.map((_, index) => [
+        const componentsPerEntity = configs.map((_, index) => [
             { componentType: Hierarchy, componentName: 'Hierarchy', component: new Hierarchy() },
             { componentType: Transform, componentName: 'Transform', component: new Transform() },
             {
@@ -87,46 +87,46 @@ describe('Bulk actor creation', () => {
             },
         ]);
 
-        const actors = Actor.createManyWithComponents(world, configs, componentsPerActor);
+        const entities = Entity.createManyWithComponents(world, configs, componentsPerEntity);
 
-        expect(actors).toHaveLength(2);
-        expect(actors[0]!.id).not.toBe(actors[1]!.id);
-        expect(actors[0]!.entity).not.toBe(actors[1]!.entity);
-        expect(actors.every((actor) => actor.active && actor.started)).toBe(true);
+        expect(entities).toHaveLength(2);
+        expect(entities[0]!.id).not.toBe(entities[1]!.id);
+        expect(entities[0]!.entityId).not.toBe(entities[1]!.entityId);
+        expect(entities.every((entity) => entity.active && entity.started)).toBe(true);
         expect(started).toBe(2);
-        expect(actors[1]!.requireComponent(BulkProbe).value).toBe(1);
-        expect(world.getAllActors()).toHaveLength(2);
+        expect(entities[1]!.requireComponent(BulkProbe).value).toBe(1);
+        expect(world.getAllEntityIds()).toHaveLength(2);
 
         // Transforms are real, attached instances and mutate normally.
-        const transform = actors[0]!.requireComponent(Transform);
+        const transform = entities[0]!.requireComponent(Transform);
         transform.position = new Vec3(3, 4, 0);
         expect(transform.worldPosition.x).toBe(3);
-        expect(transform.actor).toBe(actors[0]);
+        expect((transform as any).entity).toBe(entities[0]);
 
         // The render revision moved for the whole batch.
         expect(world.renderRevision).toBeGreaterThan(0);
     });
 
-    it('emits EntityCreated per actor and component Added events for its components', () => {
+    it('emits EntityCreated per entity and component Added events for its components', () => {
         world = createWorld();
         const created: number[] = [];
         const probeAdded: number[] = [];
         const transformAdded: number[] = [];
-        world.on('EntityCreated' as any, (data: any) => created.push(data.entity));
-        world.on('BulkProbeAdded' as any, (data: any) => probeAdded.push(data.entity));
-        world.on('TransformAdded' as any, (data: any) => transformAdded.push(data.entity));
+        world.on('EntityCreated' as any, (data: any) => created.push(data.entityId));
+        world.on('BulkProbeAdded' as any, (data: any) => probeAdded.push(data.entityId));
+        world.on('TransformAdded' as any, (data: any) => transformAdded.push(data.entityId));
 
         const configs = [{ name: 'A' }, { name: 'B' }, { name: 'C' }];
-        const componentsPerActor = configs.map(() => [
+        const componentsPerEntity = configs.map(() => [
             { componentType: Hierarchy, componentName: 'Hierarchy', component: new Hierarchy() },
             { componentType: Transform, componentName: 'Transform', component: new Transform() },
             { componentType: BulkProbe, componentName: 'BulkProbe', component: new BulkProbe() },
         ]);
 
-        const actors = Actor.createManyWithComponents(world, configs, componentsPerActor);
-        const entities = actors.map((actor) => actor.entity);
+        const entities = Entity.createManyWithComponents(world, configs, componentsPerEntity);
+        const entityIds = entities.map((entity) => entity.entityId);
 
-        expect(created).toEqual(entities);
+        expect(created).toEqual(entityIds);
         expect(probeAdded).toEqual(entities);
         expect(transformAdded).toEqual(entities);
     });
@@ -134,9 +134,9 @@ describe('Bulk actor creation', () => {
     it('rejects mismatched config/component-set counts', () => {
         world = createWorld();
 
-        expect(() => Actor.createManyWithComponents(world, [{ name: 'A' }], [])).toThrow(
-            /one component set per actor config/
+        expect(() => Entity.createManyWithComponents(world, [{ name: 'A' }], [])).toThrow(
+            /one component set per entity config/
         );
-        expect(Actor.createManyWithComponents(world, [], [])).toEqual([]);
+        expect(Entity.createManyWithComponents(world, [], [])).toEqual([]);
     });
 });

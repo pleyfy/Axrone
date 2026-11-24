@@ -1,20 +1,22 @@
 import {
     createWorld,
     createSystem,
-    createActor,
     createEntity,
+    createEntityId,
+    createEntity,
+    createEntityId,
     createSystemId,
     createComponentId,
-    createActorId,
+    createEntityUid,
 } from './factory-helpers';
 import { Component } from '@axrone/ecs-runtime';
 import { Transform } from '@axrone/ecs-runtime';
 import type {
     ComponentRegistry,
-    Entity,
+    EntityId,
     SystemId,
     ComponentId,
-    ActorId,
+    EntityUid,
 } from '@axrone/ecs-runtime';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -105,46 +107,46 @@ describe('Factory Utilities', () => {
         });
     });
 
-    describe('createActor', () => {
-        it('should create an actor with given world', () => {
+    describe('createEntity', () => {
+        it('should create an entity with given world', () => {
             const world = createWorld(registry);
-            const actor = createActor(world);
+            const entity = createEntity(world);
 
-            expect(actor).toBeDefined();
-            expect(actor.world).toBe(world);
+            expect(entity).toBeDefined();
+            expect(entity.world).toBe(world);
         });
 
-        it('should create an actor with name', () => {
+        it('should create an entity with name', () => {
             const world = createWorld(registry);
-            const actorName = 'TestActor';
-            const actor = createActor(world, actorName);
+            const entityName = 'TestEntity';
+            const entity = createEntity(world, entityName);
 
-            expect(actor.name).toBe(actorName);
+            expect(entity.name).toBe(entityName);
         });
 
-        it('should create multiple actors independently', () => {
+        it('should create multiple entities independently', () => {
             const world = createWorld(registry);
-            const actor1 = createActor(world, 'Actor1');
-            const actor2 = createActor(world, 'Actor2');
+            const entity1 = createEntity(world, 'Entity1');
+            const entity2 = createEntity(world, 'Entity2');
 
-            expect(actor1).not.toBe(actor2);
-            expect(actor1.name).toBe('Actor1');
-            expect(actor2.name).toBe('Actor2');
+            expect(entity1).not.toBe(entity2);
+            expect(entity1.name).toBe('Entity1');
+            expect(entity2.name).toBe('Entity2');
         });
     });
 
     describe('createEntity', () => {
         it('should create entity from number', () => {
             const entityId = 123;
-            const entity = createEntity(entityId);
+            const created = createEntityId(entityId);
 
-            expect(entity).toBe(entityId);
-            expect(typeof entity).toBe('number');
+            expect(created).toBe(entityId);
+            expect(typeof created).toBe('number');
         });
 
         it('should handle different entity IDs', () => {
-            const entity1 = createEntity(1);
-            const entity2 = createEntity(999);
+            const entity1 = createEntityId(1);
+            const entity2 = createEntityId(999);
 
             expect(entity1).toBe(1);
             expect(entity2).toBe(999);
@@ -152,8 +154,8 @@ describe('Factory Utilities', () => {
         });
 
         it('should handle zero entity ID', () => {
-            const entity = createEntity(0);
-            expect(entity).toBe(0);
+            const entityId = createEntityId(0);
+            expect(entityId).toBe(0);
         });
     });
 
@@ -197,23 +199,23 @@ describe('Factory Utilities', () => {
         });
     });
 
-    describe('createActorId', () => {
-        it('should create actor ID from string', () => {
-            const idString = 'MyActor';
-            const actorId = createActorId(idString);
+    describe('createEntityUid', () => {
+        it('should create entity ID from string', () => {
+            const idString = 'MyEntity';
+            const entityUid = createEntityUid(idString);
 
-            expect(actorId).toBe(idString);
-            expect(typeof actorId).toBe('string');
+            expect(entityUid).toBe(idString);
+            expect(typeof entityUid).toBe('string');
         });
 
         it('should preserve string type', () => {
-            const actorId = createActorId('TestActor');
-            expect(actorId).toBe('TestActor');
+            const entityUid = createEntityUid('TestEntity');
+            expect(entityUid).toBe('TestEntity');
         });
 
         it('should handle empty string', () => {
-            const actorId = createActorId('');
-            expect(actorId).toBe('');
+            const entityUid = createEntityUid('');
+            expect(entityUid).toBe('');
         });
     });
 
@@ -221,24 +223,24 @@ describe('Factory Utilities', () => {
         it('should work together to create a complete ECS setup', () => {
             const world = createWorld(registry);
 
-            const actor = createActor(world, 'TestActor');
+            const entity = createEntity(world, 'TestEntity');
 
-            const entity = createEntity(1);
+            const entityId = createEntityId(1);
 
             const systemId = createSystemId('TestSystem');
             const execute = vi.fn();
             const system = createSystem(systemId, ['TestComponent'], execute);
 
             expect(world).toBeDefined();
-            expect(actor).toBeDefined();
-            expect(entity).toBe(1);
+            expect(entity).toBeDefined();
+            expect(entityId).toBe(1);
             expect(system.id).toBe('TestSystem');
         });
 
         it('should handle multiple entities and systems', () => {
             const world = createWorld(registry);
 
-            const entities = [createEntity(1), createEntity(2), createEntity(3)];
+            const entities = [createEntityId(1), createEntityId(2), createEntityId(3)];
 
             const systems = [
                 createSystem(createSystemId('System1'), ['TestComponent'], vi.fn()),

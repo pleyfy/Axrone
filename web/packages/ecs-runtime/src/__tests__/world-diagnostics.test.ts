@@ -12,7 +12,7 @@ describe('WorldDiagnostics', () => {
         const metrics = diagnostics.getMetrics({
             entityCount: 3,
             archetypeCount: 2,
-            actorCount: 1,
+            registeredEntityCount: 1,
             freeEntityCount: 4,
             componentTypes: ['Transform', 'TestComponent', 'Another', 'Camera', 'Light'],
         });
@@ -38,7 +38,7 @@ describe('WorldDiagnostics', () => {
             diagnostics.getMetrics({
                 entityCount: 1,
                 archetypeCount: 1,
-                actorCount: 1,
+                registeredEntityCount: 1,
                 freeEntityCount: 0,
                 componentTypes: ['Transform'],
             })
@@ -58,7 +58,7 @@ describe('WorldDiagnostics', () => {
                 config: { enableValidation: true },
                 entityCount: 5,
                 archetypeCount: 3,
-                actorCount: 2,
+                registeredEntityCount: 2,
                 freeEntityCount: 1,
                 nextEntityId: 7,
                 componentTypes: ['Transform', 'Mesh'],
@@ -97,7 +97,7 @@ describe('WorldDiagnostics', () => {
                 config: {},
                 entityCount: 2,
                 archetypeCount: 1,
-                actorCount: 1,
+                registeredEntityCount: 1,
                 freeEntityCount: 0,
                 nextEntityId: 3,
                 componentTypes: ['Transform'],
@@ -123,7 +123,7 @@ describe('WorldDiagnostics', () => {
                 config: {},
                 entityCount: 0,
                 archetypeCount: 0,
-                actorCount: 0,
+                registeredEntityCount: 0,
                 freeEntityCount: 0,
                 nextEntityId: 1,
                 componentTypes: [],
@@ -145,7 +145,7 @@ describe('WorldDiagnostics', () => {
             const metrics = diagnostics.getMetrics({
                 entityCount: 0,
                 archetypeCount: 0,
-                actorCount: 0,
+                registeredEntityCount: 0,
                 freeEntityCount: 0,
                 componentTypes: [],
             });
@@ -162,7 +162,7 @@ describe('WorldDiagnostics', () => {
                 diagnostics.getMetrics({
                     entityCount: 0,
                     archetypeCount: 0,
-                    actorCount: 0,
+                    registeredEntityCount: 0,
                     freeEntityCount: 0,
                     componentTypes: [],
                 })
@@ -179,7 +179,7 @@ describe('WorldDiagnostics', () => {
                 diagnostics.getMetrics({
                     entityCount: 0,
                     archetypeCount: 0,
-                    actorCount: 0,
+                    registeredEntityCount: 0,
                     freeEntityCount: 0,
                     componentTypes: [],
                 })
@@ -193,14 +193,14 @@ describe('WorldDiagnostics', () => {
         it('verifies exact calculation for known inputs', () => {
             const diagnostics = new WorldDiagnostics(true);
 
-            // Formula: 1000 + entity*50 + actor*100 + free*10 + archetype*500 + types*20 + 200 + 300
-            // With: entity=10, actor=3, free=2, archetype=4, types=5
+            // Formula: 1000 + entity*50 + entity*100 + free*10 + archetype*500 + types*20 + 200 + 300
+            // With: entity=10, entity=3, free=2, archetype=4, types=5
             // = 1000 + 500 + 300 + 20 + 2000 + 100 + 200 + 300
             // = 4420
             const metrics = diagnostics.getMetrics({
                 entityCount: 10,
                 archetypeCount: 4,
-                actorCount: 3,
+                registeredEntityCount: 3,
                 freeEntityCount: 2,
                 componentTypes: ['A', 'B', 'C', 'D', 'E'],
             });
@@ -215,7 +215,7 @@ describe('WorldDiagnostics', () => {
             const metrics = diagnostics.getMetrics({
                 entityCount: 0,
                 archetypeCount: 0,
-                actorCount: 0,
+                registeredEntityCount: 0,
                 freeEntityCount: 0,
                 componentTypes: [],
             });
@@ -239,7 +239,7 @@ describe('WorldDiagnostics', () => {
             const metrics = diagnostics.getMetrics({
                 entityCount: 1,
                 archetypeCount: 1,
-                actorCount: 0,
+                registeredEntityCount: 0,
                 freeEntityCount: 0,
                 componentTypes: [],
             });
@@ -260,7 +260,7 @@ describe('WorldDiagnostics', () => {
                 config: {},
                 entityCount: 0,
                 archetypeCount: 0,
-                actorCount: 0,
+                registeredEntityCount: 0,
                 freeEntityCount: 0,
                 nextEntityId: 1,
                 componentTypes: [],
