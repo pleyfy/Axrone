@@ -3,17 +3,17 @@ namespace Axrone.Scene.Prefab;
 /// <summary>Override operation discriminator.</summary>
 public enum ScenePrefabOverrideKind
 {
-    /// <summary>Creates one actor snapshot.</summary>
-    AddActor = 0,
+    /// <summary>Creates one entity snapshot.</summary>
+    AddEntity = 0,
 
-    /// <summary>Removes an actor and its subtree.</summary>
-    RemoveActor = 1,
+    /// <summary>Removes an entity and its subtree.</summary>
+    RemoveEntity = 1,
 
-    /// <summary>Moves an actor under another parent.</summary>
-    ReparentActor = 2,
+    /// <summary>Moves an entity under another parent.</summary>
+    ReparentEntity = 2,
 
-    /// <summary>Replaces one actor field.</summary>
-    SetActorField = 3,
+    /// <summary>Replaces one entity field.</summary>
+    SetEntityField = 3,
 
     /// <summary>Inserts a component snapshot.</summary>
     AddComponent = 4,
@@ -31,16 +31,16 @@ public enum ScenePrefabOverrideKind
     UnsetComponentProperty = 8
 }
 
-/// <summary>Actor fields addressable by <see cref="ScenePrefabSetActorFieldOperation"/>.</summary>
-public enum ScenePrefabActorField
+/// <summary>Entity fields addressable by <see cref="ScenePrefabSetEntityFieldOperation"/>.</summary>
+public enum ScenePrefabEntityField
 {
-    /// <summary>Actor name.</summary>
+    /// <summary>Entity name.</summary>
     Name = 0,
 
-    /// <summary>Actor layer.</summary>
+    /// <summary>Entity layer.</summary>
     Layer = 1,
 
-    /// <summary>Actor tag.</summary>
+    /// <summary>Entity tag.</summary>
     Tag = 2,
 
     /// <summary>Starts-active flag.</summary>
@@ -53,8 +53,8 @@ public enum ScenePrefabActorField
     Pooled = 5
 }
 
-/// <summary>Kind stored by <see cref="ScenePrefabActorFieldValue"/>.</summary>
-public enum ScenePrefabActorFieldValueKind
+/// <summary>Kind stored by <see cref="ScenePrefabEntityFieldValue"/>.</summary>
+public enum ScenePrefabEntityFieldValueKind
 {
     /// <summary>No value assigned.</summary>
     None = 0,
@@ -70,17 +70,17 @@ public enum ScenePrefabActorFieldValueKind
 }
 
 /// <summary>
-/// Field value carried by a set-actor-field override. A dedicated union keeps
+/// Field value carried by a set-entity-field override. A dedicated union keeps
 /// the operation free of boxing while the applier validates the field/value pair.
 /// </summary>
-public readonly record struct ScenePrefabActorFieldValue
+public readonly record struct ScenePrefabEntityFieldValue
 {
     private readonly string? _stringValue;
     private readonly int _int32Value;
     private readonly bool _booleanValue;
 
-    private ScenePrefabActorFieldValue(
-        ScenePrefabActorFieldValueKind kind,
+    private ScenePrefabEntityFieldValue(
+        ScenePrefabEntityFieldValueKind kind,
         string? stringValue,
         int int32Value,
         bool booleanValue)
@@ -92,46 +92,46 @@ public readonly record struct ScenePrefabActorFieldValue
     }
 
     /// <summary>Stored value kind.</summary>
-    public ScenePrefabActorFieldValueKind Kind { get; }
+    public ScenePrefabEntityFieldValueKind Kind { get; }
 
     /// <summary>Creates a string value.</summary>
-    public static ScenePrefabActorFieldValue FromString(string value)
+    public static ScenePrefabEntityFieldValue FromString(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
-        return new ScenePrefabActorFieldValue(ScenePrefabActorFieldValueKind.Text, value, 0, false);
+        return new ScenePrefabEntityFieldValue(ScenePrefabEntityFieldValueKind.Text, value, 0, false);
     }
 
     /// <summary>Creates an integer value.</summary>
-    public static ScenePrefabActorFieldValue FromInt32(int value) =>
-        new(ScenePrefabActorFieldValueKind.Number, null, value, false);
+    public static ScenePrefabEntityFieldValue FromInt32(int value) =>
+        new(ScenePrefabEntityFieldValueKind.Number, null, value, false);
 
     /// <summary>Creates a boolean value.</summary>
-    public static ScenePrefabActorFieldValue FromBoolean(bool value) =>
-        new(ScenePrefabActorFieldValueKind.Flag, null, 0, value);
+    public static ScenePrefabEntityFieldValue FromBoolean(bool value) =>
+        new(ScenePrefabEntityFieldValueKind.Flag, null, 0, value);
 
     /// <summary>Returns the string payload.</summary>
     /// <exception cref="ScenePrefabException">The value is not a string.</exception>
-    public string AsString() => Kind == ScenePrefabActorFieldValueKind.Text
+    public string AsString() => Kind == ScenePrefabEntityFieldValueKind.Text
         ? _stringValue!
         : throw new ScenePrefabException(
             ScenePrefabErrorCodes.InvalidOverride,
-            $"Actor field value is '{Kind}', not a string.");
+            $"Entity field value is '{Kind}', not a string.");
 
     /// <summary>Returns the integer payload.</summary>
     /// <exception cref="ScenePrefabException">The value is not an integer.</exception>
-    public int AsInt32() => Kind == ScenePrefabActorFieldValueKind.Number
+    public int AsInt32() => Kind == ScenePrefabEntityFieldValueKind.Number
         ? _int32Value
         : throw new ScenePrefabException(
             ScenePrefabErrorCodes.InvalidOverride,
-            $"Actor field value is '{Kind}', not an integer.");
+            $"Entity field value is '{Kind}', not an integer.");
 
     /// <summary>Returns the boolean payload.</summary>
     /// <exception cref="ScenePrefabException">The value is not a boolean.</exception>
-    public bool AsBoolean() => Kind == ScenePrefabActorFieldValueKind.Flag
+    public bool AsBoolean() => Kind == ScenePrefabEntityFieldValueKind.Flag
         ? _booleanValue
         : throw new ScenePrefabException(
             ScenePrefabErrorCodes.InvalidOverride,
-            $"Actor field value is '{Kind}', not a boolean.");
+            $"Entity field value is '{Kind}', not a boolean.");
 }
 
 /// <summary>One segment of a component property path.</summary>
@@ -299,32 +299,32 @@ public abstract class ScenePrefabOverrideOperation
     public abstract ScenePrefabOverrideKind Kind { get; }
 }
 
-/// <summary>Creates one actor snapshot.</summary>
-public sealed class ScenePrefabAddActorOperation : ScenePrefabOverrideOperation
+/// <summary>Creates one entity snapshot.</summary>
+public sealed class ScenePrefabAddEntityOperation : ScenePrefabOverrideOperation
 {
-    /// <summary>Creates an add-actor operation.</summary>
-    public ScenePrefabAddActorOperation(SceneActorSnapshot actor, string? afterNodeId = null)
+    /// <summary>Creates an add-entity operation.</summary>
+    public ScenePrefabAddEntityOperation(SceneEntitySnapshot entity, string? afterNodeId = null)
     {
-        ArgumentNullException.ThrowIfNull(actor);
-        Actor = actor;
+        ArgumentNullException.ThrowIfNull(entity);
+        Entity = entity;
         AfterNodeId = string.IsNullOrEmpty(afterNodeId) ? null : afterNodeId;
     }
 
-    /// <summary>Actor snapshot to insert.</summary>
-    public SceneActorSnapshot Actor { get; }
+    /// <summary>Entity snapshot to insert.</summary>
+    public SceneEntitySnapshot Entity { get; }
 
     /// <summary>Optional anchor node; null appends.</summary>
     public string? AfterNodeId { get; }
 
     /// <inheritdoc/>
-    public override ScenePrefabOverrideKind Kind => ScenePrefabOverrideKind.AddActor;
+    public override ScenePrefabOverrideKind Kind => ScenePrefabOverrideKind.AddEntity;
 }
 
-/// <summary>Removes an actor and its subtree.</summary>
-public sealed class ScenePrefabRemoveActorOperation : ScenePrefabOverrideOperation
+/// <summary>Removes an entity and its subtree.</summary>
+public sealed class ScenePrefabRemoveEntityOperation : ScenePrefabOverrideOperation
 {
-    /// <summary>Creates a remove-actor operation.</summary>
-    public ScenePrefabRemoveActorOperation(string nodeId)
+    /// <summary>Creates a remove-entity operation.</summary>
+    public ScenePrefabRemoveEntityOperation(string nodeId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
         NodeId = nodeId;
@@ -334,38 +334,38 @@ public sealed class ScenePrefabRemoveActorOperation : ScenePrefabOverrideOperati
     public string NodeId { get; }
 
     /// <inheritdoc/>
-    public override ScenePrefabOverrideKind Kind => ScenePrefabOverrideKind.RemoveActor;
+    public override ScenePrefabOverrideKind Kind => ScenePrefabOverrideKind.RemoveEntity;
 }
 
-/// <summary>Moves an actor under another parent.</summary>
-public sealed class ScenePrefabReparentActorOperation : ScenePrefabOverrideOperation
+/// <summary>Moves an entity under another parent.</summary>
+public sealed class ScenePrefabReparentEntityOperation : ScenePrefabOverrideOperation
 {
-    /// <summary>Creates a reparent-actor operation.</summary>
-    public ScenePrefabReparentActorOperation(string nodeId, string? parentNodeId)
+    /// <summary>Creates a reparent-entity operation.</summary>
+    public ScenePrefabReparentEntityOperation(string nodeId, string? parentNodeId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
         NodeId = nodeId;
         ParentNodeId = string.IsNullOrEmpty(parentNodeId) ? null : parentNodeId;
     }
 
-    /// <summary>Actor to move.</summary>
+    /// <summary>Entity to move.</summary>
     public string NodeId { get; }
 
-    /// <summary>New parent node id; null makes the actor a root.</summary>
+    /// <summary>New parent node id; null makes the entity a root.</summary>
     public string? ParentNodeId { get; }
 
     /// <inheritdoc/>
-    public override ScenePrefabOverrideKind Kind => ScenePrefabOverrideKind.ReparentActor;
+    public override ScenePrefabOverrideKind Kind => ScenePrefabOverrideKind.ReparentEntity;
 }
 
-/// <summary>Replaces one actor field.</summary>
-public sealed class ScenePrefabSetActorFieldOperation : ScenePrefabOverrideOperation
+/// <summary>Replaces one entity field.</summary>
+public sealed class ScenePrefabSetEntityFieldOperation : ScenePrefabOverrideOperation
 {
-    /// <summary>Creates a set-actor-field operation.</summary>
-    public ScenePrefabSetActorFieldOperation(
+    /// <summary>Creates a set-entity-field operation.</summary>
+    public ScenePrefabSetEntityFieldOperation(
         string nodeId,
-        ScenePrefabActorField field,
-        ScenePrefabActorFieldValue value)
+        ScenePrefabEntityField field,
+        ScenePrefabEntityFieldValue value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(nodeId);
         NodeId = nodeId;
@@ -374,33 +374,33 @@ public sealed class ScenePrefabSetActorFieldOperation : ScenePrefabOverrideOpera
         Validate(field, value);
     }
 
-    /// <summary>Target actor node id.</summary>
+    /// <summary>Target entity node id.</summary>
     public string NodeId { get; }
 
     /// <summary>Field to replace.</summary>
-    public ScenePrefabActorField Field { get; }
+    public ScenePrefabEntityField Field { get; }
 
     /// <summary>Replacement value.</summary>
-    public ScenePrefabActorFieldValue Value { get; }
+    public ScenePrefabEntityFieldValue Value { get; }
 
     /// <inheritdoc/>
-    public override ScenePrefabOverrideKind Kind => ScenePrefabOverrideKind.SetActorField;
+    public override ScenePrefabOverrideKind Kind => ScenePrefabOverrideKind.SetEntityField;
 
-    private static void Validate(ScenePrefabActorField field, ScenePrefabActorFieldValue value)
+    private static void Validate(ScenePrefabEntityField field, ScenePrefabEntityFieldValue value)
     {
-        ScenePrefabActorFieldValueKind expected = field switch
+        ScenePrefabEntityFieldValueKind expected = field switch
         {
-            ScenePrefabActorField.Name or ScenePrefabActorField.Tag =>
-                ScenePrefabActorFieldValueKind.Text,
-            ScenePrefabActorField.Layer => ScenePrefabActorFieldValueKind.Number,
-            _ => ScenePrefabActorFieldValueKind.Flag
+            ScenePrefabEntityField.Name or ScenePrefabEntityField.Tag =>
+                ScenePrefabEntityFieldValueKind.Text,
+            ScenePrefabEntityField.Layer => ScenePrefabEntityFieldValueKind.Number,
+            _ => ScenePrefabEntityFieldValueKind.Flag
         };
 
         if (value.Kind != expected)
         {
             throw new ScenePrefabException(
                 ScenePrefabErrorCodes.InvalidOverride,
-                $"Actor field '{field}' expects a {expected} value; received {value.Kind}.");
+                $"Entity field '{field}' expects a {expected} value; received {value.Kind}.");
         }
     }
 }
@@ -421,7 +421,7 @@ public sealed class ScenePrefabAddComponentOperation : ScenePrefabOverrideOperat
         Index = index;
     }
 
-    /// <summary>Target actor node id.</summary>
+    /// <summary>Target entity node id.</summary>
     public string NodeId { get; }
 
     /// <summary>Component snapshot to insert.</summary>
@@ -445,7 +445,7 @@ public sealed class ScenePrefabRemoveComponentOperation : ScenePrefabOverrideOpe
         Selector = selector;
     }
 
-    /// <summary>Target actor node id.</summary>
+    /// <summary>Target entity node id.</summary>
     public string NodeId { get; }
 
     /// <summary>Component selector.</summary>
@@ -471,7 +471,7 @@ public sealed class ScenePrefabReplaceComponentOperation : ScenePrefabOverrideOp
         Component = component;
     }
 
-    /// <summary>Target actor node id.</summary>
+    /// <summary>Target entity node id.</summary>
     public string NodeId { get; }
 
     /// <summary>Component selector.</summary>
@@ -502,7 +502,7 @@ public sealed class ScenePrefabSetComponentPropertyOperation : ScenePrefabOverri
         Value = value.Clone();
     }
 
-    /// <summary>Target actor node id.</summary>
+    /// <summary>Target entity node id.</summary>
     public string NodeId { get; }
 
     /// <summary>Component selector.</summary>
@@ -534,7 +534,7 @@ public sealed class ScenePrefabUnsetComponentPropertyOperation : ScenePrefabOver
         Path = path;
     }
 
-    /// <summary>Target actor node id.</summary>
+    /// <summary>Target entity node id.</summary>
     public string NodeId { get; }
 
     /// <summary>Component selector.</summary>

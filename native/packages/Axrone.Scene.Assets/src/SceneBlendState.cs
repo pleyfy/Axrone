@@ -58,7 +58,7 @@ public enum SceneBlendOperation : byte
 
 /// <summary>
 /// Explicit blend state metadata. <see cref="Enabled"/> false leaves blending disabled;
-/// otherwise the factors and equations describe the fixed-function blend.
+/// otherwise the fentities and equations describe the fixed-function blend.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct SceneBlendState(
@@ -108,7 +108,7 @@ public readonly record struct SceneBlendState(
         {
             throw new SceneAssetException(
                 SceneAssetErrorCodes.Invalid,
-                "Blend state factors and operations must be defined values.");
+                "Blend state fentities and operations must be defined values.");
         }
     }
 }

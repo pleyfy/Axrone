@@ -17,8 +17,8 @@ public sealed class ScenePrefabTests
         SceneCodecRegistry codecs = CreateCodecs(profile);
         using SceneWorld source = profile.CreateWorld();
 
-        SceneActor root = source.CreateActor("Root");
-        SceneActor child = source.CreateActor("Child");
+        SceneEntity root = source.CreateEntity("Root");
+        SceneEntity child = source.CreateEntity("Child");
         source.GetTransform3D(root).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
         source.GetTransform3D(child).SetPosition(new Vec3(4.0f, 5.0f, 6.0f));
         source.AddData(root, new Health { Value = 10 });
@@ -27,18 +27,18 @@ public sealed class ScenePrefabTests
         source.UpdateTransforms();
 
         ScenePrefabDefinition prefab = ScenePrefabFactory.Create(source, codecs, "prefab/roundtrip");
-        prefab.Actors.Should().HaveCount(2);
-        prefab.Actors[0].NodeId.Should().Be(root.Slot.ToString(CultureInfo.InvariantCulture));
-        prefab.Actors[1].ParentNodeId.Should().Be(root.Slot.ToString(CultureInfo.InvariantCulture));
-        prefab.Actors[0].Components.Should().Contain(component => component.Type == "Health");
-        prefab.Actors[0].Components.Should().Contain(component => component.Type == "Transform3D");
+        prefab.Entities.Should().HaveCount(2);
+        prefab.Entities[0].NodeId.Should().Be(root.Slot.ToString(CultureInfo.InvariantCulture));
+        prefab.Entities[1].ParentNodeId.Should().Be(root.Slot.ToString(CultureInfo.InvariantCulture));
+        prefab.Entities[0].Components.Should().Contain(component => component.Type == "Health");
+        prefab.Entities[0].Components.Should().Contain(component => component.Type == "Transform3D");
 
         using SceneWorld copy = profile.CreateWorld();
         ScenePrefabInstantiationResult result = ScenePrefabInstantiator.Instantiate(copy, codecs, prefab);
-        SceneActor rootCopy = result.NodeMap[prefab.Actors[0].NodeId];
-        SceneActor childCopy = result.NodeMap[prefab.Actors[1].NodeId];
+        SceneEntity rootCopy = result.NodeMap[prefab.Entities[0].NodeId];
+        SceneEntity childCopy = result.NodeMap[prefab.Entities[1].NodeId];
 
-        result.Actors.Should().HaveCount(2);
+        result.Entities.Should().HaveCount(2);
         copy.Hierarchy.ParentOf(childCopy).Should().Be(rootCopy);
         copy.GetTransform3D(rootCopy).Position.Should().Be(new Vec3(1.0f, 2.0f, 3.0f));
         copy.GetTransform3D(childCopy).Position.Should().Be(new Vec3(4.0f, 5.0f, 6.0f));
@@ -55,7 +55,7 @@ public sealed class ScenePrefabTests
         SceneProfile profile = CreateProfile();
         SceneCodecRegistry codecs = CreateCodecs(profile);
         using SceneWorld source = profile.CreateWorld();
-        SceneActor root = source.CreateActor("Root");
+        SceneEntity root = source.CreateEntity("Root");
         source.GetTransform3D(root).SetPosition(new Vec3(2.0f, 0.0f, 0.0f));
         source.AddData(root, new Health { Value = 7 });
 
@@ -64,14 +64,14 @@ public sealed class ScenePrefabTests
         ScenePrefabDefinition read = ScenePrefabJson.Deserialize(json);
 
         read.Id.Should().Be("prefab/json");
-        read.Actors.Should().ContainSingle();
-        read.Actors[0].Name.Should().Be("Root");
-        read.Actors[0].Components.Should().Contain(component => component.Type == "Health");
+        read.Entities.Should().ContainSingle();
+        read.Entities[0].Name.Should().Be("Root");
+        read.Entities[0].Components.Should().Contain(component => component.Type == "Health");
 
         using SceneWorld copy = profile.CreateWorld();
         ScenePrefabInstantiationResult result = ScenePrefabInstantiator.Instantiate(copy, codecs, read);
-        result.Actors.Should().ContainSingle();
-        copy.GetData<Health>(result.Actors[0]).Value.Should().Be(7);
+        result.Entities.Should().ContainSingle();
+        copy.GetData<Health>(result.Entities[0]).Value.Should().Be(7);
     }
 
     [Fact]
@@ -81,30 +81,30 @@ public sealed class ScenePrefabTests
         SceneCodecRegistry codecs = CreateCodecs(profile);
         using JsonDocument document = JsonDocument.Parse("{}");
         var component = new SceneComponentSnapshot("Missing", document.RootElement);
-        var actor = new SceneActorSnapshot(
+        var entity = new SceneEntitySnapshot(
             "0",
-            "Actor",
+            "Entity",
             0,
             "Default",
             active: true,
             persistent: false,
             pooled: false,
             [component]);
-        var prefab = new ScenePrefabDefinition("prefab/missing", [actor]);
+        var prefab = new ScenePrefabDefinition("prefab/missing", [entity]);
         using SceneWorld world = profile.CreateWorld();
 
         Action instantiate = () => ScenePrefabInstantiator.Instantiate(world, codecs, prefab);
 
         instantiate.Should().Throw<ScenePrefabException>()
             .Which.Code.Should().Be(ScenePrefabErrorCodes.UnknownComponent);
-        world.ActorCount.Should().Be(0);
+        world.EntityCount.Should().Be(0);
     }
 
     [Fact]
     public void Prefab_RejectsDuplicateNodeIds()
     {
-        var first = CreateEmptyActor("0", "First");
-        var second = CreateEmptyActor("0", "Second");
+        var first = CreateEmptyEntity("0", "First");
+        var second = CreateEmptyEntity("0", "Second");
 
         Action create = () => { _ = new ScenePrefabDefinition("prefab/duplicate", [first, second]); };
 
@@ -115,7 +115,7 @@ public sealed class ScenePrefabTests
     [Fact]
     public void Prefab_RejectsMissingParent()
     {
-        var child = new SceneActorSnapshot(
+        var child = new SceneEntitySnapshot(
             "1",
             "Child",
             0,
@@ -138,7 +138,7 @@ public sealed class ScenePrefabTests
         SceneProfile profile = CreateProfile();
         SceneCodecRegistry codecs = CreateCodecs(profile);
         using SceneWorld source = profile.CreateWorld();
-        _ = source.CreateActor("Root");
+        _ = source.CreateEntity("Root");
         ScenePrefabDefinition prefab = ScenePrefabFactory.Create(source, codecs, "prefab/prefix");
         using SceneWorld copy = profile.CreateWorld();
 
@@ -148,7 +148,7 @@ public sealed class ScenePrefabTests
             prefab,
             new ScenePrefabInstantiateOptions { NamePrefix = "copy_" });
 
-        copy.GetName(result.Actors[0]).Should().Be("copy_Root");
+        copy.GetName(result.Entities[0]).Should().Be("copy_Root");
     }
 
     [Fact]
@@ -161,8 +161,8 @@ public sealed class ScenePrefabTests
         var basePrefab = new ScenePrefabDefinition(
             "prefab/base",
             [
-                CreateEmptyActor("root", "Root"),
-                new SceneActorSnapshot(
+                CreateEmptyEntity("root", "Root"),
+                new SceneEntitySnapshot(
                     "child",
                     "Child",
                     0,
@@ -176,7 +176,7 @@ public sealed class ScenePrefabTests
 
         var host = new ScenePrefabDefinition(
             "prefab/host",
-            [CreateEmptyActor("host-root", "Host")],
+            [CreateEmptyEntity("host-root", "Host")],
             nested:
             [
                 new ScenePrefabNestedInstance(
@@ -188,7 +188,7 @@ public sealed class ScenePrefabTests
 
         ScenePrefabInstantiationResult result = ScenePrefabInstantiator.Instantiate(world, codecs, host);
 
-        result.Actors.Should().HaveCount(3);
+        result.Entities.Should().HaveCount(3);
         result.NodeMap.Keys.Should().Contain("turret::root").And.Contain("turret::child");
         world.GetName(result.NodeMap["turret::root"]).Should().Be("T-Root");
         world.Hierarchy.ParentOf(result.NodeMap["turret::root"]).Should().Be(result.NodeMap["host-root"]);
@@ -210,7 +210,7 @@ public sealed class ScenePrefabTests
 
         act.Should().Throw<ScenePrefabException>()
             .Where(exception => exception.Code == ScenePrefabErrorCodes.ResolutionFailed);
-        world.ActorCount.Should().Be(0);
+        world.EntityCount.Should().Be(0);
     }
 
     [Fact]
@@ -222,7 +222,7 @@ public sealed class ScenePrefabTests
 
         var basePrefab = new ScenePrefabDefinition(
             "prefab/base",
-            [CreateEmptyActor("root", "Root")]);
+            [CreateEmptyEntity("root", "Root")]);
         var registry = new ScenePrefabRegistry().Register(basePrefab);
         var resolver = new ScenePrefabResolver(registry);
 
@@ -230,10 +230,10 @@ public sealed class ScenePrefabTests
             "prefab/base",
             "prefab/variant",
             [
-                new ScenePrefabSetActorFieldOperation(
+                new ScenePrefabSetEntityFieldOperation(
                     "root",
-                    ScenePrefabActorField.Name,
-                    ScenePrefabActorFieldValue.FromString("VariantRoot"))
+                    ScenePrefabEntityField.Name,
+                    ScenePrefabEntityFieldValue.FromString("VariantRoot"))
             ]);
 
         ScenePrefabInstantiationResult result = ScenePrefabInstantiator.Instantiate(
@@ -242,8 +242,8 @@ public sealed class ScenePrefabTests
             variant,
             new ScenePrefabInstantiateOptions { Resolver = resolver });
 
-        result.Actors.Should().ContainSingle();
-        world.GetName(result.Actors[0]).Should().Be("VariantRoot");
+        result.Entities.Should().ContainSingle();
+        world.GetName(result.Entities[0]).Should().Be("VariantRoot");
     }
 
     [Fact]
@@ -255,7 +255,7 @@ public sealed class ScenePrefabTests
 
         var prefab = new ScenePrefabDefinition(
             "prefab/live",
-            [CreateEmptyActor("root", "Root")]);
+            [CreateEmptyEntity("root", "Root")]);
 
         ScenePrefabInstantiationResult result = ScenePrefabInstantiator.Instantiate(
             world,
@@ -265,15 +265,15 @@ public sealed class ScenePrefabTests
             {
                 LiveOverrides =
                 [
-                    new ScenePrefabSetActorFieldOperation(
+                    new ScenePrefabSetEntityFieldOperation(
                         "root",
-                        ScenePrefabActorField.Name,
-                        ScenePrefabActorFieldValue.FromString("Renamed"))
+                        ScenePrefabEntityField.Name,
+                        ScenePrefabEntityFieldValue.FromString("Renamed"))
                 ]
             });
 
-        result.Actors.Should().ContainSingle();
-        world.GetName(result.Actors[0]).Should().Be("Renamed");
+        result.Entities.Should().ContainSingle();
+        world.GetName(result.Entities[0]).Should().Be("Renamed");
     }
 
     private static SceneProfile CreateProfile()
@@ -294,7 +294,7 @@ public sealed class ScenePrefabTests
         return codecs;
     }
 
-    private static SceneActorSnapshot CreateEmptyActor(string nodeId, string name) =>
+    private static SceneEntitySnapshot CreateEmptyEntity(string nodeId, string name) =>
         new(
             nodeId,
             name,

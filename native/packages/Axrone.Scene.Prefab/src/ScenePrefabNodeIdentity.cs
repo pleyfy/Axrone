@@ -3,13 +3,13 @@ namespace Axrone.Scene.Prefab;
 using System.Buffers;
 
 /// <summary>
-/// Actor identity and provenance preparation shared by JSON reads, composition
+/// Entity identity and provenance preparation shared by JSON reads, composition
 /// resolution and instantiation.
 /// </summary>
 public static class ScenePrefabNodeIdentity
 {
     /// <summary>
-    /// Requires a stable actor node id and reports the owning prefab and
+    /// Requires a stable entity node id and reports the owning prefab and
     /// declaration index when it is missing.
     /// </summary>
     /// <exception cref="ScenePrefabException">
@@ -23,28 +23,28 @@ public static class ScenePrefabNodeIdentity
         {
             throw new ScenePrefabException(
                 ScenePrefabErrorCodes.MissingStableNodeId,
-                $"Prefab '{prefabId}' actor at index {index} is missing a stable nodeId.");
+                $"Prefab '{prefabId}' entity at index {index} is missing a stable nodeId.");
         }
 
         return nodeId;
     }
 
-    /// <summary>Returns an actor snapshot with source, synthesizing origin from its owning definition.</summary>
-    public static SceneActorSnapshot EnsureProvenance(
-        SceneActorSnapshot actor,
+    /// <summary>Returns an entity snapshot with source, synthesizing origin from its owning definition.</summary>
+    public static SceneEntitySnapshot EnsureProvenance(
+        SceneEntitySnapshot entity,
         string prefabId,
         IReadOnlyList<string> lineage,
         int index)
     {
-        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(entity);
 
-        RequireStableNodeId(actor.NodeId, prefabId, index);
-        return actor.Source is { } source
-            ? actor
-            : actor.WithSource(CreateFallback(prefabId, actor.NodeId, lineage, index));
+        RequireStableNodeId(entity.NodeId, prefabId, index);
+        return entity.Source is { } source
+            ? entity
+            : entity.WithSource(CreateFallback(prefabId, entity.NodeId, lineage, index));
     }
 
-    /// <summary>Creates fallback provenance for a definition-level actor without an explicit source.</summary>
+    /// <summary>Creates fallback provenance for a definition-level entity without an explicit source.</summary>
     public static ScenePrefabNodeSource CreateFallback(
         string prefabId,
         string nodeId,

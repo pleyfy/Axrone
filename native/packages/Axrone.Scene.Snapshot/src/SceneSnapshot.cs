@@ -28,7 +28,7 @@ public sealed class SceneSnapshotException : SceneException
 
 /// <summary>
 /// Self-contained scene payload: the asset definitions a scene needs plus the
-/// prefab that describes its actor hierarchy and component snapshots.
+/// prefab that describes its entity hierarchy and component snapshots.
 /// </summary>
 public sealed class SceneSnapshot
 {

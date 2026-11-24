@@ -1,8 +1,8 @@
 namespace Axrone.Scene.Prefab;
 
 /// <summary>
-/// Two-phase prefab instantiation: actors and hierarchy first, components
-/// second. Any failure rolls the created actors back before a coded prefab
+/// Two-phase prefab instantiation: entities and hierarchy first, components
+/// second. Any failure rolls the created entities back before a coded prefab
 /// error is thrown.
 /// </summary>
 public static class ScenePrefabInstantiator
@@ -19,20 +19,20 @@ public static class ScenePrefabInstantiator
         ArgumentNullException.ThrowIfNull(prefab);
 
         ScenePrefabDefinition effective = Prepare(prefab, options);
-        var created = new List<SceneActor>(effective.Actors.Count);
-        var sources = new List<ScenePrefabNodeSource>(effective.Actors.Count);
-        var nodeMap = new Dictionary<string, SceneActor>(effective.Actors.Count, StringComparer.Ordinal);
+        var created = new List<SceneEntity>(effective.Entities.Count);
+        var sources = new List<ScenePrefabNodeSource>(effective.Entities.Count);
+        var nodeMap = new Dictionary<string, SceneEntity>(effective.Entities.Count, StringComparer.Ordinal);
 
         try
         {
-            for (int i = 0; i < effective.Actors.Count; i++)
+            for (int i = 0; i < effective.Entities.Count; i++)
             {
-                SceneActorSnapshot snapshot = effective.Actors[i];
+                SceneEntitySnapshot snapshot = effective.Entities[i];
                 string name = options?.NamePrefix is { Length: > 0 } prefix
                     ? string.Concat(prefix, snapshot.Name)
                     : snapshot.Name;
 
-                SceneActor actor = world.CreateActor(new SceneActorConfig(
+                SceneEntity entity = world.CreateEntity(new SceneEntityConfig(
                     name,
                     snapshot.Tag,
                     snapshot.Layer,
@@ -40,24 +40,24 @@ public static class ScenePrefabInstantiator
                     snapshot.Persistent,
                     snapshot.Pooled));
 
-                created.Add(actor);
+                created.Add(entity);
                 sources.Add(snapshot.Source ?? ScenePrefabNodeIdentity.CreateFallback(
                     effective.Id,
                     snapshot.NodeId,
                     effective.Lineage,
                     i));
-                nodeMap.Add(snapshot.NodeId, actor);
+                nodeMap.Add(snapshot.NodeId, entity);
             }
 
-            for (int i = 0; i < effective.Actors.Count; i++)
+            for (int i = 0; i < effective.Entities.Count; i++)
             {
-                SceneActorSnapshot snapshot = effective.Actors[i];
+                SceneEntitySnapshot snapshot = effective.Entities[i];
                 if (snapshot.ParentNodeId is not { } parentNodeId)
                 {
                     continue;
                 }
 
-                if (!nodeMap.TryGetValue(parentNodeId, out SceneActor parent))
+                if (!nodeMap.TryGetValue(parentNodeId, out SceneEntity parent))
                 {
                     throw new ScenePrefabException(
                         ScenePrefabErrorCodes.MissingParent,
@@ -68,10 +68,10 @@ public static class ScenePrefabInstantiator
                 world.Hierarchy.SetParent(nodeMap[snapshot.NodeId], parent);
             }
 
-            for (int i = 0; i < effective.Actors.Count; i++)
+            for (int i = 0; i < effective.Entities.Count; i++)
             {
-                SceneActorSnapshot snapshot = effective.Actors[i];
-                SceneActor actor = nodeMap[snapshot.NodeId];
+                SceneEntitySnapshot snapshot = effective.Entities[i];
+                SceneEntity entity = nodeMap[snapshot.NodeId];
 
                 for (int componentIndex = 0; componentIndex < snapshot.Components.Count; componentIndex++)
                 {
@@ -84,7 +84,7 @@ public static class ScenePrefabInstantiator
                             snapshot.NodeId);
                     }
 
-                    codec.ReadInto(world, actor, component.Data);
+                    codec.ReadInto(world, entity, component.Data);
                 }
             }
 
@@ -135,17 +135,17 @@ public static class ScenePrefabInstantiator
         return effective;
     }
 
-    private static void Rollback(SceneWorld world, List<SceneActor> created)
+    private static void Rollback(SceneWorld world, List<SceneEntity> created)
     {
         for (int i = created.Count - 1; i >= 0; i--)
         {
             try
             {
-                world.DestroyActor(created[i]);
+                world.DestroyEntity(created[i]);
             }
             catch
             {
-                // Rollback must continue through every actor; the original
+                // Rollback must continue through every entity; the original
                 // instantiation failure remains the reported cause.
             }
         }

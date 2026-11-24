@@ -33,7 +33,7 @@ public sealed class SceneSnapshotTests
         read.RenderPasses.Should().ContainSingle().Which.ClearMask
             .Should().Be(SceneClearMask.Color | SceneClearMask.Depth);
         read.Materials.Should().ContainSingle().Which.Uniforms.Count.Should().Be(2);
-        read.Prefab.Actors.Should().HaveCount(2);
+        read.Prefab.Entities.Should().HaveCount(2);
         rewritten.Should().Equal(json);
     }
 
@@ -90,10 +90,10 @@ public sealed class SceneSnapshotTests
             snapshot,
             new SceneSnapshotLoadOptions { NamePrefix = "Loaded/" });
 
-        result.Actors.Should().HaveCount(2);
-        world.ActorCount.Should().Be(2);
-        world.GetName(result.Actors[0]).Should().Be("Loaded/Root");
-        world.GetTransform3D(result.Actors[1]).Position.Should().Be(new Vec3(1.0f, 2.0f, 3.0f));
+        result.Entities.Should().HaveCount(2);
+        world.EntityCount.Should().Be(2);
+        world.GetName(result.Entities[0]).Should().Be("Loaded/Root");
+        world.GetTransform3D(result.Entities[1]).Position.Should().Be(new Vec3(1.0f, 2.0f, 3.0f));
         assets.Shaders.Count.Should().Be(1);
         assets.Meshes.Count.Should().Be(1);
         assets.Materials.Count.Should().Be(1);
@@ -142,7 +142,7 @@ public sealed class SceneSnapshotTests
         var brokenPrefab = new ScenePrefabDefinition(
             "prefab/broken",
             [
-                new SceneActorSnapshot(
+                new SceneEntitySnapshot(
                     "root",
                     "Root",
                     0,
@@ -172,7 +172,7 @@ public sealed class SceneSnapshotTests
         assets.Shaders.Contains(existingId).Should().BeTrue();
         assets.Meshes.Count.Should().Be(0);
         assets.Materials.Count.Should().Be(0);
-        world.ActorCount.Should().Be(0);
+        world.EntityCount.Should().Be(0);
     }
 
     [Fact]
@@ -183,9 +183,9 @@ public sealed class SceneSnapshotTests
         var codecs = new SceneCodecRegistry(world.Registry);
         ScenePrefabCodecs.RegisterCore(codecs, world.Registry);
 
-        SceneActor root = world.CreateActor("Root");
+        SceneEntity root = world.CreateEntity("Root");
         world.GetTransform3D(root).SetPosition(new Vec3(0.0f, 1.0f, 0.0f));
-        SceneActor child = world.CreateActor("Child");
+        SceneEntity child = world.CreateEntity("Child");
         world.Hierarchy.SetParent(child, root);
         world.GetTransform3D(child).SetPosition(new Vec3(0.0f, 2.0f, 0.0f));
         world.UpdateTransforms();
@@ -196,10 +196,10 @@ public sealed class SceneSnapshotTests
         SceneSnapshot snapshot = SceneSnapshot.Capture(world, codecs, assets, "prefab/captured");
 
         snapshot.Prefab.Id.Should().Be("prefab/captured");
-        snapshot.Prefab.Actors.Should().HaveCount(2);
-        snapshot.Prefab.Actors[1].ParentNodeId.Should().Be(snapshot.Prefab.Actors[0].NodeId);
+        snapshot.Prefab.Entities.Should().HaveCount(2);
+        snapshot.Prefab.Entities[1].ParentNodeId.Should().Be(snapshot.Prefab.Entities[0].NodeId);
         snapshot.RenderPasses.Should().ContainSingle();
-        snapshot.Prefab.Actors[0].Components.Should().ContainSingle()
+        snapshot.Prefab.Entities[0].Components.Should().ContainSingle()
             .Which.Type.Should().Be("Transform3D");
     }
 
@@ -211,7 +211,7 @@ public sealed class SceneSnapshotTests
             "root",
             ["outer", "mid"],
             ["prefab/base"]);
-        var actor = new SceneActorSnapshot(
+        var entity = new SceneEntitySnapshot(
             "root",
             "Root",
             0,
@@ -223,7 +223,7 @@ public sealed class SceneSnapshotTests
             null,
             source);
         var snapshot = new SceneSnapshot(
-            new ScenePrefabDefinition("prefab/source", [actor]),
+            new ScenePrefabDefinition("prefab/source", [entity]),
             [],
             [],
             [],
@@ -237,7 +237,7 @@ public sealed class SceneSnapshotTests
         byte[] rewritten = SceneSnapshotJson.Serialize(read, names);
 
         rewritten.Should().Equal(json);
-        read.Prefab.Actors.Should().ContainSingle().Which.Source.Should().Be(source);
+        read.Prefab.Entities.Should().ContainSingle().Which.Source.Should().Be(source);
     }
 
     [Fact]
@@ -246,17 +246,17 @@ public sealed class SceneSnapshotTests
         (SceneSnapshot snapshot, SceneAssetRegistry assets) = CreateSnapshot();
         byte[] json = SceneSnapshotJson.Serialize(snapshot, assets.Names);
         JsonNode root = JsonNode.Parse(Encoding.UTF8.GetString(json))!;
-        JsonArray actors = root["prefab"]!["actors"]!.AsArray();
-        for (int i = 0; i < actors.Count; i++)
+        JsonArray entities = root["prefab"]!["entities"]!.AsArray();
+        for (int i = 0; i < entities.Count; i++)
         {
-            actors[i]!.AsObject().Remove("source");
+            entities[i]!.AsObject().Remove("source");
         }
 
         SceneSnapshot read = SceneSnapshotJson.Deserialize(
             JsonSerializer.SerializeToUtf8Bytes(root),
             assets.Names);
 
-        read.Prefab.Actors.Should().OnlyContain(actor => actor.Source == null);
+        read.Prefab.Entities.Should().OnlyContain(entity => entity.Source == null);
     }
 
     [Fact]
@@ -452,7 +452,7 @@ public sealed class SceneSnapshotTests
         var prefab = new ScenePrefabDefinition(
             "prefab/demo",
             [
-                new SceneActorSnapshot(
+                new SceneEntitySnapshot(
                     "root",
                     "Root",
                     0,
@@ -461,7 +461,7 @@ public sealed class SceneSnapshotTests
                     persistent: false,
                     pooled: false,
                     components: [Component("Transform3D", """{"position":[0,0,0]}""")]),
-                new SceneActorSnapshot(
+                new SceneEntitySnapshot(
                     "child",
                     "Child",
                     1,

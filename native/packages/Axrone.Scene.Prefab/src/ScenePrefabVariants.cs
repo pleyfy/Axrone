@@ -39,7 +39,7 @@ public static class ScenePrefabVariants
 
         return new ScenePrefabDefinition(
             basePrefab.Id,
-            applied.Actors,
+            applied.Entities,
             ScenePrefabKind.Prefab,
             basePrefab.Metadata);
     }
@@ -59,10 +59,10 @@ public static class ScenePrefabVariants
         ScenePrefabDefinition applied = overrides is { Count: > 0 }
             ? ScenePrefabOverrides.Apply(definition, overrides)
             : definition;
-        SceneActorSnapshot[] unpacked = new SceneActorSnapshot[applied.Actors.Count];
-        for (int i = 0; i < applied.Actors.Count; i++)
+        SceneEntitySnapshot[] unpacked = new SceneEntitySnapshot[applied.Entities.Count];
+        for (int i = 0; i < applied.Entities.Count; i++)
         {
-            unpacked[i] = applied.Actors[i].WithoutSource();
+            unpacked[i] = applied.Entities[i].WithoutSource();
         }
 
         return new ScenePrefabDefinition(

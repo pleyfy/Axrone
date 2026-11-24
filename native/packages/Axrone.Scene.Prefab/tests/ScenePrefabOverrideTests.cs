@@ -11,42 +11,42 @@ public sealed class ScenePrefabOverrideTests
     private static readonly int[] ChangedPosition = [9, 9, 9];
 
     [Fact]
-    public void SetActorField_RebuildsActorMetadata()
+    public void SetEntityField_RebuildsEntityMetadata()
     {
         ScenePrefabDefinition definition = CreateDefinition(
-            Actor("root"),
-            Actor("child", parentNodeId: "root"));
+            Entity("root"),
+            Entity("child", parentNodeId: "root"));
 
         ScenePrefabDefinition result = ScenePrefabOverrides.Apply(
             definition,
             [
-                new ScenePrefabSetActorFieldOperation(
+                new ScenePrefabSetEntityFieldOperation(
                     "child",
-                    ScenePrefabActorField.Name,
-                    ScenePrefabActorFieldValue.FromString("Renamed")),
-                new ScenePrefabSetActorFieldOperation(
+                    ScenePrefabEntityField.Name,
+                    ScenePrefabEntityFieldValue.FromString("Renamed")),
+                new ScenePrefabSetEntityFieldOperation(
                     "child",
-                    ScenePrefabActorField.Layer,
-                    ScenePrefabActorFieldValue.FromInt32(7)),
-                new ScenePrefabSetActorFieldOperation(
+                    ScenePrefabEntityField.Layer,
+                    ScenePrefabEntityFieldValue.FromInt32(7)),
+                new ScenePrefabSetEntityFieldOperation(
                     "child",
-                    ScenePrefabActorField.Tag,
-                    ScenePrefabActorFieldValue.FromString("Player")),
-                new ScenePrefabSetActorFieldOperation(
+                    ScenePrefabEntityField.Tag,
+                    ScenePrefabEntityFieldValue.FromString("Player")),
+                new ScenePrefabSetEntityFieldOperation(
                     "child",
-                    ScenePrefabActorField.Active,
-                    ScenePrefabActorFieldValue.FromBoolean(false)),
-                new ScenePrefabSetActorFieldOperation(
+                    ScenePrefabEntityField.Active,
+                    ScenePrefabEntityFieldValue.FromBoolean(false)),
+                new ScenePrefabSetEntityFieldOperation(
                     "child",
-                    ScenePrefabActorField.Persistent,
-                    ScenePrefabActorFieldValue.FromBoolean(true)),
-                new ScenePrefabSetActorFieldOperation(
+                    ScenePrefabEntityField.Persistent,
+                    ScenePrefabEntityFieldValue.FromBoolean(true)),
+                new ScenePrefabSetEntityFieldOperation(
                     "child",
-                    ScenePrefabActorField.Pooled,
-                    ScenePrefabActorFieldValue.FromBoolean(true))
+                    ScenePrefabEntityField.Pooled,
+                    ScenePrefabEntityFieldValue.FromBoolean(true))
             ]);
 
-        SceneActorSnapshot child = result.Actors[1];
+        SceneEntitySnapshot child = result.Entities[1];
         child.Name.Should().Be("Renamed");
         child.Layer.Should().Be(7);
         child.Tag.Should().Be("Player");
@@ -57,55 +57,55 @@ public sealed class ScenePrefabOverrideTests
     }
 
     [Fact]
-    public void ReparentActor_ChangesParent()
+    public void ReparentEntity_ChangesParent()
     {
         ScenePrefabDefinition definition = CreateDefinition(
-            Actor("root"),
-            Actor("other"),
-            Actor("child", parentNodeId: "root"));
+            Entity("root"),
+            Entity("other"),
+            Entity("child", parentNodeId: "root"));
 
         ScenePrefabDefinition result = ScenePrefabOverrides.Apply(
             definition,
-            [new ScenePrefabReparentActorOperation("child", "other")]);
+            [new ScenePrefabReparentEntityOperation("child", "other")]);
 
-        result.Actors[2].ParentNodeId.Should().Be("other");
+        result.Entities[2].ParentNodeId.Should().Be("other");
 
         ScenePrefabDefinition detached = ScenePrefabOverrides.Apply(
             result,
-            [new ScenePrefabReparentActorOperation("child", null)]);
-        detached.Actors[2].ParentNodeId.Should().BeNull();
+            [new ScenePrefabReparentEntityOperation("child", null)]);
+        detached.Entities[2].ParentNodeId.Should().BeNull();
     }
 
     [Fact]
-    public void RemoveActor_RemovesSubtree()
+    public void RemoveEntity_RemovesSubtree()
     {
         ScenePrefabDefinition definition = CreateDefinition(
-            Actor("root"),
-            Actor("branch", parentNodeId: "root"),
-            Actor("leaf", parentNodeId: "branch"),
-            Actor("sibling", parentNodeId: "root"));
+            Entity("root"),
+            Entity("branch", parentNodeId: "root"),
+            Entity("leaf", parentNodeId: "branch"),
+            Entity("sibling", parentNodeId: "root"));
 
         ScenePrefabDefinition result = ScenePrefabOverrides.Apply(
             definition,
-            [new ScenePrefabRemoveActorOperation("branch")]);
+            [new ScenePrefabRemoveEntityOperation("branch")]);
 
-        result.Actors.Should().HaveCount(2);
-        result.Actors.Should().OnlyContain(actor => actor.NodeId != "branch" && actor.NodeId != "leaf");
-        result.Actors.Should().Contain(actor => actor.NodeId == "sibling");
+        result.Entities.Should().HaveCount(2);
+        result.Entities.Should().OnlyContain(entity => entity.NodeId != "branch" && entity.NodeId != "leaf");
+        result.Entities.Should().Contain(entity => entity.NodeId == "sibling");
     }
 
     [Fact]
-    public void AddActor_InsertsAfterAnchor()
+    public void AddEntity_InsertsAfterAnchor()
     {
         ScenePrefabDefinition definition = CreateDefinition(
-            Actor("root"),
-            Actor("tail", parentNodeId: "root"));
+            Entity("root"),
+            Entity("tail", parentNodeId: "root"));
 
         ScenePrefabDefinition result = ScenePrefabOverrides.Apply(
             definition,
-            [new ScenePrefabAddActorOperation(Actor("inserted", parentNodeId: "root"), "root")]);
+            [new ScenePrefabAddEntityOperation(Entity("inserted", parentNodeId: "root"), "root")]);
 
-        result.Actors.Select(actor => actor.NodeId)
+        result.Entities.Select(entity => entity.NodeId)
             .Should().ContainInOrder("root", "inserted", "tail");
     }
 
@@ -113,7 +113,7 @@ public sealed class ScenePrefabOverrideTests
     public void AddComponent_ClampsIndexAndRejectsDuplicates()
     {
         ScenePrefabDefinition definition = CreateDefinition(
-            Actor("root", components: Component("Transform", """{"position":[0,0,0]}""")));
+            Entity("root", components: Component("Transform", """{"position":[0,0,0]}""")));
 
         ScenePrefabDefinition result = ScenePrefabOverrides.Apply(
             definition,
@@ -124,8 +124,8 @@ public sealed class ScenePrefabOverrideTests
                     index: 16)
             ]);
 
-        result.Actors[0].Components.Should().HaveCount(2);
-        result.Actors[0].Components[1].Type.Should().Be("Camera");
+        result.Entities[0].Components.Should().HaveCount(2);
+        result.Entities[0].Components[1].Type.Should().Be("Camera");
 
         Action duplicateType = () => ScenePrefabOverrides.Apply(
             result,
@@ -152,7 +152,7 @@ public sealed class ScenePrefabOverrideTests
     public void RemoveComponent_ResolvesByType()
     {
         ScenePrefabDefinition definition = CreateDefinition(
-            Actor(
+            Entity(
                 "root",
                 components:
                 [
@@ -168,7 +168,7 @@ public sealed class ScenePrefabOverrideTests
                     ScenePrefabComponentSelector.FromType("Transform"))
             ]);
 
-        result.Actors[0].Components.Should().ContainSingle()
+        result.Entities[0].Components.Should().ContainSingle()
             .Which.Type.Should().Be("Camera");
     }
 
@@ -176,7 +176,7 @@ public sealed class ScenePrefabOverrideTests
     public void ReplaceComponent_SwapsPayload()
     {
         ScenePrefabDefinition definition = CreateDefinition(
-            Actor("root", components: Component("Camera", """{"fov":60}""", id: "main-camera")));
+            Entity("root", components: Component("Camera", """{"fov":60}""", id: "main-camera")));
 
         ScenePrefabDefinition result = ScenePrefabOverrides.Apply(
             definition,
@@ -187,7 +187,7 @@ public sealed class ScenePrefabOverrideTests
                     Component("Camera", """{"fov":90}""", id: "main-camera"))
             ]);
 
-        SceneComponentSnapshot component = result.Actors[0].Components[0];
+        SceneComponentSnapshot component = result.Entities[0].Components[0];
         component.Data.GetProperty("fov").GetInt32().Should().Be(90);
     }
 
@@ -195,7 +195,7 @@ public sealed class ScenePrefabOverrideTests
     public void SetComponentProperty_WritesNestedValues()
     {
         ScenePrefabDefinition definition = CreateDefinition(
-            Actor("root", components: Component("Transform", """{"position":[1,2,3]}""")));
+            Entity("root", components: Component("Transform", """{"position":[1,2,3]}""")));
 
         ScenePrefabDefinition result = ScenePrefabOverrides.Apply(
             definition,
@@ -216,7 +216,7 @@ public sealed class ScenePrefabOverrideTests
                     JsonSerializer.SerializeToElement("vex"))
             ]);
 
-        JsonElement data = result.Actors[0].Components[0].Data;
+        JsonElement data = result.Entities[0].Components[0].Data;
         data.GetProperty("position")[1].GetInt32().Should().Be(5);
         data.GetProperty("meta").GetProperty("author").GetString().Should().Be("vex");
     }
@@ -225,7 +225,7 @@ public sealed class ScenePrefabOverrideTests
     public void UnsetComponentProperty_RemovesValues()
     {
         ScenePrefabDefinition definition = CreateDefinition(
-            Actor(
+            Entity(
                 "root",
                 components: Component(
                     "Transform",
@@ -248,7 +248,7 @@ public sealed class ScenePrefabOverrideTests
                         ScenePrefabPropertyPathSegment.ForIndex(1)))
             ]);
 
-        JsonElement data = result.Actors[0].Components[0].Data;
+        JsonElement data = result.Entities[0].Components[0].Data;
         data.GetProperty("meta").TryGetProperty("author", out _).Should().BeFalse();
         data.GetProperty("position").GetArrayLength().Should().Be(2);
         data.GetProperty("position")[1].GetInt32().Should().Be(3);
@@ -258,15 +258,15 @@ public sealed class ScenePrefabOverrideTests
     public void Apply_LeavesBaseDefinitionUntouched()
     {
         ScenePrefabDefinition definition = CreateDefinition(
-            Actor("root", components: Component("Transform", """{"position":[0,0,0]}""")));
+            Entity("root", components: Component("Transform", """{"position":[0,0,0]}""")));
 
         _ = ScenePrefabOverrides.Apply(
             definition,
             [
-                new ScenePrefabSetActorFieldOperation(
+                new ScenePrefabSetEntityFieldOperation(
                     "root",
-                    ScenePrefabActorField.Name,
-                    ScenePrefabActorFieldValue.FromString("Changed")),
+                    ScenePrefabEntityField.Name,
+                    ScenePrefabEntityFieldValue.FromString("Changed")),
                 new ScenePrefabSetComponentPropertyOperation(
                     "root",
                     ScenePrefabComponentSelector.FromType("Transform"),
@@ -274,19 +274,19 @@ public sealed class ScenePrefabOverrideTests
                     JsonSerializer.SerializeToElement(ChangedPosition))
             ]);
 
-        definition.Actors[0].Name.Should().Be("root");
-        definition.Actors[0].Components[0].Data
+        definition.Entities[0].Name.Should().Be("root");
+        definition.Entities[0].Components[0].Data
             .GetProperty("position")[0].GetInt32().Should().Be(0);
     }
 
     [Fact]
     public void UnknownNode_Throws()
     {
-        ScenePrefabDefinition definition = CreateDefinition(Actor("root"));
+        ScenePrefabDefinition definition = CreateDefinition(Entity("root"));
 
         Action act = () => ScenePrefabOverrides.Apply(
             definition,
-            [new ScenePrefabRemoveActorOperation("missing")]);
+            [new ScenePrefabRemoveEntityOperation("missing")]);
 
         act.Should().Throw<ScenePrefabException>()
             .Where(exception => exception.Code == ScenePrefabErrorCodes.UnknownNode)
@@ -296,7 +296,7 @@ public sealed class ScenePrefabOverrideTests
     [Fact]
     public void UnknownComponent_Throws()
     {
-        ScenePrefabDefinition definition = CreateDefinition(Actor("root"));
+        ScenePrefabDefinition definition = CreateDefinition(Entity("root"));
 
         Action act = () => ScenePrefabOverrides.Apply(
             definition,
@@ -314,7 +314,7 @@ public sealed class ScenePrefabOverrideTests
     public void DuplicateComponentType_IsRejectedByTheDefinition()
     {
         Action act = () => CreateDefinition(
-            Actor(
+            Entity(
                 "root",
                 components:
                 [
@@ -326,10 +326,10 @@ public sealed class ScenePrefabOverrideTests
             .Where(exception => exception.Code == ScenePrefabErrorCodes.DuplicateComponent);
     }
 
-    private static ScenePrefabDefinition CreateDefinition(params SceneActorSnapshot[] actors) =>
-        new("prefab/test", actors);
+    private static ScenePrefabDefinition CreateDefinition(params SceneEntitySnapshot[] entities) =>
+        new("prefab/test", entities);
 
-    private static SceneActorSnapshot Actor(
+    private static SceneEntitySnapshot Entity(
         string nodeId,
         string? parentNodeId = null,
         params SceneComponentSnapshot[] components) =>

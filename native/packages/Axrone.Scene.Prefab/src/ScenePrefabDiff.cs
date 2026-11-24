@@ -27,7 +27,7 @@ public sealed class ScenePrefabDiffResult
 
 /// <summary>
 /// Computes the minimal override delta between two resolved definitions.
-/// Actors, fields and components are compared structurally; component payloads
+/// Entities, fields and components are compared structurally; component payloads
 /// are diffed property by property so variants carry the smallest delta.
 /// </summary>
 public static class ScenePrefabDiff
@@ -40,24 +40,24 @@ public static class ScenePrefabDiff
         ArgumentNullException.ThrowIfNull(basePrefab);
         ArgumentNullException.ThrowIfNull(target);
 
-        var baseById = ScenePrefabComparisons.IndexActors(basePrefab.Actors);
-        var targetById = ScenePrefabComparisons.IndexActors(target.Actors);
+        var baseById = ScenePrefabComparisons.IndexEntities(basePrefab.Entities);
+        var targetById = ScenePrefabComparisons.IndexEntities(target.Entities);
         HashSet<string> affectedByProvenance = CollectAffectedBySourceChange(
             basePrefab,
             baseById,
             targetById);
         var overrides = new List<ScenePrefabOverrideOperation>();
 
-        EmitRemovedActors(basePrefab, targetById, affectedByProvenance, overrides);
-        EmitAddedActors(target, baseById, affectedByProvenance, overrides);
+        EmitRemovedEntities(basePrefab, targetById, affectedByProvenance, overrides);
+        EmitAddedEntities(target, baseById, affectedByProvenance, overrides);
 
-        for (int i = 0; i < basePrefab.Actors.Count; i++)
+        for (int i = 0; i < basePrefab.Entities.Count; i++)
         {
-            SceneActorSnapshot baseActor = basePrefab.Actors[i];
-            if (!affectedByProvenance.Contains(baseActor.NodeId) &&
-                targetById.TryGetValue(baseActor.NodeId, out SceneActorSnapshot? targetActor))
+            SceneEntitySnapshot baseEntity = basePrefab.Entities[i];
+            if (!affectedByProvenance.Contains(baseEntity.NodeId) &&
+                targetById.TryGetValue(baseEntity.NodeId, out SceneEntitySnapshot? targetEntity))
             {
-                DiffActor(baseActor, targetActor, overrides);
+                DiffEntity(baseEntity, targetEntity, overrides);
             }
         }
 
@@ -66,14 +66,14 @@ public static class ScenePrefabDiff
 
     private static HashSet<string> CollectAffectedBySourceChange(
         ScenePrefabDefinition basePrefab,
-        Dictionary<string, SceneActorSnapshot> baseById,
-        Dictionary<string, SceneActorSnapshot> targetById)
+        Dictionary<string, SceneEntitySnapshot> baseById,
+        Dictionary<string, SceneEntitySnapshot> targetById)
     {
         var roots = new HashSet<string>(StringComparer.Ordinal);
-        foreach (KeyValuePair<string, SceneActorSnapshot> targetEntry in targetById)
+        foreach (KeyValuePair<string, SceneEntitySnapshot> targetEntry in targetById)
         {
-            if (baseById.TryGetValue(targetEntry.Key, out SceneActorSnapshot? baseActor) &&
-                !ScenePrefabComparisons.SameSource(baseActor.Source, targetEntry.Value.Source))
+            if (baseById.TryGetValue(targetEntry.Key, out SceneEntitySnapshot? baseEntity) &&
+                !ScenePrefabComparisons.SameSource(baseEntity.Source, targetEntry.Value.Source))
             {
                 roots.Add(targetEntry.Key);
             }
@@ -85,9 +85,9 @@ public static class ScenePrefabDiff
         }
 
         var children = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-        foreach (SceneActorSnapshot actor in basePrefab.Actors)
+        foreach (SceneEntitySnapshot entity in basePrefab.Entities)
         {
-            if (actor.ParentNodeId is { } parent)
+            if (entity.ParentNodeId is { } parent)
             {
                 if (!children.TryGetValue(parent, out List<string>? list))
                 {
@@ -95,7 +95,7 @@ public static class ScenePrefabDiff
                     children[parent] = list;
                 }
 
-                list.Add(actor.NodeId);
+                list.Add(entity.NodeId);
             }
         }
 
@@ -121,19 +121,19 @@ public static class ScenePrefabDiff
         return affected;
     }
 
-    private static void EmitRemovedActors(
+    private static void EmitRemovedEntities(
         ScenePrefabDefinition basePrefab,
-        Dictionary<string, SceneActorSnapshot> targetById,
+        Dictionary<string, SceneEntitySnapshot> targetById,
         HashSet<string> affectedByProvenance,
         List<ScenePrefabOverrideOperation> overrides)
     {
         var removed = new HashSet<string>(StringComparer.Ordinal);
-        for (int i = 0; i < basePrefab.Actors.Count; i++)
+        for (int i = 0; i < basePrefab.Entities.Count; i++)
         {
-            SceneActorSnapshot actor = basePrefab.Actors[i];
-            if (!targetById.ContainsKey(actor.NodeId) || affectedByProvenance.Contains(actor.NodeId))
+            SceneEntitySnapshot entity = basePrefab.Entities[i];
+            if (!targetById.ContainsKey(entity.NodeId) || affectedByProvenance.Contains(entity.NodeId))
             {
-                removed.Add(actor.NodeId);
+                removed.Add(entity.NodeId);
             }
         }
 
@@ -142,38 +142,38 @@ public static class ScenePrefabDiff
             return;
         }
 
-        for (int i = 0; i < basePrefab.Actors.Count; i++)
+        for (int i = 0; i < basePrefab.Entities.Count; i++)
         {
-            SceneActorSnapshot actor = basePrefab.Actors[i];
-            if (!removed.Contains(actor.NodeId))
+            SceneEntitySnapshot entity = basePrefab.Entities[i];
+            if (!removed.Contains(entity.NodeId))
             {
                 continue;
             }
 
             // Removing the subtree root removes its descendants; emitting both
             // would fail on the second operation.
-            if (actor.ParentNodeId is { } parentNodeId && removed.Contains(parentNodeId))
+            if (entity.ParentNodeId is { } parentNodeId && removed.Contains(parentNodeId))
             {
                 continue;
             }
 
-            overrides.Add(new ScenePrefabRemoveActorOperation(actor.NodeId));
+            overrides.Add(new ScenePrefabRemoveEntityOperation(entity.NodeId));
         }
     }
 
-    private static void EmitAddedActors(
+    private static void EmitAddedEntities(
         ScenePrefabDefinition target,
-        Dictionary<string, SceneActorSnapshot> baseById,
+        Dictionary<string, SceneEntitySnapshot> baseById,
         HashSet<string> affectedByProvenance,
         List<ScenePrefabOverrideOperation> overrides)
     {
         var added = new HashSet<string>(StringComparer.Ordinal);
-        for (int i = 0; i < target.Actors.Count; i++)
+        for (int i = 0; i < target.Entities.Count; i++)
         {
-            SceneActorSnapshot actor = target.Actors[i];
-            if (!baseById.ContainsKey(actor.NodeId) || affectedByProvenance.Contains(actor.NodeId))
+            SceneEntitySnapshot entity = target.Entities[i];
+            if (!baseById.ContainsKey(entity.NodeId) || affectedByProvenance.Contains(entity.NodeId))
             {
-                added.Add(actor.NodeId);
+                added.Add(entity.NodeId);
             }
         }
 
@@ -182,61 +182,61 @@ public static class ScenePrefabDiff
             return;
         }
 
-        foreach (SceneActorSnapshot actor in ScenePrefabComparisons.TopologicalOrder(target.Actors, added))
+        foreach (SceneEntitySnapshot entity in ScenePrefabComparisons.TopologicalOrder(target.Entities, added))
         {
-            overrides.Add(new ScenePrefabAddActorOperation(actor));
+            overrides.Add(new ScenePrefabAddEntityOperation(entity));
         }
     }
 
-    private static void DiffActor(
-        SceneActorSnapshot baseActor,
-        SceneActorSnapshot targetActor,
+    private static void DiffEntity(
+        SceneEntitySnapshot baseEntity,
+        SceneEntitySnapshot targetEntity,
         List<ScenePrefabOverrideOperation> overrides)
     {
-        string nodeId = baseActor.NodeId;
+        string nodeId = baseEntity.NodeId;
 
-        if (!string.Equals(baseActor.ParentNodeId, targetActor.ParentNodeId, StringComparison.Ordinal))
+        if (!string.Equals(baseEntity.ParentNodeId, targetEntity.ParentNodeId, StringComparison.Ordinal))
         {
-            overrides.Add(new ScenePrefabReparentActorOperation(nodeId, targetActor.ParentNodeId));
+            overrides.Add(new ScenePrefabReparentEntityOperation(nodeId, targetEntity.ParentNodeId));
         }
 
-        if (!string.Equals(baseActor.Name, targetActor.Name, StringComparison.Ordinal))
+        if (!string.Equals(baseEntity.Name, targetEntity.Name, StringComparison.Ordinal))
         {
-            overrides.Add(SetField(nodeId, ScenePrefabActorField.Name, ScenePrefabActorFieldValue.FromString(targetActor.Name)));
+            overrides.Add(SetField(nodeId, ScenePrefabEntityField.Name, ScenePrefabEntityFieldValue.FromString(targetEntity.Name)));
         }
 
-        if (baseActor.Layer != targetActor.Layer)
+        if (baseEntity.Layer != targetEntity.Layer)
         {
-            overrides.Add(SetField(nodeId, ScenePrefabActorField.Layer, ScenePrefabActorFieldValue.FromInt32(targetActor.Layer)));
+            overrides.Add(SetField(nodeId, ScenePrefabEntityField.Layer, ScenePrefabEntityFieldValue.FromInt32(targetEntity.Layer)));
         }
 
-        if (!string.Equals(baseActor.Tag, targetActor.Tag, StringComparison.Ordinal))
+        if (!string.Equals(baseEntity.Tag, targetEntity.Tag, StringComparison.Ordinal))
         {
-            overrides.Add(SetField(nodeId, ScenePrefabActorField.Tag, ScenePrefabActorFieldValue.FromString(targetActor.Tag)));
+            overrides.Add(SetField(nodeId, ScenePrefabEntityField.Tag, ScenePrefabEntityFieldValue.FromString(targetEntity.Tag)));
         }
 
-        if (baseActor.Active != targetActor.Active)
+        if (baseEntity.Active != targetEntity.Active)
         {
-            overrides.Add(SetField(nodeId, ScenePrefabActorField.Active, ScenePrefabActorFieldValue.FromBoolean(targetActor.Active)));
+            overrides.Add(SetField(nodeId, ScenePrefabEntityField.Active, ScenePrefabEntityFieldValue.FromBoolean(targetEntity.Active)));
         }
 
-        if (baseActor.Persistent != targetActor.Persistent)
+        if (baseEntity.Persistent != targetEntity.Persistent)
         {
-            overrides.Add(SetField(nodeId, ScenePrefabActorField.Persistent, ScenePrefabActorFieldValue.FromBoolean(targetActor.Persistent)));
+            overrides.Add(SetField(nodeId, ScenePrefabEntityField.Persistent, ScenePrefabEntityFieldValue.FromBoolean(targetEntity.Persistent)));
         }
 
-        if (baseActor.Pooled != targetActor.Pooled)
+        if (baseEntity.Pooled != targetEntity.Pooled)
         {
-            overrides.Add(SetField(nodeId, ScenePrefabActorField.Pooled, ScenePrefabActorFieldValue.FromBoolean(targetActor.Pooled)));
+            overrides.Add(SetField(nodeId, ScenePrefabEntityField.Pooled, ScenePrefabEntityFieldValue.FromBoolean(targetEntity.Pooled)));
         }
 
-        DiffComponents(nodeId, baseActor.Components, targetActor.Components, overrides);
+        DiffComponents(nodeId, baseEntity.Components, targetEntity.Components, overrides);
     }
 
-    private static ScenePrefabSetActorFieldOperation SetField(
+    private static ScenePrefabSetEntityFieldOperation SetField(
         string nodeId,
-        ScenePrefabActorField field,
-        ScenePrefabActorFieldValue value) => new(nodeId, field, value);
+        ScenePrefabEntityField field,
+        ScenePrefabEntityFieldValue value) => new(nodeId, field, value);
 
     private static void DiffComponents(
         string nodeId,
@@ -404,13 +404,13 @@ internal static class ScenePrefabComparisons
         SceneComponentSnapshot Component,
         int Index);
 
-    public static Dictionary<string, SceneActorSnapshot> IndexActors(
-        IReadOnlyList<SceneActorSnapshot> actors)
+    public static Dictionary<string, SceneEntitySnapshot> IndexEntities(
+        IReadOnlyList<SceneEntitySnapshot> entities)
     {
-        var index = new Dictionary<string, SceneActorSnapshot>(actors.Count, StringComparer.Ordinal);
-        for (int i = 0; i < actors.Count; i++)
+        var index = new Dictionary<string, SceneEntitySnapshot>(entities.Count, StringComparer.Ordinal);
+        for (int i = 0; i < entities.Count; i++)
         {
-            index[actors[i].NodeId] = actors[i];
+            index[entities[i].NodeId] = entities[i];
         }
 
         return index;
@@ -477,7 +477,7 @@ internal static class ScenePrefabComparisons
         return true;
     }
 
-    public static bool SameActor(SceneActorSnapshot left, SceneActorSnapshot right)
+    public static bool SameEntity(SceneEntitySnapshot left, SceneEntitySnapshot right)
     {
         if (!string.Equals(left.NodeId, right.NodeId, StringComparison.Ordinal) ||
             !string.Equals(left.ParentNodeId, right.ParentNodeId, StringComparison.Ordinal) ||
@@ -523,15 +523,15 @@ internal static class ScenePrefabComparisons
 
         return (left, right) switch
         {
-            (ScenePrefabAddActorOperation a, ScenePrefabAddActorOperation b) =>
+            (ScenePrefabAddEntityOperation a, ScenePrefabAddEntityOperation b) =>
                 string.Equals(a.AfterNodeId, b.AfterNodeId, StringComparison.Ordinal) &&
-                SameActor(a.Actor, b.Actor),
-            (ScenePrefabRemoveActorOperation a, ScenePrefabRemoveActorOperation b) =>
+                SameEntity(a.Entity, b.Entity),
+            (ScenePrefabRemoveEntityOperation a, ScenePrefabRemoveEntityOperation b) =>
                 string.Equals(a.NodeId, b.NodeId, StringComparison.Ordinal),
-            (ScenePrefabReparentActorOperation a, ScenePrefabReparentActorOperation b) =>
+            (ScenePrefabReparentEntityOperation a, ScenePrefabReparentEntityOperation b) =>
                 string.Equals(a.NodeId, b.NodeId, StringComparison.Ordinal) &&
                 string.Equals(a.ParentNodeId, b.ParentNodeId, StringComparison.Ordinal),
-            (ScenePrefabSetActorFieldOperation a, ScenePrefabSetActorFieldOperation b) =>
+            (ScenePrefabSetEntityFieldOperation a, ScenePrefabSetEntityFieldOperation b) =>
                 string.Equals(a.NodeId, b.NodeId, StringComparison.Ordinal) &&
                 a.Field == b.Field &&
                 a.Value == b.Value,
@@ -573,20 +573,20 @@ internal static class ScenePrefabComparisons
         return new ScenePrefabPropertyPath(segments);
     }
 
-    public static List<SceneActorSnapshot> TopologicalOrder(
-        IReadOnlyList<SceneActorSnapshot> actors,
+    public static List<SceneEntitySnapshot> TopologicalOrder(
+        IReadOnlyList<SceneEntitySnapshot> entities,
         HashSet<string> pending)
     {
-        var byId = IndexActors(actors);
-        var ordered = new List<SceneActorSnapshot>(pending.Count);
+        var byId = IndexEntities(entities);
+        var ordered = new List<SceneEntitySnapshot>(pending.Count);
         var visited = new HashSet<string>(StringComparer.Ordinal);
 
-        for (int i = 0; i < actors.Count; i++)
+        for (int i = 0; i < entities.Count; i++)
         {
-            SceneActorSnapshot actor = actors[i];
-            if (pending.Contains(actor.NodeId))
+            SceneEntitySnapshot entity = entities[i];
+            if (pending.Contains(entity.NodeId))
             {
-                Visit(actor, byId, pending, visited, ordered);
+                Visit(entity, byId, pending, visited, ordered);
             }
         }
 
@@ -594,25 +594,25 @@ internal static class ScenePrefabComparisons
     }
 
     private static void Visit(
-        SceneActorSnapshot actor,
-        Dictionary<string, SceneActorSnapshot> byId,
+        SceneEntitySnapshot entity,
+        Dictionary<string, SceneEntitySnapshot> byId,
         HashSet<string> pending,
         HashSet<string> visited,
-        List<SceneActorSnapshot> ordered)
+        List<SceneEntitySnapshot> ordered)
     {
-        if (!visited.Add(actor.NodeId))
+        if (!visited.Add(entity.NodeId))
         {
             return;
         }
 
-        if (actor.ParentNodeId is { } parentId &&
+        if (entity.ParentNodeId is { } parentId &&
             pending.Contains(parentId) &&
-            byId.TryGetValue(parentId, out SceneActorSnapshot? parent))
+            byId.TryGetValue(parentId, out SceneEntitySnapshot? parent))
         {
             Visit(parent, byId, pending, visited, ordered);
         }
 
-        ordered.Add(actor);
+        ordered.Add(entity);
     }
 
     private static int OccurrenceAt(IReadOnlyList<SceneComponentSnapshot> components, int index)
