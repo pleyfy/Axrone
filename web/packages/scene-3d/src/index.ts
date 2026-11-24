@@ -27,11 +27,11 @@ export {
 
 export type {
 	Scene3DActorRuntimeOptions,
-	SceneRenderableActorCreateOptions,
-	SceneRenderableActorInstance,
+	SceneRenderableEntityCreateOptions,
+	SceneRenderableEntityInstance,
 	SceneProfilerProbe,
-} from './scene-3d-actor-runtime';
-export { Scene3DActorRuntime } from './scene-3d-actor-runtime';
+} from './scene-3d-entity-runtime';
+export { Scene3DActorRuntime } from './scene-3d-entity-runtime';
 export { createScene } from './scene-factory';
 export {
 	FilterMode,

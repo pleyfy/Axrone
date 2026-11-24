@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { Component, script } from '@axrone/ecs-runtime';
 import { World } from '@axrone/ecs-runtime';
 import { createSceneRegistry } from '@axrone/scene-3d';
-import { SceneActorRuntime } from '@axrone/scene-3d';
+import { SceneEntityRuntime } from '@axrone/scene-3d';
 import { SceneComponentCatalog } from '@axrone/scene-3d';
 
 class PulseComponent extends Component {}
 
 @script({
-    scriptName: 'SceneActorAlias',
+    scriptName: 'SceneEntityAlias',
 })
 class AliasedComponent extends Component {
     value = 0;
@@ -24,7 +24,7 @@ class AliasedComponent extends Component {
     }
 }
 
-const createActorRuntime = () => {
+const createEntityRuntime = () => {
     const registry = createSceneRegistry({
         registry: {
             AliasedComponent,
@@ -32,15 +32,15 @@ const createActorRuntime = () => {
     });
     const world = new World(registry);
     const componentCatalog = new SceneComponentCatalog(registry);
-    return new SceneActorRuntime({
+    return new SceneEntityRuntime({
         world,
         componentCatalog,
     });
 };
 
-describe('SceneActorRuntime', () => {
+describe('SceneEntityRuntime', () => {
     it('registers components through the shared world boundary', () => {
-        const runtime = createActorRuntime();
+        const runtime = createEntityRuntime();
 
         runtime.registerComponent(PulseComponent);
 
@@ -48,32 +48,32 @@ describe('SceneActorRuntime', () => {
         expect(runtime.getRegisteredComponentNames()).toContain('PulseComponent');
     });
 
-    it('creates plain actors through the core actor service boundary', () => {
-        const runtime = createActorRuntime();
+    it('creates plain entities through the core entity service boundary', () => {
+        const runtime = createEntityRuntime();
 
-        const actor = runtime.createActor({
-            name: 'PlainActor',
+        const entity = runtime.createEntity({
+            name: 'PlainEntity',
         });
 
-        expect(actor.name).toBe('PlainActor');
-        expect(actor.started).toBe(true);
+        expect(entity.name).toBe('PlainEntity');
+        expect(entity.started).toBe(true);
     });
 
     it('owns prefab creation and instantiation without leaking catalog details', () => {
-        const runtime = createActorRuntime();
+        const runtime = createEntityRuntime();
         runtime.registerComponent(AliasedComponent);
-        const actor = runtime.createActor({ name: 'Aliased' });
-        actor.addComponent(AliasedComponent).value = 42;
+        const entity = runtime.createEntity({ name: 'Aliased' });
+        entity.addComponent(AliasedComponent).value = 42;
 
-        const prefab = runtime.createPrefab('aliased-prefab', [actor]);
+        const prefab = runtime.createPrefab('aliased-prefab', [entity]);
         const [instantiated] = runtime.instantiatePrefab(prefab, {
             namePrefix: 'Copy ',
         });
-        const aliasedSnapshot = prefab.actors[0]?.components.find(
-            (component) => component.type === 'SceneActorAlias'
+        const aliasedSnapshot = prefab.entities[0]?.components.find(
+            (component) => component.type === 'SceneEntityAlias'
         );
 
-        expect(aliasedSnapshot?.type).toBe('SceneActorAlias');
+        expect(aliasedSnapshot?.type).toBe('SceneEntityAlias');
         expect(instantiated?.name).toBe('Copy Aliased');
         expect(instantiated?.getComponent(AliasedComponent)?.value).toBe(42);
     });

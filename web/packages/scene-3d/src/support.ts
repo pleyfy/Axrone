@@ -2,10 +2,10 @@ export * from '@axrone/scene-runtime/scene-3d-support';
 
 export type {
     Scene3DActorRuntimeOptions,
-    SceneRenderableActorCreateOptions,
-    SceneRenderableActorInstance,
-} from './scene-3d-actor-runtime';
-export { Scene3DActorRuntime } from './scene-3d-actor-runtime';
+    SceneRenderableEntityCreateOptions,
+    SceneRenderableEntityInstance,
+} from './scene-3d-entity-runtime';
+export { Scene3DActorRuntime } from './scene-3d-entity-runtime';
 export { createUnlitColorShaderDefinition } from './scene-default-shaders';
 export type {
     FilterMode,

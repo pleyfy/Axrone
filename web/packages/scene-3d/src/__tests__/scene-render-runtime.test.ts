@@ -24,7 +24,7 @@ const createRenderRuntime = (renderPasses: readonly SceneRenderPassResource[]) =
         skyLight: new Vec3(0.11, 0.12, 0.13),
         groundLight: new Vec3(0.02, 0.03, 0.04),
         defaultClearColor: new Vec4(0.1, 0.2, 0.3, 1),
-        getActors: () => [],
+        getEntitys: () => [],
         createMeshResource: vi.fn(),
         disposeMesh: vi.fn(),
         applyMissingVertexAttributeDefaults: vi.fn(),

@@ -1,7 +1,7 @@
 import { Quat, Vec3 } from '@axrone/numeric';
 import { describe, expect, it } from 'vitest';
 import { Transform } from '@axrone/ecs-runtime';
-import { Actor } from '@axrone/ecs-runtime';
+import { Entity } from '@axrone/ecs-runtime';
 import { World } from '@axrone/ecs-runtime';
 import { createSceneRegistry } from '@axrone/scene-3d';
 import { Camera } from '@axrone/scene-3d';
@@ -11,13 +11,13 @@ describe('SceneCameraFrameStateCollector', () => {
     it('collects stable camera frame state without reallocating matrices', () => {
         const world = new World(createSceneRegistry());
         const collector = new SceneCameraFrameStateCollector();
-        const actor = new Actor(world);
-        const camera = actor.addComponent(Camera, {
+        const entity = new Entity(world);
+        const camera = entity.addComponent(Camera, {
             fieldOfView: 70,
             near: 0.25,
             far: 400,
         });
-        const transform = actor.requireComponent(Transform);
+        const transform = entity.requireComponent(Transform);
 
         transform.position = new Vec3(3, 4, 5);
         transform.rotation = Quat.fromEuler(0.1, 0.35, -0.2);
@@ -50,13 +50,13 @@ describe('SceneCameraFrameStateCollector', () => {
     it('uses horizontal field of view when requested by the camera', () => {
         const world = new World(createSceneRegistry());
         const collector = new SceneCameraFrameStateCollector();
-        const horizontalActor = new Actor(world);
-        const verticalActor = new Actor(world);
-        const horizontalCamera = horizontalActor.addComponent(Camera, {
+        const horizontalEntity = new Entity(world);
+        const verticalEntity = new Entity(world);
+        const horizontalCamera = horizontalEntity.addComponent(Camera, {
             fieldOfView: 90,
             fieldOfViewAxis: 'horizontal',
         });
-        const verticalCamera = verticalActor.addComponent(Camera, {
+        const verticalCamera = verticalEntity.addComponent(Camera, {
             fieldOfView: 90,
             fieldOfViewAxis: 'vertical',
         });

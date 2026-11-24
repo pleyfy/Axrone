@@ -9,10 +9,10 @@ describe('SceneSnapshotRuntime', () => {
             sceneId: 'scene-1',
             defaultRenderPassId: 'main',
             defaultClearColor: new Vec4(0.1, 0.2, 0.3, 1),
-            actors: {
-                createPrefab: vi.fn(() => ({ id: 'prefab', actors: [] })),
+            entities: {
+                createPrefab: vi.fn(() => ({ id: 'prefab', entities: [] })),
                 instantiatePrefab: vi.fn(() => []),
-                destroyAllActors: vi.fn(),
+                destroyAllEntities: vi.fn(),
             },
             assets: {
                 clear: vi.fn(),
@@ -46,10 +46,10 @@ describe('SceneSnapshotRuntime', () => {
         );
     });
 
-    it('serializes and loads snapshots through actor and asset hosts', async () => {
-        const createPrefab = vi.fn(() => ({ id: 'prefab', actors: [] }));
-        const instantiatePrefab = vi.fn(() => [{ id: 'actor-1' }]);
-        const destroyAllActors = vi.fn();
+    it('serializes and loads snapshots through entity and asset hosts', async () => {
+        const createPrefab = vi.fn(() => ({ id: 'prefab', entities: [] }));
+        const instantiatePrefab = vi.fn(() => [{ id: 'entity-1' }]);
+        const destroyAllEntities = vi.fn();
         const clear = vi.fn();
         const clearRenderPasses = vi.fn();
         const registerShader = vi.fn();
@@ -70,10 +70,10 @@ describe('SceneSnapshotRuntime', () => {
             sceneId: 'scene-1',
             defaultRenderPassId: 'main',
             defaultClearColor: new Vec4(0.1, 0.2, 0.3, 1),
-            actors: {
+            entities: {
                 createPrefab,
                 instantiatePrefab,
-                destroyAllActors,
+                destroyAllEntities,
             },
             assets: {
                 clear,
@@ -92,8 +92,8 @@ describe('SceneSnapshotRuntime', () => {
         const restored = await runtime.loadScene(snapshot);
 
         expect(createPrefab).toHaveBeenCalledWith('scene-1:prefab', undefined);
-        expect(restored).toEqual([{ id: 'actor-1' }]);
-        expect(destroyAllActors).toHaveBeenCalledTimes(1);
+        expect(restored).toEqual([{ id: 'entity-1' }]);
+        expect(destroyAllEntities).toHaveBeenCalledTimes(1);
         expect(clear).toHaveBeenCalledTimes(1);
         expect(registerShader).toHaveBeenCalledWith(snapshot.shaders[0]);
         expect(registerMesh).toHaveBeenCalledWith(snapshot.meshes[0]);

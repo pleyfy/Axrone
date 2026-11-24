@@ -314,7 +314,7 @@
     },
     {
       "id": "ent_01a051cfd78c7350a5ee23a4e411730f",
-      "name": "Actor",
+      "name": "Entity",
       "parentId": null,
       "enabled": true,
       "tag": "Untagged",

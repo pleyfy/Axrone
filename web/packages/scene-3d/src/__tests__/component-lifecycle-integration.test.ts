@@ -54,7 +54,7 @@ class LifecycleTracker extends Component {
 
 /**
  * A second tracker variant so we can attach two independent trackers to the
- * same actor and verify per-component ordering.
+ * same entity and verify per-component ordering.
  */
 class SecondaryTracker extends Component {
     readonly calls: string[] = [];
@@ -170,14 +170,14 @@ describe('Component lifecycle integration', () => {
     };
 
     // -----------------------------------------------------------------------
-    // 1. onLoad() is called when a component is added to an actor
+    // 1. onLoad() is called when a component is added to an entity
     // -----------------------------------------------------------------------
-    it('calls onLoad() when a component is added to an actor', () => {
+    it('calls onLoad() when a component is added to an entity', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'OnLoadActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'OnLoadEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
         expect(tracker.calls).toContain('onLoad');
 
@@ -191,8 +191,8 @@ describe('Component lifecycle integration', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'StartActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'StartEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
         expect(tracker.calls).toContain('onLoad');
         expect(tracker.calls).toContain('start');
@@ -205,14 +205,14 @@ describe('Component lifecycle integration', () => {
     });
 
     // -----------------------------------------------------------------------
-    // 3. onEnable() is called when a component is enabled on an active actor
+    // 3. onEnable() is called when a component is enabled on an active entity
     // -----------------------------------------------------------------------
-    it('calls onEnable() when component is added to an active actor', () => {
+    it('calls onEnable() when component is added to an active entity', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'EnableActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'EnableEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
         expect(tracker.calls).toContain('onEnable');
 
@@ -226,8 +226,8 @@ describe('Component lifecycle integration', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'UpdateActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'UpdateEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
         scene.start(0);
         scheduler.flush(16);
@@ -244,8 +244,8 @@ describe('Component lifecycle integration', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'LateUpdateActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'LateUpdateEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
         scene.start(0);
         scheduler.flush(16);
@@ -261,20 +261,20 @@ describe('Component lifecycle integration', () => {
     });
 
     // -----------------------------------------------------------------------
-    // 6. onDisable() is called when the actor is deactivated
+    // 6. onDisable() is called when the entity is deactivated
     // -----------------------------------------------------------------------
-    it('calls onDisable() when the actor is deactivated', () => {
+    it('calls onDisable() when the entity is deactivated', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'DisableActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'DisableEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
         // onEnable was called during addComponent
         expect(tracker.calls).toContain('onEnable');
 
-        // Deactivate the actor — Actor.active setter calls onDisable on all components
-        actor.active = false;
+        // Deactivate the entity — Entity.active setter calls onDisable on all components
+        entity.active = false;
 
         expect(tracker.calls).toContain('onDisable');
 
@@ -286,16 +286,16 @@ describe('Component lifecycle integration', () => {
     });
 
     // -----------------------------------------------------------------------
-    // 7. onDestroy() is called when the actor is destroyed
+    // 7. onDestroy() is called when the entity is destroyed
     // -----------------------------------------------------------------------
-    it('calls onDestroy() when the actor is destroyed', () => {
+    it('calls onDestroy() when the entity is destroyed', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'DestroyActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'DestroyEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
-        actor.destroy();
+        entity.destroy();
 
         expect(tracker.calls).toContain('onDestroy');
 
@@ -317,10 +317,10 @@ describe('Component lifecycle integration', () => {
         scene.registerComponent(OrderHigh);
         scene.registerComponent(OrderLow);
 
-        const actor = scene.createActor({ name: 'PriorityActor' });
+        const entity = scene.createEntity({ name: 'PriorityEntity' });
         // Add low priority first to prove sorting is by priority, not insertion order
-        actor.addComponent(OrderLow, log);
-        actor.addComponent(OrderHigh, log);
+        entity.addComponent(OrderLow, log);
+        entity.addComponent(OrderHigh, log);
 
         scene.start(0);
         scheduler.flush(16);
@@ -336,16 +336,16 @@ describe('Component lifecycle integration', () => {
     });
 
     // -----------------------------------------------------------------------
-    // 9. Multiple components on the same actor — lifecycle ordering correct
+    // 9. Multiple components on the same entity — lifecycle ordering correct
     // -----------------------------------------------------------------------
-    it('runs lifecycle in correct order with multiple components on the same actor', () => {
+    it('runs lifecycle in correct order with multiple components on the same entity', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
         scene.registerComponent(SecondaryTracker);
 
-        const actor = scene.createActor({ name: 'MultiActor' });
-        const primary = actor.addComponent(LifecycleTracker);
-        const secondary = actor.addComponent(SecondaryTracker);
+        const entity = scene.createEntity({ name: 'MultiEntity' });
+        const primary = entity.addComponent(LifecycleTracker);
+        const secondary = entity.addComponent(SecondaryTracker);
 
         // Both should have onLoad, start, onEnable
         for (const tracker of [primary, secondary]) {
@@ -375,31 +375,31 @@ describe('Component lifecycle integration', () => {
     // -----------------------------------------------------------------------
     // 10. Enable/disable cycling — onEnable/onDisable called each cycle
     // -----------------------------------------------------------------------
-    it('calls onEnable/onDisable on each actor active/inactive cycle', () => {
+    it('calls onEnable/onDisable on each entity active/inactive cycle', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'CycleActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'CycleEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
         // Initial onEnable from addComponent
         expect(tracker.calls.filter((c) => c === 'onEnable').length).toBe(1);
         expect(tracker.calls.filter((c) => c === 'onDisable').length).toBe(0);
 
         // First disable
-        actor.active = false;
+        entity.active = false;
         expect(tracker.calls.filter((c) => c === 'onDisable').length).toBe(1);
 
         // First re-enable
-        actor.active = true;
+        entity.active = true;
         expect(tracker.calls.filter((c) => c === 'onEnable').length).toBe(2);
 
         // Second disable
-        actor.active = false;
+        entity.active = false;
         expect(tracker.calls.filter((c) => c === 'onDisable').length).toBe(2);
 
         // Second re-enable
-        actor.active = true;
+        entity.active = true;
         expect(tracker.calls.filter((c) => c === 'onEnable').length).toBe(3);
 
         // Verify ordering: each onEnable precedes its corresponding onDisable
@@ -422,22 +422,22 @@ describe('Component lifecycle integration', () => {
     });
 
     // -----------------------------------------------------------------------
-    // 11. Deactivated actor's components do not receive update/lateUpdate
+    // 11. Deactivated entity's components do not receive update/lateUpdate
     // -----------------------------------------------------------------------
-    it('does not call update() on components of a deactivated actor', () => {
+    it('does not call update() on components of a deactivated entity', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'DisabledUpdateActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'DisabledUpdateEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
         scene.start(0);
 
-        // Deactivate the actor before the frame runs
-        actor.active = false;
+        // Deactivate the entity before the frame runs
+        entity.active = false;
         scheduler.flush(16);
 
-        // update should NOT have been called because actor is inactive
+        // update should NOT have been called because entity is inactive
         expect(tracker.calls.filter((c) => c.startsWith('update:')).length).toBe(0);
         expect(tracker.calls.filter((c) => c.startsWith('lateUpdate:')).length).toBe(0);
 
@@ -451,13 +451,13 @@ describe('Component lifecycle integration', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'FullLifecycleActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'FullLifecycleEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
         scene.start(0);
         scheduler.flush(16);
 
-        actor.destroy();
+        entity.destroy();
 
         const expected = [
             'onLoad',
@@ -490,8 +490,8 @@ describe('Component lifecycle integration', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'MultiFrameActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'MultiFrameEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
         scene.start(0);
         scheduler.flush(16);
@@ -506,22 +506,22 @@ describe('Component lifecycle integration', () => {
     });
 
     // -----------------------------------------------------------------------
-    // 14. Component added before scene.start() receives start() via actor auto-start
+    // 14. Component added before scene.start() receives start() via entity auto-start
     // -----------------------------------------------------------------------
-    it('delays start() until actor starts when autoStart is false', () => {
+    it('delays start() until entity starts when autoStart is false', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        // Create actor without auto-start so component.start() is deferred
-        const actor = scene.createActor({ name: 'DeferredStartActor', autoStart: false });
-        const tracker = actor.addComponent(LifecycleTracker);
+        // Create entity without auto-start so component.start() is deferred
+        const entity = scene.createEntity({ name: 'DeferredStartEntity', autoStart: false });
+        const tracker = entity.addComponent(LifecycleTracker);
 
-        // onLoad should have been called, but not start (actor hasn't started yet)
+        // onLoad should have been called, but not start (entity hasn't started yet)
         expect(tracker.calls).toContain('onLoad');
         expect(tracker.calls).not.toContain('start');
 
-        // Manually start the actor
-        actor.start();
+        // Manually start the entity
+        entity.start();
 
         expect(tracker.calls).toContain('start');
 
@@ -539,8 +539,8 @@ describe('Component lifecycle integration', () => {
         const { scene } = createTestScene();
         scene.registerComponent(LifecycleTracker);
 
-        const actor = scene.createActor({ name: 'FixedUpdateActor' });
-        const tracker = actor.addComponent(LifecycleTracker);
+        const entity = scene.createEntity({ name: 'FixedUpdateEntity' });
+        const tracker = entity.addComponent(LifecycleTracker);
 
         scene.start(0);
         scheduler.flush(16);

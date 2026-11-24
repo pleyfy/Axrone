@@ -46,18 +46,18 @@ describe('createScene', () => {
 		scene.dispose();
 	});
 
-	it('exposes working 3d actor creation methods', () => {
+	it('exposes working 3d entity creation methods', () => {
 		const canvas = document.createElement('canvas');
 		const scene = createScene(createSceneOptions(scheduler, canvas));
 
-		const cameraActor = scene.createCameraActor({ name: 'Cam' }, { primary: true });
-		const renderableActor = scene.createRenderableActor(
+		const cameraEntity = scene.createCameraEntity({ name: 'Cam' }, { primary: true });
+		const renderableEntity = scene.createRenderableEntity(
 			{ name: 'Mesh' },
 			{ meshId: 'm', materialId: 'mat' }
 		);
 
-		expect(cameraActor.getComponent(Camera)?.primary).toBe(true);
-		expect(renderableActor.getComponent(MeshRenderer)?.meshId).toBe('m');
+		expect(cameraEntity.getComponent(Camera)?.primary).toBe(true);
+		expect(renderableEntity.getComponent(MeshRenderer)?.meshId).toBe('m');
 
 		scene.dispose();
 	});

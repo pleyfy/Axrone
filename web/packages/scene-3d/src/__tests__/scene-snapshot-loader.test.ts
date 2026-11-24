@@ -6,7 +6,7 @@ import { SceneSnapshotLoader } from '@axrone/scene-3d';
 describe('SceneSnapshotLoader', () => {
     it('loads scene assets in deterministic order and restores a fallback pass when needed', async () => {
         const calls: string[] = [];
-        const actors = [{ id: 'actor-1' }] as any;
+        const entities = [{ id: 'entity-1' }] as any;
         const loader = new SceneSnapshotLoader({
             defaultRenderPassId: 'main',
             defaultClearColor: new Vec4(0.1, 0.2, 0.3, 1),
@@ -34,12 +34,12 @@ describe('SceneSnapshotLoader', () => {
             createMaterial: (material) => {
                 calls.push(`material:${material.id}`);
             },
-            instantiatePrefab: () => actors,
+            instantiatePrefab: () => entities,
         });
 
-        const restoredActors = await loader.load({
+        const restoredEntities = await loader.load({
             version: 1,
-            prefab: { id: 'prefab', actors: [] },
+            prefab: { id: 'prefab', entities: [] },
             shaders: [{ id: 'shader', vertexSource: '', fragmentSource: '' }],
             meshes: [{ id: 'mesh', vertices: new Float32Array(), attributes: [] as any }],
             samplers: [{ id: 'sampler' }],
@@ -48,7 +48,7 @@ describe('SceneSnapshotLoader', () => {
             materials: [{ id: 'material', shaderId: 'shader' }],
         } as any);
 
-        expect(restoredActors).toBe(actors);
+        expect(restoredEntities).toBe(entities);
         expect(calls).toEqual([
             'clear-existing',
             'shader:shader',
@@ -79,7 +79,7 @@ describe('SceneSnapshotLoader', () => {
         await expect(
             loader.load({
                 version: 2,
-                prefab: { id: 'prefab', actors: [] },
+                prefab: { id: 'prefab', entities: [] },
                 shaders: [],
                 meshes: [],
                 samplers: [],
@@ -121,7 +121,7 @@ describe('SceneSnapshotLoader', () => {
 
         await loader.load({
             version: 1,
-            prefab: { id: 'prefab', actors: [] },
+            prefab: { id: 'prefab', entities: [] },
             shaders: [],
             meshes: [],
             samplers: [],

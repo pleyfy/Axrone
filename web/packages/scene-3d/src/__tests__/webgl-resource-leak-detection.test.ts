@@ -47,9 +47,9 @@ function buildBasicSnapshot(overrides?: Partial<SceneSnapshot>): SceneSnapshot {
         materials: [{ id: 'leak-test-mat', shaderId: 'leak-test/shader' }],
         prefab: {
             id: 'leak-test-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'LeakTestActor',
+                    name: 'LeakTestEntity',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -106,9 +106,9 @@ function buildTexturedSnapshot(textureCount = 2, overrides?: Partial<SceneSnapsh
         ],
         prefab: {
             id: 'leak-textured-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'TexturedActor',
+                    name: 'TexturedEntity',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -344,10 +344,10 @@ describe('T-13: WebGL Resource Leak Detection', () => {
         });
     });
 
-    // ─── Group 3: Actor Destroy Releases Mesh Resources ─────────────────────
+    // ─── Group 3: EntityId Destroy Releases Mesh Resources ─────────────────────
 
-    describe('Actor Destroy Releases Mesh Resources', () => {
-        it('actor destruction cleans up component references without leaking', async () => {
+    describe('Entity Destroy Releases Mesh Resources', () => {
+        it('entity destruction cleans up component references without leaking', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
             const gl = getGl(scene);
@@ -356,24 +356,24 @@ describe('T-13: WebGL Resource Leak Detection', () => {
             scene.start(0);
             scheduler.flush(16);
 
-            const actorsBeforeDestroy = scene.world.getAllActors().length;
-            expect(actorsBeforeDestroy).toBeGreaterThan(0);
+            const entitysBeforeDestroy = scene.world.getAllEntities().length;
+            expect(entitysBeforeDestroy).toBeGreaterThan(0);
 
-            const actors = scene.world.getAllActors();
-            const renderable = actors.find((a) => a.getComponent(MeshRenderer));
+            const entities = scene.world.getAllEntities();
+            const renderable = entities.find((a) => a.getComponent(MeshRenderer));
             expect(renderable).toBeDefined();
 
-            // Destroy the actor — should remove it from the world
+            // Destroy the entity — should remove it from the world
             renderable!.destroy();
             scheduler.flush(32);
 
-            // Verify actor was removed from the world
-            const actorsAfterDestroy = scene.world.getAllActors().length;
-            expect(actorsAfterDestroy).toBe(actorsBeforeDestroy - 1);
+            // Verify entity was removed from the world
+            const entitysAfterDestroy = scene.world.getAllEntities().length;
+            expect(entitysAfterDestroy).toBe(entitysBeforeDestroy - 1);
 
-            // Verify the actor's MeshRenderer component is no longer accessible
-            const allActors = scene.world.getAllActors();
-            const foundRenderable = allActors.find((a) => a.getComponent(MeshRenderer));
+            // Verify the entity's MeshRenderer component is no longer accessible
+            const allEntities = scene.world.getAllEntities();
+            const foundRenderable = allEntities.find((a) => a.getComponent(MeshRenderer));
             expect(foundRenderable).toBeUndefined();
 
             // Scene-level disposal should still clean up all remaining GL resources
@@ -421,7 +421,7 @@ describe('T-13: WebGL Resource Leak Detection', () => {
     // ─── Group 5: Long-Running Stability ────────────────────────────────────
 
     describe('Long-Running Stability', () => {
-        it('GL resource count remains stable over 500 frames with actor churn', async () => {
+        it('GL resource count remains stable over 500 frames with entity churn', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
             const gl = getGl(scene);
@@ -439,17 +439,17 @@ describe('T-13: WebGL Resource Leak Detection', () => {
             const baselinePrograms = gl._programs.size;
             const baselineVAOs = gl._vertexArrays.size;
 
-            // Run 500 frames with dynamic actor creation/destruction
+            // Run 500 frames with dynamic entity creation/destruction
             for (let frame = 0; frame < 500; frame++) {
-                // Create a temporary actor every 10 frames
+                // Create a temporary entity every 10 frames
                 if (frame % 10 === 0) {
-                    const actor = scene.createActor({ name: `Temp_${frame}` });
-                    actor.requireComponent(Transform);
+                    const entity = scene.createEntity({ name: `Temp_${frame}` });
+                    entity.requireComponent(Transform);
                 }
-                // Destroy a temporary actor every 15 frames
+                // Destroy a temporary entity every 15 frames
                 if (frame % 15 === 0) {
-                    const actors = scene.world.getAllActors();
-                    const temp = actors.find((a) => a.name.startsWith('Temp_'));
+                    const entities = scene.world.getAllEntities();
+                    const temp = entities.find((a) => a.name.startsWith('Temp_'));
                     if (temp) temp.destroy();
                 }
                 scheduler.flush(32 + frame * 16);
@@ -477,7 +477,7 @@ describe('T-13: WebGL Resource Leak Detection', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             scene.start(0);
 
             // Extended warm-up
@@ -530,7 +530,7 @@ describe('T-13: WebGL Resource Leak Detection', () => {
     // ─── Group 7: Pool Cleanup ──────────────────────────────────────────────
 
     describe('Pool Cleanup', () => {
-        it('no new GL allocations when reusing actor slots after destroy/recreate', async () => {
+        it('no new GL allocations when reusing entity slots after destroy/recreate', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
             const gl = getGl(scene);
@@ -544,20 +544,20 @@ describe('T-13: WebGL Resource Leak Detection', () => {
             const baselineVAOs = gl._vertexArrays.size;
             const baselineTextures = gl._textures.size;
 
-            // Simulate pool-like behavior: destroy actors and recreate
+            // Simulate pool-like behavior: destroy entities and recreate
             for (let cycle = 0; cycle < 5; cycle++) {
-                // Destroy all non-camera actors
-                const actors = scene.world.getAllActors();
-                for (const actor of actors) {
-                    if (actor.name.startsWith('LeakTestActor')) {
-                        actor.destroy();
+                // Destroy all non-camera entities
+                const entities = scene.world.getAllEntities();
+                for (const entity of entities) {
+                    if (entity.name.startsWith('LeakTestEntity')) {
+                        entity.destroy();
                     }
                 }
                 scheduler.flush(32 + cycle * 32);
 
-                // Re-create similar actors (simulating pool reuse)
-                scene.createRenderableActor(
-                    { name: 'LeakTestActor' },
+                // Re-create similar entities (simulating pool reuse)
+                scene.createRenderableEntity(
+                    { name: 'LeakTestEntity' },
                     { meshId: 'leak-test-mesh', materialId: 'leak-test-mat' }
                 );
                 scheduler.flush(48 + cycle * 32);

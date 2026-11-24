@@ -33,11 +33,11 @@ describe('FollowCameraController', () => {
         const scene = new Scene(createSceneOptions(scheduler, canvas));
 
         try {
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
             targetTransform.position = new Vec3(2, 1, 3);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const cameraTransform = camera.requireComponent(Transform);
             const controller = camera.addComponent(FollowCameraController, {
                 distance: 6,

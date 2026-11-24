@@ -6,9 +6,9 @@ describe('createSceneLoopSystems', () => {
     it('creates the expected scene loop system order', () => {
         const systems = createSceneLoopSystems({
             executePhase: vi.fn(),
-            fixedUpdateActors: vi.fn(),
-            updateActors: vi.fn(),
-            lateUpdateActors: vi.fn(),
+            fixedUpdateEntities: vi.fn(),
+            updateEntities: vi.fn(),
+            lateUpdateEntities: vi.fn(),
             render: vi.fn(),
         });
 
@@ -22,16 +22,16 @@ describe('createSceneLoopSystems', () => {
 
     it('routes loop phases through the host contract', () => {
         const executePhase = vi.fn();
-        const fixedUpdateActors = vi.fn();
-        const updateActors = vi.fn();
-        const lateUpdateActors = vi.fn();
+        const fixedUpdateEntities = vi.fn();
+        const updateEntities = vi.fn();
+        const lateUpdateEntities = vi.fn();
         const render = vi.fn();
 
         const systems = createSceneLoopSystems({
             executePhase,
-            fixedUpdateActors,
-            updateActors,
-            lateUpdateActors,
+            fixedUpdateEntities,
+            updateEntities,
+            lateUpdateEntities,
             render,
         });
 
@@ -97,9 +97,9 @@ describe('createSceneLoopSystems', () => {
             [SystemPhase.PostUpdate, 8],
             [SystemPhase.Render, 8],
         ]);
-        expect(fixedUpdateActors).toHaveBeenCalledWith(16);
-        expect(updateActors).toHaveBeenCalledWith(8);
-        expect(lateUpdateActors).toHaveBeenCalledWith(8);
+        expect(fixedUpdateEntities).toHaveBeenCalledWith(16);
+        expect(updateEntities).toHaveBeenCalledWith(8);
+        expect(lateUpdateEntities).toHaveBeenCalledWith(8);
         expect(render).toHaveBeenCalledWith(8);
     });
 });

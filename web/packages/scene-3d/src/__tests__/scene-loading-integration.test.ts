@@ -148,7 +148,7 @@ describe('Main.scene.json — Static Validation', () => {
                 'World',
                 'Ground',
                 'Player',
-                'Actor',
+                'Entity',
                 'Cube',
                 'cone_0001',
                 'UI Host',
@@ -433,7 +433,7 @@ let SceneLifecycleError: typeof import('@axrone/scene-3d').SceneLifecycleError;
 import type {
     SceneSnapshot,
     ScenePrefabDefinition,
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     SceneComponentSnapshot,
 } from '@axrone/scene-3d';
 
@@ -466,9 +466,9 @@ function buildMinimalSnapshot(overrides?: Partial<SceneSnapshot>): SceneSnapshot
         materials: [{ id: 'default-mat', shaderId: 'test/solid' }],
         prefab: {
             id: 'root-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'TestActor',
+                    name: 'TestEntity',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -489,7 +489,7 @@ function buildMinimalSnapshot(overrides?: Partial<SceneSnapshot>): SceneSnapshot
  * Helper: build a snapshot mirroring Main.scene.json structure (10 entities, 13+ components).
  */
 function buildFullSceneSnapshot(): SceneSnapshot {
-    const actors: SceneActorSnapshot[] = [
+    const entities: SceneEntitySnapshot[] = [
         // 1. Main Camera (root)
         {
             name: 'Main Camera',
@@ -572,9 +572,9 @@ function buildFullSceneSnapshot(): SceneSnapshot {
                 { type: 'UIHost', data: { renderMode: 'screen-overlay', width: 200, height: 80 } },
             ],
         },
-        // 7. Actor (empty, root)
+        // 7. Entity (empty, root)
         {
-            name: 'Actor',
+            name: 'Entity',
             layer: 0,
             tag: 'Untagged',
             active: true,
@@ -596,9 +596,9 @@ function buildFullSceneSnapshot(): SceneSnapshot {
                 { type: 'Transform', data: { position: [0.5, 0, -1.97], rotation: [0, 0, 0], scale: [1, 1, 1] } },
             ],
         },
-        // 9. Actor 2 (empty, root)
+        // 9. Entity 2 (empty, root)
         {
-            name: 'Actor 2',
+            name: 'Entity 2',
             layer: 0,
             tag: 'Untagged',
             active: true,
@@ -658,7 +658,7 @@ function buildFullSceneSnapshot(): SceneSnapshot {
         ],
         prefab: {
             id: 'main-scene-prefab',
-            actors,
+            entities,
         },
     };
 }
@@ -693,21 +693,21 @@ describe('Scene Loading Integration', () => {
     // ─── Test Group 1: Minimal Scene Loading ──────────────────────────────
 
     describe('Minimal Scene Loading', () => {
-        it('loads a minimal scene with one actor and verifies components', async () => {
+        it('loads a minimal scene with one entity and verifies components', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildMinimalSnapshot();
-            const actors = await scene.loadScene(snapshot);
+            const entities = await scene.loadScene(snapshot);
 
-            expect(actors.length).toBeGreaterThanOrEqual(1);
+            expect(entities.length).toBeGreaterThanOrEqual(1);
 
-            const testActor = actors.find((a) => a.name === 'TestActor');
-            expect(testActor).toBeDefined();
-            expect(testActor!.getComponent(Transform)).toBeDefined();
-            expect(testActor!.getComponent(MeshRenderer)).toBeDefined();
-            expect(testActor!.getComponent(MeshRenderer)!.meshId).toBe('cube');
-            expect(testActor!.getComponent(MeshRenderer)!.materialId).toBe('default-mat');
+            const testEntity = entities.find((a) => a.name === 'TestEntity');
+            expect(testEntity).toBeDefined();
+            expect(testEntity!.getComponent(Transform)).toBeDefined();
+            expect(testEntity!.getComponent(MeshRenderer)).toBeDefined();
+            expect(testEntity!.getComponent(MeshRenderer)!.meshId).toBe('cube');
+            expect(testEntity!.getComponent(MeshRenderer)!.materialId).toBe('default-mat');
 
             scene.dispose();
         });
@@ -736,20 +736,20 @@ describe('Scene Loading Integration', () => {
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildFullSceneSnapshot();
-            const actors = await scene.loadScene(snapshot);
+            const entities = await scene.loadScene(snapshot);
 
-            expect(actors.length).toBe(10);
+            expect(entities.length).toBe(10);
 
-            const names = actors.map((a) => a.name);
+            const names = entities.map((a) => a.name);
             expect(names).toContain('Main Camera');
             expect(names).toContain('Directional Light');
             expect(names).toContain('World');
             expect(names).toContain('Ground');
             expect(names).toContain('Player');
             expect(names).toContain('UI Host');
-            expect(names).toContain('Actor');
+            expect(names).toContain('Entity');
             expect(names).toContain('EN_Character_Stickman_01');
-            expect(names).toContain('Actor 2');
+            expect(names).toContain('Entity 2');
             expect(names).toContain('Cube');
 
             scene.dispose();
@@ -760,11 +760,11 @@ describe('Scene Loading Integration', () => {
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildFullSceneSnapshot();
-            const actors = await scene.loadScene(snapshot);
+            const entities = await scene.loadScene(snapshot);
 
-            const cameraActor = actors.find((a) => a.name === 'Main Camera');
-            expect(cameraActor).toBeDefined();
-            const camera = cameraActor!.getComponent(Camera);
+            const cameraEntity = entities.find((a) => a.name === 'Main Camera');
+            expect(cameraEntity).toBeDefined();
+            const camera = cameraEntity!.getComponent(Camera);
             expect(camera).toBeDefined();
             expect(camera!.primary).toBe(true);
 
@@ -776,11 +776,11 @@ describe('Scene Loading Integration', () => {
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildFullSceneSnapshot();
-            const actors = await scene.loadScene(snapshot);
+            const entities = await scene.loadScene(snapshot);
 
-            const lightActor = actors.find((a) => a.name === 'Directional Light');
-            expect(lightActor).toBeDefined();
-            const light = lightActor!.getComponent(DirectionalLight);
+            const lightEntity = entities.find((a) => a.name === 'Directional Light');
+            expect(lightEntity).toBeDefined();
+            const light = lightEntity!.getComponent(DirectionalLight);
             expect(light).toBeDefined();
             expect(light!.intensity).toBeCloseTo(1.15, 2);
 
@@ -792,11 +792,11 @@ describe('Scene Loading Integration', () => {
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildFullSceneSnapshot();
-            const actors = await scene.loadScene(snapshot);
+            const entities = await scene.loadScene(snapshot);
 
-            const world = actors.find((a) => a.name === 'World');
-            const ground = actors.find((a) => a.name === 'Ground');
-            const player = actors.find((a) => a.name === 'Player');
+            const world = entities.find((a) => a.name === 'World');
+            const ground = entities.find((a) => a.name === 'Ground');
+            const player = entities.find((a) => a.name === 'Player');
 
             expect(world).toBeDefined();
             expect(ground).toBeDefined();
@@ -813,15 +813,15 @@ describe('Scene Loading Integration', () => {
             scene.dispose();
         });
 
-        it('attaches MeshRenderer to Ground and Player actors', async () => {
+        it('attaches MeshRenderer to Ground and Player entities', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildFullSceneSnapshot();
-            const actors = await scene.loadScene(snapshot);
+            const entities = await scene.loadScene(snapshot);
 
-            const ground = actors.find((a) => a.name === 'Ground');
-            const player = actors.find((a) => a.name === 'Player');
+            const ground = entities.find((a) => a.name === 'Ground');
+            const player = entities.find((a) => a.name === 'Player');
 
             expect(ground!.getComponent(MeshRenderer)).toBeDefined();
             expect(ground!.getComponent(MeshRenderer)!.meshId).toBe('plane');
@@ -898,15 +898,15 @@ describe('Scene Loading Integration', () => {
     // ─── Test Group 4: Scene with Prefab Instances ────────────────────────
 
     describe('Scene with Prefab Instances', () => {
-        it('instantiates a prefab with nested actors and verifies hierarchy', async () => {
+        it('instantiates a prefab with nested entities and verifies hierarchy', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            // Create a template prefab with nested actors
-            const templateRoot = scene.createActor({ name: 'PrefabRoot' });
+            // Create a template prefab with nested entities
+            const templateRoot = scene.createEntity({ name: 'PrefabRoot' });
             templateRoot.addComponent(PrefabNodeBinding, { nodeId: 'node/0' });
 
-            const templateChild = scene.createActor({ name: 'PrefabChild' });
+            const templateChild = scene.createEntity({ name: 'PrefabChild' });
             templateChild.addComponent(PrefabNodeBinding, { nodeId: 'node/1' });
             templateChild.setParent(templateRoot);
 
@@ -920,7 +920,7 @@ describe('Scene Loading Integration', () => {
             const snapshot = buildMinimalSnapshot({
                 prefab: {
                     id: 'scene-with-prefab',
-                    actors: [
+                    entities: [
                         {
                             name: 'SceneRoot',
                             layer: 0,
@@ -934,8 +934,8 @@ describe('Scene Loading Integration', () => {
                 },
             });
 
-            const actors = await scene.loadScene(snapshot);
-            expect(actors.length).toBeGreaterThanOrEqual(1);
+            const entities = await scene.loadScene(snapshot);
+            expect(entities.length).toBeGreaterThanOrEqual(1);
 
             // Instantiate the nested prefab separately
             const instances = scene.instantiatePrefab(prefab, { namePrefix: 'Inst ' });
@@ -971,9 +971,9 @@ describe('Scene Loading Integration', () => {
             const snapshot1 = buildMinimalSnapshot({
                 prefab: {
                     id: 'first-prefab',
-                    actors: [
+                    entities: [
                         {
-                            name: 'FirstActor',
+                            name: 'FirstEntity',
                             layer: 0,
                             tag: 'Default',
                             active: true,
@@ -985,8 +985,8 @@ describe('Scene Loading Integration', () => {
                 },
             });
 
-            const actors1 = await scene.loadScene(snapshot1);
-            expect(actors1.find((a) => a.name === 'FirstActor')).toBeDefined();
+            const entitys1 = await scene.loadScene(snapshot1);
+            expect(entitys1.find((a) => a.name === 'FirstEntity')).toBeDefined();
 
             // Dispose the scene
             scene.dispose();
@@ -999,9 +999,9 @@ describe('Scene Loading Integration', () => {
             const snapshot2 = buildMinimalSnapshot({
                 prefab: {
                     id: 'second-prefab',
-                    actors: [
+                    entities: [
                         {
-                            name: 'SecondActor',
+                            name: 'SecondEntity',
                             layer: 0,
                             tag: 'Default',
                             active: true,
@@ -1013,13 +1013,13 @@ describe('Scene Loading Integration', () => {
                 },
             });
 
-            const actors2 = await scene2.loadScene(snapshot2);
-            expect(actors2.find((a) => a.name === 'SecondActor')).toBeDefined();
+            const entitys2 = await scene2.loadScene(snapshot2);
+            expect(entitys2.find((a) => a.name === 'SecondEntity')).toBeDefined();
 
             scene2.dispose();
         });
 
-        it('clears existing actors when loading a new scene into the same Scene', async () => {
+        it('clears existing entities when loading a new scene into the same Scene', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
@@ -1027,9 +1027,9 @@ describe('Scene Loading Integration', () => {
             const snapshot1 = buildMinimalSnapshot({
                 prefab: {
                     id: 'prefab-1',
-                    actors: [
+                    entities: [
                         {
-                            name: 'OldActor',
+                            name: 'OldEntity',
                             layer: 0,
                             tag: 'Default',
                             active: true,
@@ -1042,13 +1042,13 @@ describe('Scene Loading Integration', () => {
             });
             await scene.loadScene(snapshot1);
 
-            // Load second scene — should clear old actors
+            // Load second scene — should clear old entities
             const snapshot2 = buildMinimalSnapshot({
                 prefab: {
                     id: 'prefab-2',
-                    actors: [
+                    entities: [
                         {
-                            name: 'NewActor',
+                            name: 'NewEntity',
                             layer: 0,
                             tag: 'Default',
                             active: true,
@@ -1059,15 +1059,15 @@ describe('Scene Loading Integration', () => {
                     ],
                 },
             });
-            const actors2 = await scene.loadScene(snapshot2);
+            const entitys2 = await scene.loadScene(snapshot2);
 
-            expect(actors2.find((a) => a.name === 'NewActor')).toBeDefined();
-            expect(actors2.find((a) => a.name === 'OldActor')).toBeUndefined();
+            expect(entitys2.find((a) => a.name === 'NewEntity')).toBeDefined();
+            expect(entitys2.find((a) => a.name === 'OldEntity')).toBeUndefined();
 
             scene.dispose();
         });
 
-        it('prevents creating actors after disposal', async () => {
+        it('prevents creating entities after disposal', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
@@ -1076,7 +1076,7 @@ describe('Scene Loading Integration', () => {
 
             scene.dispose();
 
-            expect(() => scene.createActor({ name: 'PostDispose' })).toThrow();
+            expect(() => scene.createEntity({ name: 'PostDispose' })).toThrow();
         });
     });
 
@@ -1088,8 +1088,8 @@ describe('Scene Loading Integration', () => {
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildFullSceneSnapshot();
-            const actors = await scene.loadScene(snapshot);
-            expect(actors.length).toBe(10);
+            const entities = await scene.loadScene(snapshot);
+            expect(entities.length).toBe(10);
 
             // Start the scene lifecycle
             scene.start(0);
@@ -1140,9 +1140,9 @@ describe('Scene Loading Integration', () => {
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildFullSceneSnapshot();
-            const actors = await scene.loadScene(snapshot);
+            const entities = await scene.loadScene(snapshot);
 
-            const uiHost = actors.find((a) => a.name === 'UI Host');
+            const uiHost = entities.find((a) => a.name === 'UI Host');
             expect(uiHost).toBeDefined();
 
             // UIHost component should be present
@@ -1153,14 +1153,14 @@ describe('Scene Loading Integration', () => {
             scene.dispose();
         });
 
-        it('loads a scene where UI Host is a root actor with no parent', async () => {
+        it('loads a scene where UI Host is a root entity with no parent', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildFullSceneSnapshot();
-            const actors = await scene.loadScene(snapshot);
+            const entities = await scene.loadScene(snapshot);
 
-            const uiHost = actors.find((a) => a.name === 'UI Host');
+            const uiHost = entities.find((a) => a.name === 'UI Host');
             expect(uiHost).toBeDefined();
 
             // UI Host has no parentNodeId, so its Transform parent should be unset
@@ -1171,17 +1171,17 @@ describe('Scene Loading Integration', () => {
         });
     });
 
-    // ─── Test Group 8: Multiple Root Actors ────────────────────────────────
+    // ─── Test Group 8: Multiple Root Entities ────────────────────────────────
 
-    describe('Multiple Root Actors', () => {
-        it('loads a scene with multiple root actors and verifies all are root-level', async () => {
+    describe('Multiple Root Entities', () => {
+        it('loads a scene with multiple root entities and verifies all are root-level', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildMinimalSnapshot({
                 prefab: {
                     id: 'multi-root-prefab',
-                    actors: [
+                    entities: [
                         {
                             name: 'Root_A',
                             layer: 0,
@@ -1213,41 +1213,41 @@ describe('Scene Loading Integration', () => {
                 },
             });
 
-            const actors = await scene.loadScene(snapshot);
-            expect(actors.length).toBe(3);
+            const entities = await scene.loadScene(snapshot);
+            expect(entities.length).toBe(3);
 
-            // All actors should have no parent (root-level)
-            for (const actor of actors) {
-                const transform = actor.getComponent(Transform);
+            // All entities should have no parent (root-level)
+            for (const entity of entities) {
+                const transform = entity.getComponent(Transform);
                 expect(transform!.parent).toBeFalsy();
             }
 
             scene.dispose();
         });
 
-        it('loads a mixed scene with both root and child actors correctly', async () => {
+        it('loads a mixed scene with both root and child entities correctly', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildFullSceneSnapshot();
-            const actors = await scene.loadScene(snapshot);
+            const entities = await scene.loadScene(snapshot);
 
-            // Count root actors (those without parentNodeId)
-            const rootActors = actors.filter((a) => {
+            // Count root entities (those without parentNodeId)
+            const rootEntities = entities.filter((a) => {
                 const transform = a.getComponent(Transform);
                 return !transform!.parent;
             });
 
-            // Main Camera, Directional Light, World, UI Host, Actor,
-            // EN_Character_Stickman_01, Actor 2, Cube = 8 root actors
-            expect(rootActors.length).toBe(8);
+            // Main Camera, Directional Light, World, UI Host, EntityId,
+            // EN_Character_Stickman_01, EntityId 2, Cube = 8 root entities
+            expect(rootEntities.length).toBe(8);
 
             // Ground and Player are children of World
-            const childActors = actors.filter((a) => {
+            const childEntities = entities.filter((a) => {
                 const transform = a.getComponent(Transform);
                 return !!transform!.parent;
             });
-            expect(childActors.length).toBe(2);
+            expect(childEntities.length).toBe(2);
 
             scene.dispose();
         });
@@ -1263,9 +1263,9 @@ describe('Scene Loading Integration', () => {
             const snapshot = buildMinimalSnapshot({
                 prefab: {
                     id: 'ordered-prefab',
-                    actors: [
+                    entities: [
                         {
-                            name: 'OrderedActor',
+                            name: 'OrderedEntity',
                             layer: 0,
                             tag: 'Default',
                             active: true,
@@ -1280,19 +1280,19 @@ describe('Scene Loading Integration', () => {
                 },
             });
 
-            const actors = await scene.loadScene(snapshot);
-            const actor = actors[0];
-            expect(actor).toBeDefined();
+            const entities = await scene.loadScene(snapshot);
+            const entity = entities[0];
+            expect(entity).toBeDefined();
 
             // Verify Transform is present and has correct data
-            const transform = actor!.getComponent(Transform);
+            const transform = entity!.getComponent(Transform);
             expect(transform).toBeDefined();
             expect(transform!.position.x).toBeCloseTo(5, 5);
             expect(transform!.position.y).toBeCloseTo(10, 5);
             expect(transform!.position.z).toBeCloseTo(15, 5);
 
             // Verify MeshRenderer is present with correct data
-            const meshRenderer = actor!.getComponent(MeshRenderer);
+            const meshRenderer = entity!.getComponent(MeshRenderer);
             expect(meshRenderer).toBeDefined();
             expect(meshRenderer!.meshId).toBe('cube');
             expect(meshRenderer!.materialId).toBe('default-mat');
@@ -1300,30 +1300,30 @@ describe('Scene Loading Integration', () => {
             scene.dispose();
         });
 
-        it('verifies each entity in a multi-actor scene has its own correct components', async () => {
+        it('verifies each entity in a multi-entity scene has its own correct components', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const snapshot = buildFullSceneSnapshot();
-            const actors = await scene.loadScene(snapshot);
+            const entities = await scene.loadScene(snapshot);
 
-            // Camera actor should have Camera component
-            const cameraActor = actors.find((a) => a.name === 'Main Camera');
-            expect(cameraActor!.getComponent(Camera)).toBeDefined();
-            expect(cameraActor!.getComponent(MeshRenderer)).toBeUndefined();
+            // Camera entity should have Camera component
+            const cameraEntity = entities.find((a) => a.name === 'Main Camera');
+            expect(cameraEntity!.getComponent(Camera)).toBeDefined();
+            expect(cameraEntity!.getComponent(MeshRenderer)).toBeUndefined();
 
             // Ground should have MeshRenderer but not Camera
-            const ground = actors.find((a) => a.name === 'Ground');
+            const ground = entities.find((a) => a.name === 'Ground');
             expect(ground!.getComponent(MeshRenderer)).toBeDefined();
             expect(ground!.getComponent(Camera)).toBeUndefined();
 
             // Directional Light should have DirectionalLight but not MeshRenderer
-            const light = actors.find((a) => a.name === 'Directional Light');
+            const light = entities.find((a) => a.name === 'Directional Light');
             expect(light!.getComponent(DirectionalLight)).toBeDefined();
             expect(light!.getComponent(MeshRenderer)).toBeUndefined();
 
             // Player should have MeshRenderer
-            const player = actors.find((a) => a.name === 'Player');
+            const player = entities.find((a) => a.name === 'Player');
             expect(player!.getComponent(MeshRenderer)).toBeDefined();
             expect(player!.getComponent(Camera)).toBeUndefined();
 
@@ -1362,19 +1362,19 @@ describe('Scene Loading Integration', () => {
             scene.dispose();
         });
 
-        it('handles loading a snapshot with empty prefab actors gracefully', async () => {
+        it('handles loading a snapshot with empty prefab entities gracefully', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             const emptySnapshot = buildMinimalSnapshot({
                 prefab: {
                     id: 'empty-prefab',
-                    actors: [],
+                    entities: [],
                 },
             });
 
-            const actors = await scene.loadScene(emptySnapshot);
-            expect(actors).toEqual([]);
+            const entities = await scene.loadScene(emptySnapshot);
+            expect(entities).toEqual([]);
 
             scene.dispose();
         });
@@ -1389,9 +1389,9 @@ describe('Scene Loading Integration', () => {
                 materials: [],
             });
 
-            const actors = await scene.loadScene(bareSnapshot);
-            // Should still instantiate actors even without assets
-            expect(actors.length).toBeGreaterThanOrEqual(1);
+            const entities = await scene.loadScene(bareSnapshot);
+            // Should still instantiate entities even without assets
+            expect(entities.length).toBeGreaterThanOrEqual(1);
 
             scene.dispose();
         });
@@ -1414,7 +1414,7 @@ describe('Scene Loading Integration', () => {
             await expect(
                 loader.load({
                     version: 99,
-                    prefab: { id: 'p', actors: [] },
+                    prefab: { id: 'p', entities: [] },
                     shaders: [],
                     meshes: [],
                     samplers: [],

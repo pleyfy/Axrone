@@ -373,11 +373,11 @@ describe('Mobile — Responsive Viewport', () => {
         const scene = createScene(createSceneOptions(scheduler, canvas));
         const gl = scene.gl as unknown as MockGLContext;
 
-        const cameraActor = scene.createCameraActor(
+        const cameraEntity = scene.createCameraEntity(
             { name: 'Camera' },
             { primary: true, fieldOfView: 60 },
         );
-        const camera = cameraActor.getComponent(Camera);
+        const camera = cameraEntity.getComponent(Camera);
 
         scene.start(0);
         scheduler.flush(16);
@@ -479,11 +479,11 @@ void main() {
             shaderId: 'test/mobile-solid',
         });
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
 
-        // Create 50 renderable actors — each generates 1 draw call
+        // Create 50 renderable entities — each generates 1 draw call
         for (let i = 0; i < 50; i++) {
-            scene.createRenderableActor(
+            scene.createRenderableEntity(
                 { name: `MobileMesh-${i}` },
                 { meshId: 'mobile-tri', materialId: 'mobile-material', passId: 'main' },
             );
@@ -551,11 +551,11 @@ void main() {
             shaderId: 'test/mobile-tri-count',
         });
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
 
         // Create 100 quads = 200 triangles, well within 100K budget
         for (let i = 0; i < 100; i++) {
-            scene.createRenderableActor(
+            scene.createRenderableEntity(
                 { name: `Quad-${i}` },
                 { meshId: 'mobile-quad', materialId: 'mobile-quad-material', passId: 'main' },
             );
@@ -674,8 +674,8 @@ void main() {
             shaderId: 'test/perf-solid',
         });
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
-        scene.createRenderableActor(
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
+        scene.createRenderableEntity(
             { name: 'PerfMesh' },
             { meshId: 'perf-tri', materialId: 'perf-material', passId: 'main' },
         );
@@ -697,7 +697,7 @@ void main() {
         const canvas = createMobileCanvas();
         const scene = createScene(createSceneOptions(scheduler, canvas));
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
         scene.start(0);
 
         // Run first frame
@@ -750,10 +750,10 @@ void main() {
             shaderId: 'test/init-solid',
         });
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
 
         for (let i = 0; i < 20; i++) {
-            scene.createRenderableActor(
+            scene.createRenderableEntity(
                 { name: `InitMesh-${i}` },
                 { meshId: 'init-mesh', materialId: 'init-material', passId: 'main' },
             );
@@ -773,7 +773,7 @@ void main() {
         const canvas = createMobileCanvas();
         const scene = createScene(createSceneOptions(scheduler, canvas));
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
         scene.start(0);
 
         // Process a batch of touch events between frames
@@ -811,7 +811,7 @@ void main() {
         const canvas = createMobileCanvas();
         const scene = createScene(createSceneOptions(scheduler, canvas));
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
         scene.start(0);
 
         // Run a baseline frame
@@ -854,7 +854,7 @@ describe('Mobile — Mobile-Specific Edge Cases', () => {
         const scene = createScene(createSceneOptions(scheduler, canvas));
         const gl = scene.gl as unknown as MockGLContext;
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
         scene.start(0);
         scheduler.flush(16);
 
@@ -906,7 +906,7 @@ describe('Mobile — Mobile-Specific Edge Cases', () => {
         const canvas = createMobileCanvas();
         const scene = createScene(createSceneOptions(scheduler, canvas));
 
-        scene.createCameraActor({ name: 'Camera' }, { primary: true });
+        scene.createCameraEntity({ name: 'Camera' }, { primary: true });
         scene.start(0);
         scheduler.flush(16);
 

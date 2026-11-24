@@ -36,8 +36,8 @@
  *     "Ground"                   -> "EN_Environment_Ground_01"
  *     "Player"                   -> "PL_Player_Default_01"
  *     "UI Host"                  -> "UI_Host_Main_01"
- *     "Actor"                    -> "PL_Player_Actor_01"
- *     "Actor 2"                  -> "PL_Player_Actor_02"
+ *     "Entity"                    -> "PL_Player_Entity_01"
+ *     "Entity 2"                  -> "PL_Player_Entity_02"
  *     "Cube"                     -> "EN_Prop_Cube_01"
  *
  *   Cube.prefab:
@@ -171,7 +171,7 @@ const BASELINE_VIOLATIONS: ReadonlySet<string> = new Set([
     'Main.scene.json::Ground',
     'Main.scene.json::Player',
     'Main.scene.json::UI Host',
-    'Main.scene.json::Actor',
+    'Main.scene.json::EntityId',
     'Main.scene.json::cone_0001',
     'Main.scene.json::Cube',
     // Cube.prefab (1 violation)
@@ -401,7 +401,7 @@ describe('R-03: Naming Convention Validation', () => {
         it.todo('rename "Ground" to "EN_Environment_Ground_01"');
         it.todo('rename "Player" to "PL_Player_Default_01"');
         it.todo('rename "UI Host" to "UI_Host_Main_01"');
-        it.todo('rename "Actor" to "PL_Player_Actor_01"');
+        it.todo('rename "Entity" to "PL_Player_Entity_01"');
         it.todo('rename "cone_0001" to "EN_Prop_Cone_01"');
         it.todo('rename "Cube" to "EN_Prop_Cube_01"');
     });

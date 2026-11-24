@@ -53,7 +53,7 @@ function buildSharedMaterialSnapshot(
         materials: [{ id: 'shared-mat', shaderId: 'shared/shader' }],
         prefab: {
             id: `${sceneTag}-prefab`,
-            actors: [
+            entities: [
                 {
                     name: `${sceneTag}_Root`,
                     layer: 0,
@@ -124,7 +124,7 @@ function buildSharedTextureSnapshot(
         ],
         prefab: {
             id: `${sceneTag}-tex-prefab`,
-            actors: [
+            entities: [
                 {
                     name: `${sceneTag}_TexRoot`,
                     layer: 0,
@@ -169,9 +169,9 @@ function buildSnapshotA(overrides?: Partial<SceneSnapshot>): SceneSnapshot {
         materials: [{ id: 'scene-a-mat', shaderId: 'scene-a/shader' }],
         prefab: {
             id: 'scene-a-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'ActorA_Root',
+                    name: 'EntityA_Root',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -180,7 +180,7 @@ function buildSnapshotA(overrides?: Partial<SceneSnapshot>): SceneSnapshot {
                     components: [{ type: 'Transform', data: { position: [1, 0, 0] } }],
                 },
                 {
-                    name: 'ActorA_Renderable',
+                    name: 'EntityA_Renderable',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -223,9 +223,9 @@ function buildSnapshotB(overrides?: Partial<SceneSnapshot>): SceneSnapshot {
         materials: [{ id: 'scene-b-mat', shaderId: 'scene-b/shader' }],
         prefab: {
             id: 'scene-b-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'ActorB_Root',
+                    name: 'EntityB_Root',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -234,7 +234,7 @@ function buildSnapshotB(overrides?: Partial<SceneSnapshot>): SceneSnapshot {
                     components: [{ type: 'Transform', data: { position: [5, 5, 5] } }],
                 },
                 {
-                    name: 'ActorB_Camera',
+                    name: 'EntityB_Camera',
                     layer: 0,
                     tag: 'Camera',
                     active: true,
@@ -288,9 +288,9 @@ function buildTexturedSnapshot(overrides?: Partial<SceneSnapshot>): SceneSnapsho
         ],
         prefab: {
             id: 'textured-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'TexturedActor',
+                    name: 'TexturedEntity',
                     layer: 0,
                     tag: 'Default',
                     active: true,
@@ -333,9 +333,9 @@ function buildCameraSnapshot(overrides?: Partial<SceneSnapshot>): SceneSnapshot 
         materials: [{ id: 'cam-mat', shaderId: 'cam/shader' }],
         prefab: {
             id: 'cam-prefab',
-            actors: [
+            entities: [
                 {
-                    name: 'CamActor',
+                    name: 'CamEntity',
                     layer: 0,
                     tag: 'Camera',
                     active: true,
@@ -406,16 +406,16 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
             // Scene A and Scene B both reference material ID "shared-mat"
             const canvas1 = document.createElement('canvas');
             const scene1 = new Scene(createSceneOptions(scheduler, canvas1));
-            const actors1 = await scene1.loadScene(buildSharedMaterialSnapshot('A'));
-            expect(actors1.length).toBe(2);
+            const entitys1 = await scene1.loadScene(buildSharedMaterialSnapshot('A'));
+            expect(entitys1.length).toBe(2);
 
             // Verify scene A has the shared material
             expect(scene1.getMaterial('shared-mat')).not.toBeNull();
 
             const canvas2 = document.createElement('canvas');
             const scene2 = new Scene(createSceneOptions(scheduler, canvas2));
-            const actors2 = await scene2.loadScene(buildSharedMaterialSnapshot('B'));
-            expect(actors2.length).toBe(2);
+            const entitys2 = await scene2.loadScene(buildSharedMaterialSnapshot('B'));
+            expect(entitys2.length).toBe(2);
 
             // Verify scene B also has the shared material
             expect(scene2.getMaterial('shared-mat')).not.toBeNull();
@@ -506,9 +506,9 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             // Load a valid scene first
-            const actors = await scene.loadScene(buildSnapshotA());
-            expect(actors.length).toBe(2);
-            expect(scene.world.getAllActors().length).toBe(2);
+            const entities = await scene.loadScene(buildSnapshotA());
+            expect(entities.length).toBe(2);
+            expect(scene.world.getAllEntities().length).toBe(2);
 
             scene.start(0);
             scheduler.flush(16);
@@ -517,7 +517,7 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
             const invalidSnapshot = { version: 1 } as unknown as SceneSnapshot;
             await expect(scene.loadScene(invalidSnapshot)).rejects.toThrow();
 
-            // Original scene should still be functional — actors are still there
+            // Original scene should still be functional — entities are still there
             // (loadScene failure should not corrupt the existing scene state)
             expect(scene.isDisposed).toBe(false);
 
@@ -536,8 +536,8 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
             await expect(scene.loadScene(invalidSnapshot)).rejects.toThrow();
 
             // Now load scene B successfully — should work fine
-            const actorsB = await scene.loadScene(buildSnapshotB());
-            expect(actorsB.find((a) => a.name === 'ActorB_Root')).toBeDefined();
+            const entitysB = await scene.loadScene(buildSnapshotB());
+            expect(entitysB.find((a) => a.name === 'EntityB_Root')).toBeDefined();
 
             scene.dispose();
         });
@@ -582,8 +582,8 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
 
             for (let cycle = 0; cycle < 50; cycle++) {
                 const snapshot = snapshots[cycle % 3];
-                const actors = await scene.loadScene(snapshot);
-                expect(actors.length).toBeGreaterThan(0);
+                const entities = await scene.loadScene(snapshot);
+                expect(entities.length).toBeGreaterThan(0);
 
                 scene.start(cycle * 16);
                 scheduler.flush((cycle + 1) * 16);
@@ -602,20 +602,20 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
             expect(countMockCalls(gl.deleteBuffer)).toBeGreaterThanOrEqual(totalBuffersCreated);
         });
 
-        it('maintains actor isolation across 50 rapid scene reloads', async () => {
+        it('maintains entity isolation across 50 rapid scene reloads', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
             for (let i = 0; i < 50; i++) {
                 const useA = i % 2 === 0;
-                const actors = await scene.loadScene(useA ? buildSnapshotA() : buildSnapshotB());
+                const entities = await scene.loadScene(useA ? buildSnapshotA() : buildSnapshotB());
 
                 if (useA) {
-                    expect(actors.find((a) => a.name === 'ActorA_Root')).toBeDefined();
-                    expect(actors.find((a) => a.name === 'ActorB_Root')).toBeUndefined();
+                    expect(entities.find((a) => a.name === 'EntityA_Root')).toBeDefined();
+                    expect(entities.find((a) => a.name === 'EntityB_Root')).toBeUndefined();
                 } else {
-                    expect(actors.find((a) => a.name === 'ActorB_Root')).toBeDefined();
-                    expect(actors.find((a) => a.name === 'ActorA_Root')).toBeUndefined();
+                    expect(entities.find((a) => a.name === 'EntityB_Root')).toBeDefined();
+                    expect(entities.find((a) => a.name === 'EntityA_Root')).toBeUndefined();
                 }
             }
 
@@ -641,8 +641,8 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
 
             scene.registerComponent(TrackerComponent);
 
-            const actor = scene.createActor({ name: 'TrackedActor' });
-            const comp = actor.addComponent(TrackerComponent);
+            const entity = scene.createEntity({ name: 'TrackedEntity' });
+            const comp = entity.addComponent(TrackerComponent);
 
             scene.start(0);
             scheduler.flush(16);
@@ -666,8 +666,8 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
 
             scene.registerComponent(CounterComponent);
 
-            const actor = scene.createActor({ name: 'Counter' });
-            const comp = actor.addComponent(CounterComponent);
+            const entity = scene.createEntity({ name: 'Counter' });
+            const comp = entity.addComponent(CounterComponent);
 
             scene.start(0);
             scheduler.flush(16);
@@ -694,23 +694,23 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
 
             // Load scene A with tagged component
             await scene.loadScene(buildSnapshotA());
-            const actorA = scene.createActor({ name: 'TaggedA' });
-            actorA.addComponent(SceneTagComponent).tag = 'scene-a';
+            const entityA = scene.createEntity({ name: 'TaggedA' });
+            entityA.addComponent(SceneTagComponent).tag = 'scene-a';
 
             scene.start(0);
             scheduler.flush(16);
 
-            // Load scene B — should clear scene A actors
+            // Load scene B — should clear scene A entities
             await scene.loadScene(buildSnapshotB());
-            const actorB = scene.createActor({ name: 'TaggedB' });
-            actorB.addComponent(SceneTagComponent).tag = 'scene-b';
+            const entityB = scene.createEntity({ name: 'TaggedB' });
+            entityB.addComponent(SceneTagComponent).tag = 'scene-b';
 
-            // Verify only scene B actors exist
-            const allActors = scene.world.getAllActors();
-            const taggedA = allActors.find((a) => a.name === 'TaggedA');
+            // Verify only scene B entities exist
+            const allEntities = scene.world.getAllEntities();
+            const taggedA = allEntities.find((a) => a.name === 'TaggedA');
             expect(taggedA).toBeUndefined();
 
-            const taggedB = allActors.find((a) => a.name === 'TaggedB');
+            const taggedB = allEntities.find((a) => a.name === 'TaggedB');
             expect(taggedB).toBeDefined();
             expect(taggedB!.getComponent(SceneTagComponent)!.tag).toBe('scene-b');
 
@@ -834,7 +834,7 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
     // ─── Group 7: Scene Snapshot Round-Trip ─────────────────────────────────
 
     describe('Scene Snapshot Round-Trip', () => {
-        it('serializes, disposes, reloads, and verifies identical actor state', async () => {
+        it('serializes, disposes, reloads, and verifies identical entity state', async () => {
             const canvas1 = document.createElement('canvas');
             const scene1 = new Scene(createSceneOptions(scheduler, canvas1));
 
@@ -844,7 +844,7 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
 
             // Serialize the scene
             const snapshot = scene1.serializeScene();
-            expect(snapshot.prefab.actors.length).toBe(2);
+            expect(snapshot.prefab.entities.length).toBe(2);
             expect(snapshot.materials.length).toBe(1);
             expect(snapshot.shaders.length).toBe(1);
 
@@ -855,11 +855,11 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
             // Create a new scene and load the serialized snapshot
             const canvas2 = document.createElement('canvas');
             const scene2 = new Scene(createSceneOptions(scheduler, canvas2));
-            const actors = await scene2.loadScene(snapshot);
+            const entities = await scene2.loadScene(snapshot);
 
-            expect(actors.length).toBe(2);
-            expect(actors.find((a) => a.name === 'ActorA_Root')).toBeDefined();
-            expect(actors.find((a) => a.name === 'ActorA_Renderable')).toBeDefined();
+            expect(entities.length).toBe(2);
+            expect(entities.find((a) => a.name === 'EntityA_Root')).toBeDefined();
+            expect(entities.find((a) => a.name === 'EntityA_Renderable')).toBeDefined();
 
             // Verify material was restored
             expect(scene2.getMaterial('scene-a-mat')).not.toBeNull();
@@ -903,7 +903,7 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
             const snap2 = scene.serializeScene();
 
             // Both snapshots should have the same structure
-            expect(snap1.prefab.actors.length).toBe(snap2.prefab.actors.length);
+            expect(snap1.prefab.entities.length).toBe(snap2.prefab.entities.length);
             expect(snap1.materials.length).toBe(snap2.materials.length);
             expect(snap1.shaders.length).toBe(snap2.shaders.length);
             expect(snap1.meshes.length).toBe(snap2.meshes.length);
@@ -915,13 +915,13 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
     // ─── Group 8: Prefab Instance Cleanup ───────────────────────────────────
 
     describe('Prefab Instance Cleanup Across Scenes', () => {
-        it('cleans up all prefab actors when scene is disposed', async () => {
+        it('cleans up all prefab entities when scene is disposed', async () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const actors = await scene.loadScene(buildSnapshotA());
-            expect(actors.length).toBe(2);
-            expect(scene.world.getAllActors().length).toBe(2);
+            const entities = await scene.loadScene(buildSnapshotA());
+            expect(entities.length).toBe(2);
+            expect(scene.world.getAllEntities().length).toBe(2);
 
             scene.dispose();
             expect(scene.isDisposed).toBe(true);
@@ -931,8 +931,8 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            // Create template actors (createActor automatically adds Transform)
-            const template = scene.createActor({ name: 'Template' });
+            // Create template entities (createEntity automatically adds Transform)
+            const template = scene.createEntity({ name: 'Template' });
 
             const prefab = scene.createPrefab('test-prefab', [template]);
 
@@ -943,8 +943,8 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
             expect(instances1.length).toBe(1);
             expect(instances2.length).toBe(1);
 
-            // Total actors: template + 2 instances
-            const totalBefore = scene.world.getAllActors().length;
+            // Total entities: template + 2 instances
+            const totalBefore = scene.world.getAllEntities().length;
             expect(totalBefore).toBe(3);
 
             // Dispose should clean everything
@@ -1027,11 +1027,11 @@ describe('T-16 Extended: Multi-Scene Transition — Shared Resources, Error Reco
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas));
 
-            const cameraActor = scene.createCameraActor({ name: 'TestCam' }, { primary: true });
-            expect(cameraActor).toBeDefined();
-            expect(cameraActor.getComponent(Camera)).toBeDefined();
+            const cameraEntity = scene.createCameraEntity({ name: 'TestCam' }, { primary: true });
+            expect(cameraEntity).toBeDefined();
+            expect(cameraEntity.getComponent(Camera)).toBeDefined();
 
-            scene.createRenderableActor(
+            scene.createRenderableEntity(
                 { name: 'TestMesh' },
                 { meshId: 'cam-mesh', materialId: 'cam-mat' }
             );

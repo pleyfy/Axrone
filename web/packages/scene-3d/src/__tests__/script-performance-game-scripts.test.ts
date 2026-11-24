@@ -213,7 +213,7 @@ describe('Script Performance Regression — Game Scripts', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas, { CharacterMovementTest }));
 
-            const character = scene.createActor({ name: 'Character' });
+            const character = scene.createEntity({ name: 'Character' });
             const movement = character.addComponent(CharacterMovementTest, {
                 movementSpeed: 5,
                 rotationSpeed: 10,
@@ -266,10 +266,10 @@ describe('Script Performance Regression — Game Scripts', () => {
             const canvas = document.createElement('canvas');
             const scene = new Scene(createSceneOptions(scheduler, canvas, { CameraFollowControlTest }));
 
-            const target = scene.createActor({ name: 'Target' });
+            const target = scene.createEntity({ name: 'Target' });
             const targetTransform = target.requireComponent(Transform);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(CameraFollowControlTest, {
                 offsetX: 0,
                 offsetY: 5,
@@ -317,7 +317,7 @@ describe('Script Performance Regression — Game Scripts', () => {
             );
 
             // Character with movement
-            const character = scene.createActor({ name: 'Character' });
+            const character = scene.createEntity({ name: 'Character' });
             const characterTransform = character.requireComponent(Transform);
             const movement = character.addComponent(CharacterMovementTest, {
                 movementSpeed: 5,
@@ -325,7 +325,7 @@ describe('Script Performance Regression — Game Scripts', () => {
             });
 
             // Camera following character
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(CameraFollowControlTest, {
                 offsetY: 5,
                 offsetZ: -10,
@@ -379,11 +379,11 @@ describe('Script Performance Regression — Game Scripts', () => {
                 }),
             );
 
-            const character = scene.createActor({ name: 'Character' });
+            const character = scene.createEntity({ name: 'Character' });
             const characterTransform = character.requireComponent(Transform);
             const movement = character.addComponent(CharacterMovementTest);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(CameraFollowControlTest);
             controller.target = characterTransform;
 
@@ -425,7 +425,7 @@ describe('Script Performance Regression — Game Scripts', () => {
                         CharacterMovementTest,
                     }),
                 );
-                const c = s.createActor({ name: 'Warmup' });
+                const c = s.createEntity({ name: 'Warmup' });
                 c.addComponent(CharacterMovementTest);
                 s.start(0);
                 runFrames(scheduler, 10, 0);
@@ -442,11 +442,11 @@ describe('Script Performance Regression — Game Scripts', () => {
                     }),
                 );
 
-                const character = scene.createActor({ name: 'Character' });
+                const character = scene.createEntity({ name: 'Character' });
                 const characterTransform = character.requireComponent(Transform);
                 character.addComponent(CharacterMovementTest);
 
-                const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+                const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
                 const controller = camera.addComponent(CameraFollowControlTest);
                 controller.target = characterTransform;
 
@@ -493,11 +493,11 @@ describe('Script Performance Regression — Game Scripts', () => {
                     }),
                 );
 
-                const character = scene.createActor({ name: 'Character' });
+                const character = scene.createEntity({ name: 'Character' });
                 const characterTransform = character.requireComponent(Transform);
                 character.addComponent(CharacterMovementTest);
 
-                const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+                const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
                 const controller = camera.addComponent(CameraFollowControlTest);
                 controller.target = characterTransform;
 
@@ -525,11 +525,11 @@ describe('Script Performance Regression — Game Scripts', () => {
                 }),
             );
 
-            const character = scene.createActor({ name: 'Character' });
+            const character = scene.createEntity({ name: 'Character' });
             const characterTransform = character.requireComponent(Transform);
             const movement = character.addComponent(CharacterMovementTest);
 
-            const camera = scene.createCameraActor({ name: 'Camera' }, { primary: true });
+            const camera = scene.createCameraEntity({ name: 'Camera' }, { primary: true });
             const controller = camera.addComponent(CameraFollowControlTest);
             controller.target = characterTransform;
 
@@ -567,7 +567,7 @@ describe('Script Performance Regression — Game Scripts', () => {
                 createSceneOptions(scheduler, canvas, { CharacterMovementTest }),
             );
 
-            const character = scene.createActor({ name: 'Character' });
+            const character = scene.createEntity({ name: 'Character' });
             const animator = character.addComponent(Animator, {
                 clips: [
                     {
