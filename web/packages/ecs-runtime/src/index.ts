@@ -36,19 +36,18 @@ export type {
     PropertyTypeReference,
 } from './component-system/decorators';
 
-export { Actor, ActorError } from './component-system/core/actor';
+export { Entity, EntityLifecycleError } from './component-system/core/entity';
 export type {
-    ActorComponentEntry,
-    ActorConfig,
-    ActorLayer,
-    ActorState,
-    ActorTag,
+    EntityComponentEntry,
+    EntityConfig,
+    EntityLayer,
+    EntityState,
+    EntityTag,
     EventBus,
-} from './component-system/core/actor';
+} from './component-system/core/entity';
 
 export { World, EntityError, WorldError } from './component-system/core/world';
 export type {
-    EntityId,
     WorldState,
 } from './component-system/core/world';
 export {
@@ -62,7 +61,7 @@ export {
     runWithinCreationBatch,
 } from './component-system/core/creation-clock';
 
-export { WorldActorRegistry } from './component-system/core/world-actor-registry';
+export { WorldEntityRegistry } from './component-system/core/world-entity-registry';
 export { WorldDiagnostics } from './component-system/core/world-diagnostics';
 export { WorldMetricsService } from './component-system/core/world-diagnostics';
 export type { WorldMetrics } from './component-system/core/world-diagnostics';
@@ -91,7 +90,7 @@ export { ComponentPool } from './component-system/memory/component-pool';
 export type { ComponentPoolConfig } from './component-system/memory/component-pool';
 
 export type {
-    ActorId,
+    EntityUid,
     ArchetypeId,
     ArchetypeSignature,
     BitMask,
@@ -100,7 +99,7 @@ export type {
     ComponentInstance,
     ComponentMask,
     ComponentRegistry,
-    Entity,
+    EntityId,
     EventType,
     SystemId,
 } from './component-system/types/core';

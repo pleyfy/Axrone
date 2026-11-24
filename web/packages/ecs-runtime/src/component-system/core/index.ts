@@ -7,9 +7,9 @@ export {
 } from './component';
 export * from '../decorators';
 export { World } from './world';
-export { Actor } from './actor';
-export type { ActorComponentEntry } from './actor';
-export { WorldActorRegistry } from './world-actor-registry';
+export { Entity } from './entity';
+export type { EntityComponentEntry } from './entity';
+export { WorldEntityRegistry } from './world-entity-registry';
 export { WorldDiagnostics } from './world-diagnostics';
 export { WorldMetricsService } from './world-diagnostics';
 export { WorldEventRuntime } from './world-event-runtime';

@@ -1,7 +1,7 @@
 import type {
     ArchetypeId,
     ComponentRegistry,
-    Entity,
+    EntityId,
     ComponentInstance,
     ComponentConstructor,
 } from '../types/core';
@@ -13,8 +13,8 @@ import { WorldStorageRuntime } from '../../storage/world-storage-runtime';
 import type { ECSObservables } from '../observers/ecs-observer';
 import { getComponentMetadata } from '../decorators/script';
 import type { ECSEventMap } from '../types/events';
-import type { Actor } from './actor';
-import { WorldActorRegistry } from './world-actor-registry';
+import type { Entity } from './entity';
+import { WorldEntityRegistry } from './world-entity-registry';
 import { WorldMetricsService, type WorldMetrics } from './world-diagnostics';
 import { WorldEventRuntime } from './world-event-runtime';
 import { WorldMutationRuntime } from './world-mutation-runtime';
@@ -23,7 +23,6 @@ import { WorldSingletonRegistry } from './world-singleton-registry';
 import { createRenderMutationClock, type RenderMutationClock } from './render-mutation-clock';
 
 export type WorldState = 'initializing' | 'ready' | 'paused' | 'disposing' | 'disposed';
-export type EntityId = Entity & { readonly __entityBrand: unique symbol };
 
 export class WorldError extends Error {
     constructor(
@@ -42,7 +41,7 @@ export class WorldError extends Error {
 export class EntityError extends WorldError {
     constructor(
         message: string,
-        public readonly entity: Entity,
+        public readonly entity: EntityId,
         operation: string,
         cause?: Error
     ) {
@@ -54,7 +53,7 @@ export class EntityError extends WorldError {
 export class ComponentError extends WorldError {
     constructor(
         message: string,
-        public readonly entity: Entity,
+        public readonly entity: EntityId,
         public readonly componentName: string,
         operation: string,
         cause?: Error
@@ -74,12 +73,12 @@ interface WorldConfig {
 
 export class World<R extends ComponentRegistry> {
     private readonly _registry: R;
-    private readonly _storage: WorldStorageRuntime<R, Entity, ArchetypeId>;
+    private readonly _storage: WorldStorageRuntime<R, EntityId, ArchetypeId>;
     private readonly _queryCache: OptimizedQueryCache<ArchetypeId>;
     private readonly _queryRuntime: WorldQueryRuntime<ArchetypeId>;
     private readonly _queryExecution: WorldQueryExecutionRuntime<R, ArchetypeId>;
     private readonly _events: WorldEventRuntime<R>;
-    private readonly _actorRegistry = new WorldActorRegistry();
+    private readonly _entityRegistry = new WorldEntityRegistry();
     private readonly _mutations: WorldMutationRuntime<R>;
     private readonly _singletonRegistry = new WorldSingletonRegistry();
     private readonly _renderClock = createRenderMutationClock();
@@ -109,7 +108,7 @@ export class World<R extends ComponentRegistry> {
         this._enableValidation = this._config.enableValidation;
 
         try {
-            this._storage = new WorldStorageRuntime<R, Entity, ArchetypeId>(this._registry);
+            this._storage = new WorldStorageRuntime<R, EntityId, ArchetypeId>(this._registry);
             this._queryCache = new OptimizedQueryCache<ArchetypeId>();
             this._queryRuntime = new WorldQueryRuntime({
                 cache: this._queryCache,
@@ -128,7 +127,7 @@ export class World<R extends ComponentRegistry> {
             this._mutations = new WorldMutationRuntime({
                 registry: this._registry,
                 storage: this._storage,
-                actorRegistry: this._actorRegistry,
+                entityRegistry: this._entityRegistry,
                 singletonRegistry: this._singletonRegistry,
                 emitEvent: (event, data) => this._safeEmitEvent(event, data),
                 onMutation: () => {
@@ -171,7 +170,7 @@ export class World<R extends ComponentRegistry> {
      * Monotonic render-mutation revision for this world.
      *
      * Advances on structural mutations (entity/component add, remove, destroy)
-     * and on every component `touch()` or actor active-state change, which is
+     * and on every component `touch()` or entity active-state change, which is
      * exactly the set of events that can invalidate derived render data.
      * Render caches compare this single number to skip per-object revalidation
      * on frames where nothing they observe can have changed.
@@ -193,7 +192,7 @@ export class World<R extends ComponentRegistry> {
         return this._metricsService.getMetrics({
             entityCount: this._storage.entityCount,
             archetypeCount: this._storage.archetypeCount,
-            actorCount: this._actorRegistry.size,
+            registeredEntityCount: this._entityRegistry.size,
             freeEntityCount: this._storage.freeEntityCount,
             componentTypes: Object.keys(this._registry),
         });
@@ -215,7 +214,7 @@ export class World<R extends ComponentRegistry> {
         }
     }
 
-    createEntity(): Entity {
+    createEntity(): EntityId {
         this._validateWorldState('createEntity');
 
         if (this._storage.entityCount >= this._config.maxEntities) {
@@ -236,7 +235,7 @@ export class World<R extends ComponentRegistry> {
         }
     }
 
-    createEntityWithComponents(components: Record<string, unknown>): Entity {
+    createEntityWithComponents(components: Record<string, unknown>): EntityId {
         this._validateWorldState('createEntityWithComponents');
 
         if (this._storage.entityCount >= this._config.maxEntities) {
@@ -267,13 +266,13 @@ export class World<R extends ComponentRegistry> {
      *
      * Every set must carry the same component names (the first set's keys);
      * the values are the component instances to attach. Component lifecycle
-     * and actor registration are the caller's responsibility — this is the
-     * entity/archetype half of the bulk actor-creation path, not a replacement
-     * for `Actor`.
+     * and entity registration are the caller's responsibility — this is the
+     * entity/archetype half of the bulk entity-creation path, not a replacement
+     * for `Entity`.
      */
     createEntitiesWithComponentsBulk(
         componentSets: readonly Readonly<Record<string, unknown>>[]
-    ): readonly Entity[] {
+    ): readonly EntityId[] {
         this._validateWorldState('createEntitiesWithComponentsBulk');
 
         if (componentSets.length === 0) {
@@ -355,15 +354,15 @@ export class World<R extends ComponentRegistry> {
      * would have emitted for components placed by a bulk creation path.
      */
     notifyComponentsAttached(
+        entityId: EntityId,
         entity: Entity,
-        actor: Actor,
         componentNames: readonly string[],
         components: readonly { readonly component: unknown }[]
     ): void {
-        this._mutations.notifyComponentsAttached(entity, actor, componentNames, components);
+        this._mutations.notifyComponentsAttached(entityId, entity, componentNames, components);
     }
 
-    destroyEntity(entity: Entity): void {
+    destroyEntity(entity: EntityId): void {
         this._validateWorldState('destroyEntity');
         this._validateEntity(entity, 'destroyEntity');
 
@@ -380,7 +379,7 @@ export class World<R extends ComponentRegistry> {
     }
 
     addComponent<K extends keyof R>(
-        entity: Entity,
+        entity: EntityId,
         componentName: K,
         component?: ComponentInstance<R[K]>
     ): ComponentInstance<R[K]> {
@@ -401,7 +400,7 @@ export class World<R extends ComponentRegistry> {
         }
     }
 
-    removeComponent<K extends keyof R>(entity: Entity, componentName: K): void {
+    removeComponent<K extends keyof R>(entity: EntityId, componentName: K): void {
         this._validateWorldState('removeComponent');
         this._validateEntity(entity, 'removeComponent');
         this._validateComponentName(componentName, 'removeComponent');
@@ -420,7 +419,7 @@ export class World<R extends ComponentRegistry> {
     }
 
     getComponent<K extends keyof R>(
-        entity: Entity,
+        entity: EntityId,
         componentName: K
     ): ComponentInstance<R[K]> | undefined {
         if (this._enableValidation) {
@@ -442,7 +441,7 @@ export class World<R extends ComponentRegistry> {
         }
     }
 
-    hasComponent<K extends keyof R>(entity: Entity, componentName: K): boolean {
+    hasComponent<K extends keyof R>(entity: EntityId, componentName: K): boolean {
         return this.getComponent(entity, componentName) !== undefined;
     }
 
@@ -468,7 +467,7 @@ export class World<R extends ComponentRegistry> {
      * Gets the entity that owns a singleton component.
      * Returns undefined if the component is not a singleton or not registered.
      */
-    getSingletonEntity<K extends keyof R>(componentName: K): Entity | undefined {
+    getSingletonEntity<K extends keyof R>(componentName: K): EntityId | undefined {
         this._validateComponentName(componentName, 'getSingletonEntity');
 
         return this._singletonRegistry.getEntity(componentName as string);
@@ -492,56 +491,56 @@ export class World<R extends ComponentRegistry> {
         }
     }
 
-    registerActor(entity: Entity, actor: Actor): void {
-        this._validateWorldState('registerActor');
-        this._validateEntity(entity, 'registerActor');
+    registerEntity(entityId: EntityId, entity: Entity): void {
+        this._validateWorldState('registerEntity');
+        this._validateEntity(entityId, 'registerEntity');
 
-        if (!actor) {
-            throw new EntityError('Actor cannot be null or undefined', entity, 'registerActor');
+        if (!entity) {
+            throw new EntityError('Entity cannot be null or undefined', entityId, 'registerEntity');
         }
 
         try {
-            this._mutations.registerActor(entity, actor);
+            this._mutations.registerEntity(entityId, entity);
         } catch (error) {
             throw new EntityError(
-                'Failed to register actor',
-                entity,
-                'registerActor',
+                'Failed to register entity',
+                entityId,
+                'registerEntity',
                 error instanceof Error ? error : new Error(String(error))
             );
         }
     }
 
-    unregisterActor(entity: Entity): void {
+    unregisterEntity(entityId: EntityId): void {
         if (this._state === 'disposed') {
             return;
         }
 
-        this._mutations.unregisterActor(entity);
+        this._mutations.unregisterEntity(entityId);
     }
 
-    getActor(entity: Entity): Actor | undefined {
-        return this._actorRegistry.get(entity);
+    getEntity(entityId: EntityId): Entity | undefined {
+        return this._entityRegistry.get(entityId);
+    }
+
+    getAllEntityIds(): readonly EntityId[] {
+        this._validateWorldState('getAllEntityIds');
+        return this._storage.getAllEntityIds();
     }
 
     getAllEntities(): readonly Entity[] {
         this._validateWorldState('getAllEntities');
-        return this._storage.getAllEntities();
+        return this._entityRegistry.getAll();
     }
 
-    getAllActors(): readonly Actor[] {
-        this._validateWorldState('getAllActors');
-        return this._actorRegistry.getAll();
+    getEntitiesByTag(tag: string): readonly Entity[] {
+        this._validateWorldState('getEntitiesByTag');
+        return this._entityRegistry.getByTag(tag);
     }
 
-    getActorsByTag(tag: string): readonly Actor[] {
-        this._validateWorldState('getActorsByTag');
-        return this._actorRegistry.getByTag(tag);
-    }
-
-    getActorsByLayer(layer: number): readonly Actor[] {
-        this._validateWorldState('getActorsByLayer');
-        return this._actorRegistry.getByLayer(layer);
+    getEntitiesByLayer(layer: number): readonly Entity[] {
+        this._validateWorldState('getEntitiesByLayer');
+        return this._entityRegistry.getByLayer(layer);
     }
 
     getEntityCount(): number {
@@ -760,7 +759,7 @@ export class World<R extends ComponentRegistry> {
 
         try {
             this._state = 'disposing';
-            this._actorRegistry.clear();
+            this._entityRegistry.clear();
             this._singletonRegistry.clear();
             this._queryCache.invalidate();
             this._storage.reset();
@@ -788,7 +787,7 @@ export class World<R extends ComponentRegistry> {
         }
     }
 
-    private _validateEntity(entity: Entity, operation: string): void {
+    private _validateEntity(entity: EntityId, operation: string): void {
         if (!this._enableValidation) {
             return;
         }
@@ -852,7 +851,7 @@ export class World<R extends ComponentRegistry> {
             config: this._config,
             entityCount: this.getEntityCount(),
             archetypeCount: this.getArchetypeCount(),
-            actorCount: this._actorRegistry.size,
+            registeredEntityCount: this._entityRegistry.size,
             freeEntityCount: storage.freeEntityCount,
             nextEntityId: storage.nextEntityId,
             componentTypes: Object.keys(this._registry),

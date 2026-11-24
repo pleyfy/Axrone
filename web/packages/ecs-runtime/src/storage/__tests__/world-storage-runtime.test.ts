@@ -160,15 +160,15 @@ describe('WorldStorageRuntime', () => {
         });
     });
 
-    // ─── getAllEntities ─────────────────────────────────────────────
+    // ─── getAllEntityIds ─────────────────────────────────────────────
 
-    describe('getAllEntities', () => {
+    describe('getAllEntityIds', () => {
         it('delegates to entity store', () => {
             const storage = new WorldStorageRuntime({ TestComponent });
             const e1 = storage.createEntity();
             const e2 = storage.createEntity();
 
-            expect(storage.getAllEntities()).toEqual([e1, e2]);
+            expect(storage.getAllEntityIds()).toEqual([e1, e2]);
         });
     });
 

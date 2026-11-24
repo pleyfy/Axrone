@@ -4,28 +4,28 @@ import {
     WorldStorageRuntime as BaseWorldStorageRuntime,
 } from '../../storage/world-storage-runtime';
 import type { WorldArchetypeResolution as StorageWorldArchetypeResolution } from '../../storage/archetype-store';
-import type { ArchetypeId, ComponentRegistry, Entity } from '../types/core';
+import type { ArchetypeId, ComponentRegistry, EntityId } from '../types/core';
 
 export type WorldArchetypeResolution<R extends ComponentRegistry> = StorageWorldArchetypeResolution<
     R,
-    Entity,
+    EntityId,
     ArchetypeId
 >;
 
 export type WorldDestroyedEntity<R extends ComponentRegistry> = StorageWorldDestroyedEntity<
     R,
-    Entity,
+    EntityId,
     ArchetypeId
 >;
 
 export type WorldStorageDebugInfo<R extends ComponentRegistry> = StorageWorldStorageDebugInfo<
     R,
-    Entity,
+    EntityId,
     ArchetypeId
 >;
 
 export class WorldStorageRuntime<R extends ComponentRegistry> extends BaseWorldStorageRuntime<
     R,
-    Entity,
+    EntityId,
     ArchetypeId
 > {}

@@ -44,7 +44,7 @@ const componentMetadataMap = new WeakMap<ComponentType, ScriptMetadata>();
 /**
  * Per-type shortcut to the registry entry. Reads used to pay a string hash
  * lookup on every call; component construction resolves metadata three or
- * more times per instance, which made this a measurable share of a 50k-actor
+ * more times per instance, which made this a measurable share of a 50k-entity
  * build.
  */
 let componentEntryMap = new WeakMap<ComponentType, ScriptRegistryEntry>();

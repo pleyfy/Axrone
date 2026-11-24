@@ -3,21 +3,21 @@ import {
     createSubject,
     type IObservableSubject,
 } from '@axrone/observer';
-import type { ComponentInstance, ComponentRegistry, Entity } from '../types/core';
+import type { ComponentInstance, ComponentRegistry, EntityId } from '../types/core';
 import type { QueryResult } from '../types/system';
-import type { Actor } from '../core/actor';
+import type { Entity } from '../core/entity';
 
 export type ECSComponentName<R extends ComponentRegistry> = Extract<keyof R, string>;
 
 export type ECSEntityLifecycleEvent = {
+    readonly entityId: EntityId;
     readonly entity: Entity;
-    readonly actor: Actor;
 };
 
 export type ECSComponentChangeEvent<R extends ComponentRegistry> = {
-    readonly entity: Entity;
+    readonly entityId: EntityId;
     readonly component: ComponentInstance<R[keyof R]>;
-    readonly actor: Actor;
+    readonly entity: Entity;
 };
 
 export type ECSReactiveQueryResult<R extends ComponentRegistry> = QueryResult<
@@ -214,31 +214,31 @@ export class ECSObservables<R extends ComponentRegistry> {
             byName: (name: string) => ({
                 created: this._createEntityFilterFrom(
                     this.entityCreated,
-                    ({ actor }) => actor.name === name
+                    ({ entity }) => entity.name === name
                 ),
                 destroyed: this._createEntityFilterFrom(
                     this.entityDestroyed,
-                    ({ actor }) => actor.name === name
+                    ({ entity }) => entity.name === name
                 ),
             }),
             byTag: (tag: string) => ({
                 created: this._createEntityFilterFrom(
                     this.entityCreated,
-                    ({ actor }) => actor.tag === tag
+                    ({ entity }) => entity.tag === tag
                 ),
                 destroyed: this._createEntityFilterFrom(
                     this.entityDestroyed,
-                    ({ actor }) => actor.tag === tag
+                    ({ entity }) => entity.tag === tag
                 ),
             }),
             byLayer: (layer: number) => ({
                 created: this._createEntityFilterFrom(
                     this.entityCreated,
-                    ({ actor }) => actor.layer === layer
+                    ({ entity }) => entity.layer === layer
                 ),
                 destroyed: this._createEntityFilterFrom(
                     this.entityDestroyed,
-                    ({ actor }) => actor.layer === layer
+                    ({ entity }) => entity.layer === layer
                 ),
             }),
         };

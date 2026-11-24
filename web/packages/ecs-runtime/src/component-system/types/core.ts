@@ -1,15 +1,15 @@
 import type { Component } from '../core/component';
 
-declare const EntityBrand: unique symbol;
+declare const EntityIdBrand: unique symbol;
 declare const ComponentBrand: unique symbol;
 declare const SystemBrand: unique symbol;
-declare const ActorBrand: unique symbol;
+declare const EntityUidBrand: unique symbol;
 declare const ArchetypeBrand: unique symbol;
 
-export type Entity = number & { readonly [EntityBrand]: true };
+export type EntityId = number & { readonly [EntityIdBrand]: true };
 export type ComponentId<T extends string = string> = T & { readonly [ComponentBrand]: true };
 export type SystemId<T extends string = string> = T & { readonly [SystemBrand]: true };
-export type ActorId<T extends string = string> = T & { readonly [ActorBrand]: true };
+export type EntityUid<T extends string = string> = T & { readonly [EntityUidBrand]: true };
 export type ArchetypeId = string & { readonly [ArchetypeBrand]: true };
 
 export type ComponentConstructor<T extends Component = Component> = new (...args: any[]) => T;

@@ -15,7 +15,7 @@ describe('EntityStore', () => {
         store.setEntityArchetype(first.entity, 'Position');
         expect(store.getEntityArchetypeId(first.entity)).toBe('Position');
         expect(store.destroyEntity(first.entity)).toBe('Position');
-        expect(store.getAllEntities()).toEqual([second.entity]);
+        expect(store.getAllEntityIds()).toEqual([second.entity]);
 
         const recycled = store.createEntity();
         expect(recycled).toEqual({ entity: 1, archetypeId: 'EMPTY' });
@@ -39,9 +39,9 @@ describe('EntityStore', () => {
         });
     });
 
-    // ─── getAllEntities ─────────────────────────────────────────────
+    // ─── getAllEntityIds ─────────────────────────────────────────────
 
-    describe('getAllEntities', () => {
+    describe('getAllEntityIds', () => {
         it('returns all live entities', () => {
             const store = new EntityStore();
             store.setEmptyArchetypeId('EMPTY');
@@ -50,16 +50,16 @@ describe('EntityStore', () => {
             const e2 = store.createEntity();
             const e3 = store.createEntity();
 
-            expect(store.getAllEntities()).toEqual([e1.entity, e2.entity, e3.entity]);
+            expect(store.getAllEntityIds()).toEqual([e1.entity, e2.entity, e3.entity]);
 
             store.destroyEntity(e2.entity);
-            expect(store.getAllEntities()).toEqual([e1.entity, e3.entity]);
+            expect(store.getAllEntityIds()).toEqual([e1.entity, e3.entity]);
         });
 
         it('returns empty array when no entities exist', () => {
             const store = new EntityStore();
             store.setEmptyArchetypeId('EMPTY');
-            expect(store.getAllEntities()).toEqual([]);
+            expect(store.getAllEntityIds()).toEqual([]);
         });
     });
 
@@ -102,7 +102,7 @@ describe('EntityStore', () => {
             expect(store.entityCount).toBe(0);
             expect(store.freeEntityCount).toBe(0);
             expect(store.nextEntityId).toBe(1);
-            expect(store.getAllEntities()).toEqual([]);
+            expect(store.getAllEntityIds()).toEqual([]);
         });
 
         it('requires setEmptyArchetypeId after reset before creating entities', () => {

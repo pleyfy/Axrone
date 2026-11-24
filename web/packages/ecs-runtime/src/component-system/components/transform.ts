@@ -2,7 +2,7 @@ import { Component } from '../core/component';
 import { script } from '../decorators/script';
 import { Mat4, Vec3, Quat } from '@axrone/numeric';
 import type { Hierarchy } from './hierarchy';
-import type { Actor } from '../core/actor';
+import type { Entity } from '../core/entity';
 import type { ComponentType } from '../types/component';
 
 const WORLD_TRANSLATION_EPSILON = 1e-8;
@@ -48,14 +48,14 @@ export class Transform extends Component {
     private _worldScale?: Vec3;
 
     /**
-     * Cached `Hierarchy` component for the current actor revision. Every
+     * Cached `Hierarchy` component for the current entity revision. Every
      * `children` walk (and therefore every local-TRS write) used to resolve it
-     * through `actor.getComponent`. `actor.revision` bumps whenever the
+     * through `entity.getComponent`. `entity.revision` bumps whenever the
      * component set changes, so a revision match is a sound cache key.
      */
     private _hierarchyCache: Hierarchy | null = null;
-    private _hierarchyCacheActor?: Actor;
-    private _hierarchyCacheActorRevision = -1;
+    private _hierarchyCacheEntity?: Entity;
+    private _hierarchyCacheEntityRevision = -1;
     private _hierarchyCacheValid = false;
 
     get position(): Vec3 {
@@ -334,7 +334,7 @@ export class Transform extends Component {
 
     findChild(name: string): Transform | undefined {
         for (const child of this.children) {
-            if (child.actor?.name === name) {
+            if (child.entity?.name === name) {
                 return child;
             }
         }
@@ -344,7 +344,7 @@ export class Transform extends Component {
 
     findChildByTag(tag: string): Transform | undefined {
         for (const child of this.children) {
-            if (child.actor?.tag === tag) {
+            if (child.entity?.tag === tag) {
                 return child;
             }
         }
@@ -356,7 +356,7 @@ export class Transform extends Component {
         const results: Transform[] = [];
 
         for (const child of this.children) {
-            if (child.actor?.tag === tag) {
+            if (child.entity?.tag === tag) {
                 results.push(child);
             }
         }
@@ -368,7 +368,7 @@ export class Transform extends Component {
         componentType: ComponentType<T>
     ): Transform | undefined {
         for (const child of this.children) {
-            if (child.actor?.hasComponent(componentType)) {
+            if (child.entity?.hasComponent(componentType)) {
                 return child;
             }
         }
@@ -380,7 +380,7 @@ export class Transform extends Component {
         const results: Transform[] = [];
 
         for (const child of this.children) {
-            if (child.actor?.hasComponent(componentType)) {
+            if (child.entity?.hasComponent(componentType)) {
                 results.push(child);
             }
         }
@@ -394,7 +394,7 @@ export class Transform extends Component {
         for (let index = 0; index < queue.length; index += 1) {
             const current = queue[index]!;
 
-            if (current !== this && current.actor?.name === name) {
+            if (current !== this && current.entity?.name === name) {
                 return current;
             }
 
@@ -410,7 +410,7 @@ export class Transform extends Component {
         for (let index = 0; index < queue.length; index += 1) {
             const current = queue[index]!;
 
-            if (current !== this && current.actor?.tag === tag) {
+            if (current !== this && current.entity?.tag === tag) {
                 return current;
             }
 
@@ -533,8 +533,8 @@ export class Transform extends Component {
         this._localDirty = true;
 
         this._hierarchyCache = null;
-        this._hierarchyCacheActor = undefined;
-        this._hierarchyCacheActorRevision = -1;
+        this._hierarchyCacheEntity = undefined;
+        this._hierarchyCacheEntityRevision = -1;
         this._hierarchyCacheValid = false;
     }
 
@@ -561,15 +561,15 @@ export class Transform extends Component {
     }
 
     private _getHierarchy(): Hierarchy | undefined {
-        const actor = this.actor;
-        if (!actor) {
+        const entity = this.entity;
+        if (!entity) {
             return undefined;
         }
 
         if (
             this._hierarchyCacheValid &&
-            this._hierarchyCacheActor === actor &&
-            this._hierarchyCacheActorRevision === actor.revision
+            this._hierarchyCacheEntity === entity &&
+            this._hierarchyCacheEntityRevision === entity.revision
         ) {
             return this._hierarchyCache ?? undefined;
         }
@@ -578,20 +578,20 @@ export class Transform extends Component {
             (this.world as any)?.registry?.Hierarchy || (globalThis as any).Hierarchy;
 
         const hierarchy = HierarchyClass
-            ? (actor.getComponent(HierarchyClass) as Hierarchy | undefined)
+            ? (entity.getComponent(HierarchyClass) as Hierarchy | undefined)
             : undefined;
 
         this._hierarchyCache = hierarchy ?? null;
-        this._hierarchyCacheActor = actor;
-        this._hierarchyCacheActorRevision = actor.revision;
+        this._hierarchyCacheEntity = entity;
+        this._hierarchyCacheEntityRevision = entity.revision;
         this._hierarchyCacheValid = true;
 
         return hierarchy;
     }
 
     private _resolveTransformFromHierarchy(hierarchy?: Hierarchy): Transform | undefined {
-        const actor = (hierarchy as any)?.actor;
-        if (!actor) {
+        const entity = (hierarchy as any)?.entity;
+        if (!entity) {
             return undefined;
         }
 
@@ -603,7 +603,7 @@ export class Transform extends Component {
             return undefined;
         }
 
-        return actor.getComponent(TransformClass) as Transform | undefined;
+        return entity.getComponent(TransformClass) as Transform | undefined;
     }
 
     private _setDetachedParent(value?: Transform): void {

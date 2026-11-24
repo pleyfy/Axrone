@@ -1,7 +1,7 @@
 import type { Archetype } from '../../storage/archetype';
 import type { StorageComponentPool } from '../../storage/types';
 import type { WorldQueryRuntime } from '../../query/world-query-runtime';
-import type { ArchetypeId, ComponentInstance, ComponentRegistry, Entity } from '../types/core';
+import type { ArchetypeId, ComponentInstance, ComponentRegistry, EntityId } from '../types/core';
 import type { QueryResult } from '../types/system';
 
 const EMPTY_QUERY_RESULTS = Object.freeze([]) as readonly never[];
@@ -11,7 +11,7 @@ export interface WorldQueryExecutionRuntimeOptions<
     TArchetypeId extends string = ArchetypeId,
 > {
     readonly queryRuntime: WorldQueryRuntime<TArchetypeId>;
-    readonly getArchetype: (id: TArchetypeId) => Archetype<R, Entity, TArchetypeId> | undefined;
+    readonly getArchetype: (id: TArchetypeId) => Archetype<R, EntityId, TArchetypeId> | undefined;
     readonly onQueryResolved?: () => void;
 }
 
@@ -32,7 +32,7 @@ export class WorldQueryExecutionRuntime<
             return EMPTY_QUERY_RESULTS as readonly QueryResult<R, Q>[];
         }
 
-        const resolvedArchetypes = new Array<Archetype<R, Entity, TArchetypeId>>(
+        const resolvedArchetypes = new Array<Archetype<R, EntityId, TArchetypeId>>(
             matchingArchetypes.length
         );
         let resolvedArchetypeCount = 0;
@@ -72,7 +72,7 @@ export class WorldQueryExecutionRuntime<
     }
 
     private _archetypeHasAllComponents<Q extends readonly (keyof R)[]>(
-        archetype: Archetype<R, Entity, TArchetypeId>,
+        archetype: Archetype<R, EntityId, TArchetypeId>,
         components: Q
     ): boolean {
         for (let componentIndex = 0; componentIndex < components.length; componentIndex++) {
@@ -87,10 +87,10 @@ export class WorldQueryExecutionRuntime<
     private _appendArchetypeResults<Q extends readonly (keyof R)[]>(
         results: Array<QueryResult<R, Q>>,
         resultIndex: number,
-        archetype: Archetype<R, Entity, TArchetypeId>,
+        archetype: Archetype<R, EntityId, TArchetypeId>,
         components: Q
     ): number {
-        const componentPools = new Array<StorageComponentPool<any, Entity>>(components.length);
+        const componentPools = new Array<StorageComponentPool<any, EntityId>>(components.length);
 
         for (let componentIndex = 0; componentIndex < components.length; componentIndex++) {
             const componentName = components[componentIndex] as string;

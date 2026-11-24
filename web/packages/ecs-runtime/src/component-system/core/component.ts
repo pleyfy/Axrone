@@ -1,7 +1,7 @@
-import type { Entity } from '../types/core';
+import type { EntityId } from '../types/core';
 import type { ComponentType, ComponentMetadata } from '../types/component';
 import type { World } from './world';
-import type { Actor } from './actor';
+import type { Entity } from './entity';
 import type { Transform } from '../components/transform';
 import { getComponentMetadata } from '../decorators/script';
 import { getCreationTimestamp } from './creation-clock';
@@ -88,7 +88,7 @@ interface ComponentMetrics {
 interface ComponentCache {
     transformCache: WeakRef<any> | null;
     componentCache?: Map<ComponentType, WeakRef<Component>>;
-    actorCache?: Map<ComponentType, WeakRef<Actor>[]>;
+    entityCache?: Map<ComponentType, WeakRef<Entity>[]>;
     lastCacheUpdate: number;
 }
 
@@ -147,8 +147,8 @@ export abstract class Component<
         return tracked;
     }
 
+    protected entityId?: EntityId;
     protected entity?: Entity;
-    protected actor?: Actor;
     protected world?: World<any>;
 
     private _state: ComponentState = 'uninitialized';
@@ -187,7 +187,7 @@ export abstract class Component<
 
     /**
      * Cache block is created on first access: components that never use the
-     * transform/component/actor caches (the bulk of freshly created sprites in
+     * transform/component/entity caches (the bulk of freshly created sprites in
      * a static scene) pay no object per instance.
      */
     private _cacheInstance: ComponentCache | null = null;
@@ -210,7 +210,7 @@ export abstract class Component<
 
     /**
      * World render-mutation clock, assigned while the component is attached to
-     * an actor. `touch()` advances it so render caches can skip their whole
+     * an entity. `touch()` advances it so render caches can skip their whole
      * per-object sweep on frames where no component changed.
      */
     private _renderClock: RenderMutationClock | null = null;
@@ -267,7 +267,7 @@ export abstract class Component<
 
     /**
      * @internal Binds the owning world's render-mutation clock. Called by the
-     * actor when the component is attached; `null` detaches it.
+     * entity when the component is attached; `null` detaches it.
      */
     setRenderMutationClock(clock: RenderMutationClock | null): void {
         this._renderClock = clock;
@@ -289,9 +289,9 @@ export abstract class Component<
         const oldPriority = this._priority;
         this._priority = value as ComponentPriority;
 
-        if (this.actor && oldPriority !== this._priority) {
-            // Priority decides lifecycle order; the actor caches it.
-            this.actor.invalidateComponentOrder();
+        if (this.entity && oldPriority !== this._priority) {
+            // Priority decides lifecycle order; the entity caches it.
+            this.entity.invalidateComponentOrder();
             this._emitEvent('component:priorityChanged', {
                 oldPriority,
                 newPriority: this._priority,
@@ -400,12 +400,12 @@ export abstract class Component<
     }
 
     protected getComponent<T extends Component>(componentType: ComponentType<T>): T | undefined {
-        if (!this.actor) {
+        if (!this.entity) {
             return undefined;
         }
 
         if (!this._enableCaching) {
-            return this.actor.getComponent(componentType);
+            return this.entity.getComponent(componentType);
         }
 
         const now = performance.now();
@@ -419,7 +419,7 @@ export abstract class Component<
             }
         }
 
-        const component = this.actor.getComponent(componentType);
+        const component = this.entity.getComponent(componentType);
         if (component) {
             this._getComponentCache().set(componentType, new WeakRef(component));
             this._cache.lastCacheUpdate = now;
@@ -444,11 +444,11 @@ export abstract class Component<
         componentType: ComponentType<T>,
         ...args: any[]
     ): T {
-        if (!this.actor) {
-            throw new ComponentError('Actor not available', this.constructor.name, this._id);
+        if (!this.entity) {
+            throw new ComponentError('Entity not available', this.constructor.name, this._id);
         }
 
-        const component = this.actor.addComponent(componentType, ...args);
+        const component = this.entity.addComponent(componentType, ...args);
 
         this._getDependencies().set(componentType, component);
 
@@ -462,7 +462,7 @@ export abstract class Component<
     }
 
     protected removeComponent<T extends Component>(componentType: ComponentType<T>): void {
-        if (!this.actor) {
+        if (!this.entity) {
             return;
         }
 
@@ -480,25 +480,25 @@ export abstract class Component<
             }
         }
 
-        this.actor.removeComponent(componentType);
+        this.entity.removeComponent(componentType);
         this._dependencies?.delete(componentType);
         this._clearCache();
     }
 
-    protected findActorOfType<T extends Component>(
+    protected findEntityOfType<T extends Component>(
         componentType: ComponentType<T>
-    ): Actor | undefined {
+    ): Entity | undefined {
         if (!this.world) {
             return undefined;
         }
 
         if (!this._enableCaching) {
-            return this._findActorOfTypeDirect(componentType);
+            return this._findEntityOfTypeDirect(componentType);
         }
 
         const now = performance.now();
-        const actorCache = this._cache.actorCache;
-        const cachedRefs = actorCache?.get(componentType);
+        const entityCache = this._cache.entityCache;
+        const cachedRefs = entityCache?.get(componentType);
 
         if (
             cachedRefs &&
@@ -511,47 +511,47 @@ export abstract class Component<
             }
         }
 
-        const actor = this._findActorOfTypeDirect(componentType);
-        if (actor) {
-            this._getActorCache().set(componentType, [new WeakRef(actor)]);
+        const entity = this._findEntityOfTypeDirect(componentType);
+        if (entity) {
+            this._getEntityCache().set(componentType, [new WeakRef(entity)]);
             this._cache.lastCacheUpdate = now;
         }
 
-        return actor;
+        return entity;
     }
 
-    protected findActorsOfType<T extends Component>(
+    protected findEntitiesOfType<T extends Component>(
         componentType: ComponentType<T>
-    ): readonly Actor[] {
+    ): readonly Entity[] {
         if (!this.world) {
             return [];
         }
 
         if (!this._enableCaching) {
-            return this._findActorsOfTypeDirect(componentType);
+            return this._findEntitiesOfTypeDirect(componentType);
         }
 
         const now = performance.now();
-        const actorCache = this._cache.actorCache;
-        const cachedRefs = actorCache?.get(componentType);
+        const entityCache = this._cache.entityCache;
+        const cachedRefs = entityCache?.get(componentType);
 
         if (cachedRefs && now - this._cache.lastCacheUpdate < this._cacheTimeout) {
-            const cached = cachedRefs.map((ref) => ref.deref()).filter(Boolean) as Actor[];
+            const cached = cachedRefs.map((ref) => ref.deref()).filter(Boolean) as Entity[];
             if (cached.length === cachedRefs.length) {
                 return cached;
             }
         }
 
-        const actors = this._findActorsOfTypeDirect(componentType);
-        if (actors.length > 0) {
-            this._getActorCache().set(
+        const entities = this._findEntitiesOfTypeDirect(componentType);
+        if (entities.length > 0) {
+            this._getEntityCache().set(
                 componentType,
-                actors.map((actor) => new WeakRef(actor))
+                entities.map((entity) => new WeakRef(entity))
             );
             this._cache.lastCacheUpdate = now;
         }
 
-        return actors;
+        return entities;
     }
 
     async _internalOnLoad(): Promise<void> {
@@ -763,8 +763,8 @@ export abstract class Component<
             persistent: this._persistent,
             executeInEditMode: this._executeInEditMode,
             creationTime: this._creationTime,
-            entity: this.entity,
-            actor: this.actor?.id,
+            entityId: this.entityId,
+            entityUid: this.entity?.id,
             world: this.world ? 'attached' : 'detached',
             dependencies: Array.from(this._dependencies?.keys() ?? []).map((type) => type.name),
             dependents: Array.from(this._dependents ?? [])
@@ -775,7 +775,7 @@ export abstract class Component<
                 ? {
                       transformCached: !!this._cache.transformCache?.deref(),
                       componentsCached: this._cache.componentCache?.size ?? 0,
-                      actorsCached: this._cache.actorCache?.size ?? 0,
+                      entitiesCached: this._cache.entityCache?.size ?? 0,
                       lastCacheUpdate: this._cache.lastCacheUpdate,
                   }
                 : null,
@@ -858,12 +858,12 @@ export abstract class Component<
         return this._dependents;
     }
 
-    private _getActorCache(): Map<ComponentType, WeakRef<Actor>[]> {
-        if (!this._cache.actorCache) {
-            this._cache.actorCache = new Map();
+    private _getEntityCache(): Map<ComponentType, WeakRef<Entity>[]> {
+        if (!this._cache.entityCache) {
+            this._cache.entityCache = new Map();
         }
 
-        return this._cache.actorCache;
+        return this._cache.entityCache;
     }
 
     private _cleanupDeadReferences(instances: Set<WeakRef<Component>>): void {
@@ -875,7 +875,7 @@ export abstract class Component<
     }
 
     private _getTransformDirect(): Transform | undefined {
-        if (!this.actor) {
+        if (!this.entity) {
             return undefined;
         }
 
@@ -887,15 +887,15 @@ export abstract class Component<
             (globalThis as unknown as { Transform?: ComponentType<Transform> }).Transform;
 
         if (TransformClass) {
-            return this.actor.getComponent(TransformClass);
+            return this.entity.getComponent(TransformClass);
         }
 
         return undefined;
     }
 
-    private _findActorOfTypeDirect<T extends Component>(
+    private _findEntityOfTypeDirect<T extends Component>(
         componentType: ComponentType<T>
-    ): Actor | undefined {
+    ): Entity | undefined {
         if (!this.world) {
             return undefined;
         }
@@ -903,7 +903,7 @@ export abstract class Component<
         try {
             const queryResults = this.world.query(getComponentTypeName(componentType) as any);
             if (queryResults.length > 0) {
-                return this.world.getActor(queryResults[0].entity);
+                return this.world.getEntity(queryResults[0].entity);
             }
         } catch (error) {
             console.warn(
@@ -915,21 +915,21 @@ export abstract class Component<
         return undefined;
     }
 
-    private _findActorsOfTypeDirect<T extends Component>(
+    private _findEntitiesOfTypeDirect<T extends Component>(
         componentType: ComponentType<T>
-    ): readonly Actor[] {
+    ): readonly Entity[] {
         if (!this.world) {
             return [];
         }
 
         try {
-            const results: Actor[] = [];
+            const results: Entity[] = [];
             const queryResults = this.world.query(getComponentTypeName(componentType) as any);
 
             for (const result of queryResults) {
-                const actor = this.world.getActor(result.entity);
-                if (actor) {
-                    results.push(actor);
+                const entity = this.world.getEntity(result.entity);
+                if (entity) {
+                    results.push(entity);
                 }
             }
 
@@ -1005,7 +1005,7 @@ export abstract class Component<
             size += 200;
 
             size += (this._cache.componentCache?.size ?? 0) * 50;
-            size += (this._cache.actorCache?.size ?? 0) * 100;
+            size += (this._cache.entityCache?.size ?? 0) * 100;
 
             size += (this._dependencies?.size ?? 0) * 50;
             size += (this._dependents?.size ?? 0) * 50;
@@ -1026,7 +1026,7 @@ export abstract class Component<
 
         this._cache.transformCache = null;
         this._cache.componentCache?.clear();
-        this._cache.actorCache?.clear();
+        this._cache.entityCache?.clear();
         this._cache.lastCacheUpdate = 0;
     }
 
@@ -1037,8 +1037,8 @@ export abstract class Component<
                 eventBus.emit(eventType, {
                     componentId: this._id,
                     componentType: this.constructor.name,
-                    entity: this.entity,
-                    actorId: this.actor?.id,
+                    entityId: this.entityId,
+                    entityUid: this.entity?.id,
                     timestamp: performance.now(),
                     ...data,
                 });
@@ -1113,8 +1113,8 @@ export abstract class Component<
         this._dependencies = undefined;
         this._dependents = undefined;
 
+        this.entityId = undefined;
         this.entity = undefined;
-        this.actor = undefined;
         this.world = undefined;
         this._renderClock = null;
 

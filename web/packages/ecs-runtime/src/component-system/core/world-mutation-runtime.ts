@@ -7,11 +7,11 @@ import type {
     ComponentConstructor,
     ComponentInstance,
     ComponentRegistry,
-    Entity,
+    EntityId,
 } from '../types/core';
 import type { ECSEventMap } from '../types/events';
-import type { Actor } from './actor';
-import { WorldActorRegistry } from './world-actor-registry';
+import type { Entity } from './entity';
+import { WorldEntityRegistry } from './world-entity-registry';
 import { WorldSingletonRegistry } from './world-singleton-registry';
 
 type WorldMutationEventDispatcher<R extends ComponentRegistry> = <T extends EventKey<ECSEventMap<R>>>(
@@ -23,8 +23,8 @@ const EMPTY_ENTITIES: readonly never[] = Object.freeze([]);
 
 export interface WorldMutationRuntimeOptions<R extends ComponentRegistry> {
     readonly registry: R;
-    readonly storage: WorldStorageRuntime<R, Entity, ArchetypeId>;
-    readonly actorRegistry: WorldActorRegistry;
+    readonly storage: WorldStorageRuntime<R, EntityId, ArchetypeId>;
+    readonly entityRegistry: WorldEntityRegistry;
     readonly singletonRegistry: WorldSingletonRegistry;
     readonly emitEvent: WorldMutationEventDispatcher<R>;
     readonly onMutation: () => void;
@@ -45,7 +45,7 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
     private _singletonComponentCount = 0;
     /** Reused resolution target for the add-component hot path. */
     private readonly _transitionScratch: {
-        archetype: StorageArchetype<any, Entity, ArchetypeId> | null;
+        archetype: StorageArchetype<any, EntityId, ArchetypeId> | null;
         created: boolean;
     } = {
         archetype: null,
@@ -58,13 +58,13 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
         }
     }
 
-    createEntity(): Entity {
+    createEntity(): EntityId {
         const entity = this._options.storage.createEntity();
         this._options.onMutation();
         return entity;
     }
 
-    createEntityWithComponents(components: Record<string, unknown>): Entity {
+    createEntityWithComponents(components: Record<string, unknown>): EntityId {
         const entries = Object.entries(components).filter(([, component]) => component !== undefined);
 
         if (entries.length === 0) {
@@ -89,12 +89,12 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
      *
      * Each set is validated against the shared signature so a typo cannot
      * silently fall back to a pooled component instance. Callers are
-     * responsible for the component instances themselves (the actor bulk path
+     * responsible for the component instances themselves (the entity bulk path
      * attaches real, fully constructed components and keeps their lifecycle).
      */
     createEntitiesWithComponentsBulk(
         componentSets: readonly Readonly<Record<string, unknown>>[]
-    ): readonly Entity[] {
+    ): readonly EntityId[] {
         const count = componentSets.length;
         if (count === 0) {
             return EMPTY_ENTITIES;
@@ -117,7 +117,7 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
 
         const resolution = this._options.storage.getOrCreateArchetype(signature);
         const archetype = resolution.archetype;
-        const entities = new Array<Entity>(count);
+        const entities = new Array<EntityId>(count);
         for (let index = 0; index < count; index += 1) {
             entities[index] = this._options.storage.createEntityInArchetype(
                 archetype,
@@ -139,8 +139,8 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
      * archetype. Events without subscribers are skipped.
      */
     notifyComponentsAttached(
+        entityId: EntityId,
         entity: Entity,
-        actor: Actor,
         componentNames: readonly string[],
         components: readonly { readonly component: unknown }[]
     ): void {
@@ -152,16 +152,16 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
             this._options.emitEvent(
                 `${componentName}Added` as EventKey<ECSEventMap<R>>,
                 {
-                    entity,
+                    entityId,
                     component: components[index]!.component,
-                    actor,
+                    entity,
                 } as ECSEventMap<R>[EventKey<ECSEventMap<R>>]
             );
         }
     }
 
-    destroyEntity(entity: Entity): void {
-        const removedEntity = this._options.storage.destroyEntity(entity);
+    destroyEntity(entityId: EntityId): void {
+        const removedEntity = this._options.storage.destroyEntity(entityId);
         if (!removedEntity) {
             return;
         }
@@ -170,7 +170,7 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
         // Singletons are opt-in per component type; most registries have none,
         // so avoid the per-destroy key snapshot in that case.
         if (this._singletonComponentCount > 0) {
-            this._options.singletonRegistry.clearEntity(entity, Object.keys(removedComponents));
+            this._options.singletonRegistry.clearEntity(entityId, Object.keys(removedComponents));
         }
 
         for (const [componentName, component] of Object.entries(removedComponents)) {
@@ -180,11 +180,11 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
             }
         }
 
-        const actor = this._options.actorRegistry.unregister(entity);
-        if (actor && this._hasEventSubscribers('EntityDestroyed')) {
+        const entity = this._options.entityRegistry.unregister(entityId);
+        if (entity && this._hasEventSubscribers('EntityDestroyed')) {
             this._options.emitEvent('EntityDestroyed' as EventKey<ECSEventMap<R>>, {
+                entityId,
                 entity,
-                actor,
             } as ECSEventMap<R>[EventKey<ECSEventMap<R>>]);
         }
 
@@ -192,7 +192,7 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
     }
 
     addComponent<K extends keyof R>(
-        entity: Entity,
+        entityId: EntityId,
         componentName: K,
         component?: ComponentInstance<R[K]>
     ): ComponentInstance<R[K]> {
@@ -201,7 +201,7 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
         if (this._isSingletonComponent(componentKey)) {
             const existingSingleton = this._options.singletonRegistry.get(componentKey);
             if (existingSingleton) {
-                if (existingSingleton.entity !== entity) {
+                if (existingSingleton.entity !== entityId) {
                     throw new Error(
                         `Singleton component '${componentKey}' already exists on entity ${existingSingleton.entity}`
                     );
@@ -211,7 +211,7 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
             }
         }
 
-        const currentArchetypeId = this._options.storage.getEntityArchetypeId(entity);
+        const currentArchetypeId = this._options.storage.getEntityArchetypeId(entityId);
         if (!currentArchetypeId) {
             throw new Error('Entity not found');
         }
@@ -222,7 +222,7 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
         }
 
         if (currentArchetype.signature.includes(componentKey)) {
-            const existingComponent = currentArchetype.getComponent(entity, componentKey);
+            const existingComponent = currentArchetype.getComponent(entityId, componentKey);
             if (existingComponent) {
                 return existingComponent as ComponentInstance<R[K]>;
             }
@@ -244,25 +244,25 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
         }
 
         const finalComponent = component || pool.acquire();
-        const removedComponents = currentArchetype.removeEntity(entity);
+        const removedComponents = currentArchetype.removeEntity(entityId);
         removedComponents[componentKey] = finalComponent;
-        targetArchetype.addEntity(entity, removedComponents);
-        this._options.storage.setEntityArchetype(entity, targetArchetype.id);
+        targetArchetype.addEntity(entityId, removedComponents);
+        this._options.storage.setEntityArchetype(entityId, targetArchetype.id);
 
         if (createdArchetype) {
             this._options.onStructureChange();
         }
 
         if (this._isSingletonComponent(componentKey)) {
-            this._options.singletonRegistry.set(componentKey, entity, finalComponent);
+            this._options.singletonRegistry.set(componentKey, entityId, finalComponent);
         }
 
-        const actor = this._options.actorRegistry.get(entity);
-        if (actor && this._hasEventSubscribers(`${componentKey}Added`)) {
+        const entity = this._options.entityRegistry.get(entityId);
+        if (entity && this._hasEventSubscribers(`${componentKey}Added`)) {
             this._options.emitEvent(`${componentKey}Added` as EventKey<ECSEventMap<R>>, {
-                entity,
+                entityId,
                 component: finalComponent,
-                actor,
+                entity,
             } as ECSEventMap<R>[EventKey<ECSEventMap<R>>]);
         }
 
@@ -270,9 +270,9 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
         return finalComponent;
     }
 
-    removeComponent<K extends keyof R>(entity: Entity, componentName: K): void {
+    removeComponent<K extends keyof R>(entityId: EntityId, componentName: K): void {
         const componentKey = componentName as string;
-        const currentArchetypeId = this._options.storage.getEntityArchetypeId(entity);
+        const currentArchetypeId = this._options.storage.getEntityArchetypeId(entityId);
         if (!currentArchetypeId) {
             return;
         }
@@ -287,19 +287,19 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
             created: createdArchetype,
         } = this._options.storage.resolveRemoveComponentArchetype(currentArchetype, componentKey);
 
-        const removedComponents = currentArchetype.removeEntity(entity);
+        const removedComponents = currentArchetype.removeEntity(entityId);
         const removedComponent = removedComponents[componentKey];
         delete removedComponents[componentKey];
 
-        targetArchetype.addEntity(entity, removedComponents);
-        this._options.storage.setEntityArchetype(entity, targetArchetype.id);
+        targetArchetype.addEntity(entityId, removedComponents);
+        this._options.storage.setEntityArchetype(entityId, targetArchetype.id);
 
         if (createdArchetype) {
             this._options.onStructureChange();
         }
 
         if (this._isSingletonComponent(componentKey)) {
-            this._options.singletonRegistry.clearComponent(componentKey, entity);
+            this._options.singletonRegistry.clearComponent(componentKey, entityId);
         }
 
         const pool = currentArchetype.components.get(componentKey);
@@ -307,30 +307,30 @@ export class WorldMutationRuntime<R extends ComponentRegistry> {
             pool.release(removedComponent);
         }
 
-        const actor = this._options.actorRegistry.get(entity);
-        if (actor && this._hasEventSubscribers(`${componentKey}Removed`)) {
+        const entity = this._options.entityRegistry.get(entityId);
+        if (entity && this._hasEventSubscribers(`${componentKey}Removed`)) {
             this._options.emitEvent(`${componentKey}Removed` as EventKey<ECSEventMap<R>>, {
-                entity,
+                entityId,
                 component: removedComponent,
-                actor,
+                entity,
             } as ECSEventMap<R>[EventKey<ECSEventMap<R>>]);
         }
 
         this._options.onMutation();
     }
 
-    registerActor(entity: Entity, actor: Actor): void {
-        this._options.actorRegistry.register(entity, actor);
+    registerEntity(entityId: EntityId, entity: Entity): void {
+        this._options.entityRegistry.register(entityId, entity);
         if (this._hasEventSubscribers('EntityCreated')) {
             this._options.emitEvent('EntityCreated' as EventKey<ECSEventMap<R>>, {
+                entityId,
                 entity,
-                actor,
             } as ECSEventMap<R>[EventKey<ECSEventMap<R>>]);
         }
     }
 
-    unregisterActor(entity: Entity): void {
-        this._options.actorRegistry.unregister(entity);
+    unregisterEntity(entityId: EntityId): void {
+        this._options.entityRegistry.unregister(entityId);
     }
 
     registerComponentType(componentName: string, componentType: ComponentConstructor): void {

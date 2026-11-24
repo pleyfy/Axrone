@@ -10,7 +10,7 @@ export default createMultiEntryConfig({
         index: 'src/index.ts',
         core: 'src/core.ts',
         world: 'src/world.ts',
-        actor: 'src/actor.ts',
+        entity: 'src/entity.ts',
         component: 'src/component.ts',
         decorators: 'src/decorators.ts',
         components: 'src/components.ts',
