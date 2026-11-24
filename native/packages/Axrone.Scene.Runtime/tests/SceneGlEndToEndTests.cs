@@ -20,12 +20,12 @@ public sealed class SceneGlEndToEndTests
     public void AnimatedSkinnedSceneRendersEveryPathDeterministically()
     {
         using var context = new GLContext(new MockGLApi { EnableCallLogging = false });
-        using SceneRuntime runtime = CreateScene(out SceneActor skinnedActor, out SceneActor cameraActor);
+        using SceneRuntime runtime = CreateScene(out SceneEntity skinnedEntity, out SceneEntity cameraEntity);
         runtime.Animators.Should().NotBeNull();
-        runtime.Animators!.Bind(skinnedActor, CreateController()).Should().BeTrue();
+        runtime.Animators!.Bind(skinnedEntity, CreateController()).Should().BeTrue();
         runtime.Animators.Step(0.5f, runtime.BonePaletteSink);
 
-        runtime.BonePalettes.TryGetBonePalette(skinnedActor, out ReadOnlySpan<Mat4> palette).Should().BeTrue();
+        runtime.BonePalettes.TryGetBonePalette(skinnedEntity, out ReadOnlySpan<Mat4> palette).Should().BeTrue();
         palette[0].M14.Should().BeApproximately(0.5f, 0.001f);
 
         using var renderer = new SceneGlFrameRenderer(context, runtime);
@@ -45,13 +45,13 @@ public sealed class SceneGlEndToEndTests
         second.DrawCalls.Should().Be(first.DrawCalls);
         second.TrianglesSubmitted.Should().Be(first.TrianglesSubmitted);
 
-        runtime.World.GetTransform3D(cameraActor).SetPosition(new Vec3(0, 0, 1));
+        runtime.World.GetTransform3D(cameraEntity).SetPosition(new Vec3(0, 0, 1));
         runtime.World.UpdateTransforms();
         SceneRenderStats near = renderer.Render(2, elapsedSeconds: 1.0f);
         near.DrawCalls.Should().Be(5);
         runtime.Frame.LodItems[0].MeshId.Should().Be(SceneAssetId<MeshAssetTag>.FromName("mesh/near"));
 
-        runtime.BonePalettes.Remove(skinnedActor);
+        runtime.BonePalettes.Remove(skinnedEntity);
         SceneRenderStats unskinned = renderer.Render(3, elapsedSeconds: 1.0f);
         unskinned.DrawCalls.Should().Be(4);
         unskinned.TrianglesSubmitted.Should().Be(9);
@@ -88,7 +88,7 @@ public sealed class SceneGlEndToEndTests
         delta.Should().Be(0);
     }
 
-    private static SceneRuntime CreateScene(out SceneActor skinnedActor, out SceneActor cameraActor)
+    private static SceneRuntime CreateScene(out SceneEntity skinnedEntity, out SceneEntity cameraEntity)
     {
         var assets = new SceneAssetRegistry();
         SceneAssetId<ShaderAssetTag> shader = assets.CreateId<ShaderAssetTag>("shader/basic");
@@ -123,45 +123,45 @@ public sealed class SceneGlEndToEndTests
             .Build();
         SceneRuntime runtime = new(new SceneRuntimeOptions { Profile = profile }, assets);
 
-        cameraActor = runtime.World.CreateActor("Camera");
-        runtime.World.GetTransform3D(cameraActor).SetPosition(new Vec3(0, 0, 10));
+        cameraEntity = runtime.World.CreateEntity("Camera");
+        runtime.World.GetTransform3D(cameraEntity).SetPosition(new Vec3(0, 0, 10));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        runtime.World.AddData(cameraActor, camera);
+        runtime.World.AddData(cameraEntity, camera);
 
-        skinnedActor = runtime.World.CreateActor("Skinned");
+        skinnedEntity = runtime.World.CreateEntity("Skinned");
         SceneSkinnedMeshRenderer skinned = SceneSkinnedMeshRenderer.Default;
         skinned.MeshId = skinnedMesh;
         skinned.MaterialId = material;
-        runtime.World.AddData(skinnedActor, skinned);
-        runtime.World.AddData(skinnedActor, SceneAnimator.Default);
+        runtime.World.AddData(skinnedEntity, skinned);
+        runtime.World.AddData(skinnedEntity, SceneAnimator.Default);
 
-        SceneActor billboardActor = runtime.World.CreateActor("Billboard");
-        runtime.World.GetTransform3D(billboardActor).SetPosition(new Vec3(2, 0, 0));
+        SceneEntity billboardEntity = runtime.World.CreateEntity("Billboard");
+        runtime.World.GetTransform3D(billboardEntity).SetPosition(new Vec3(2, 0, 0));
         SceneBillboardRenderer billboard = SceneBillboardRenderer.Default;
         billboard.TextureId = texture;
-        runtime.World.AddData(billboardActor, billboard);
+        runtime.World.AddData(billboardEntity, billboard);
 
         runtime.Frame.Polylines.Register(1, [new Vec3(-2, 1, 0), new Vec3(0, 1, 0), new Vec3(2, 1, 0)]);
-        SceneActor lineActor = runtime.World.CreateActor("Line");
+        SceneEntity lineEntity = runtime.World.CreateEntity("Line");
         SceneLineRenderer line = SceneLineRenderer.Default;
         line.PolylineId = 1;
-        runtime.World.AddData(lineActor, line);
+        runtime.World.AddData(lineEntity, line);
 
         runtime.Frame.Trails.Register(1, capacity: 8);
         _ = runtime.Frame.Trails.Push(1, new Vec3(-1, -1, 0), 0.0f);
         _ = runtime.Frame.Trails.Push(1, new Vec3(0, -1, 0), 0.5f);
-        SceneActor trailActor = runtime.World.CreateActor("Trail");
+        SceneEntity trailEntity = runtime.World.CreateEntity("Trail");
         SceneTrailRenderer trail = SceneTrailRenderer.Default;
         trail.TrailId = 1;
-        runtime.World.AddData(trailActor, trail);
+        runtime.World.AddData(trailEntity, trail);
 
-        SceneActor lodActor = runtime.World.CreateActor("Lod");
+        SceneEntity lodEntity = runtime.World.CreateEntity("Lod");
         SceneLodGroup group = SceneLodGroup.Default;
         group.Hysteresis = 0.0f;
         group.SetLevel(0, new SceneLodLevel(nearMesh, material, 5.0f));
         group.SetLevel(1, new SceneLodLevel(farMesh, material, 50.0f));
-        runtime.World.AddData(lodActor, group);
+        runtime.World.AddData(lodEntity, group);
 
         runtime.World.UpdateTransforms();
         return runtime;

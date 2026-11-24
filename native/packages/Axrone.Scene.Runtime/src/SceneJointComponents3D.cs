@@ -147,7 +147,7 @@ internal interface ISceneJoint3D<TSelf> : ISceneDataComponent
 
     static abstract SceneJointBuildResult3D Create(in TSelf value, SceneJointBuildContext3D context, out JointId jointId);
 
-    SceneJointActorRef TargetBodyRef { get; }
+    SceneJointEntityRef TargetBodyRef { get; }
 
     bool IsJointEnabled { get; }
 }
@@ -187,7 +187,7 @@ internal static class SceneJointHash3D
     internal static ulong Mix(ulong hash, in Quat value) =>
         Mix(Mix(Mix(Mix(hash, value.X), value.Y), value.Z), value.W);
 
-    internal static ulong Mix(ulong hash, in SceneJointActorRef value) =>
+    internal static ulong Mix(ulong hash, in SceneJointEntityRef value) =>
         Mix(Mix(hash, value.Slot), value.Generation);
 
     internal static ulong Mix(ulong hash, in SceneJointLimits3D value) =>
@@ -206,7 +206,7 @@ internal static class SceneJointHash3D
         Mix(Mix(Mix(Mix(hash, value.PositionSpring), value.PositionDamper), value.MaximumForce), value.UseAcceleration);
 
     internal static ulong ComputeBase(
-        in SceneJointActorRef connectedBody,
+        in SceneJointEntityRef connectedBody,
         in Vec3 anchor,
         in Vec3 connectedAnchor,
         bool autoConfigureConnectedAnchor,
@@ -245,8 +245,8 @@ internal static class SceneJointHash3D
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneFixedJoint3D : ISceneJoint3D<SceneFixedJoint3D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Local anchor on body A.</summary>
     public Vec3 Anchor;
@@ -290,7 +290,7 @@ public struct SceneFixedJoint3D : ISceneJoint3D<SceneFixedJoint3D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             Axis = new Vec3(1.0f, 0.0f, 0.0f),
             SecondaryAxis = new Vec3(0.0f, 1.0f, 0.0f),
             AutoConfigureConnectedAnchor = true,
@@ -306,7 +306,7 @@ public struct SceneFixedJoint3D : ISceneJoint3D<SceneFixedJoint3D>
 
     static SceneJointKind3D ISceneJoint3D<SceneFixedJoint3D>.JointKind => SceneJointKind3D.Fixed;
 
-    SceneJointActorRef ISceneJoint3D<SceneFixedJoint3D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint3D<SceneFixedJoint3D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint3D<SceneFixedJoint3D>.IsJointEnabled => Enabled;
 
@@ -328,8 +328,8 @@ public struct SceneFixedJoint3D : ISceneJoint3D<SceneFixedJoint3D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneHingeJoint3D : ISceneJoint3D<SceneHingeJoint3D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Local anchor on body A.</summary>
     public Vec3 Anchor;
@@ -391,7 +391,7 @@ public struct SceneHingeJoint3D : ISceneJoint3D<SceneHingeJoint3D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             Axis = new Vec3(1.0f, 0.0f, 0.0f),
             SecondaryAxis = new Vec3(0.0f, 1.0f, 0.0f),
             AutoConfigureConnectedAnchor = true,
@@ -410,7 +410,7 @@ public struct SceneHingeJoint3D : ISceneJoint3D<SceneHingeJoint3D>
 
     static SceneJointKind3D ISceneJoint3D<SceneHingeJoint3D>.JointKind => SceneJointKind3D.Hinge;
 
-    SceneJointActorRef ISceneJoint3D<SceneHingeJoint3D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint3D<SceneHingeJoint3D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint3D<SceneHingeJoint3D>.IsJointEnabled => Enabled;
 
@@ -442,8 +442,8 @@ public struct SceneHingeJoint3D : ISceneJoint3D<SceneHingeJoint3D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneSliderJoint3D : ISceneJoint3D<SceneSliderJoint3D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Local anchor on body A.</summary>
     public Vec3 Anchor;
@@ -505,7 +505,7 @@ public struct SceneSliderJoint3D : ISceneJoint3D<SceneSliderJoint3D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             Axis = new Vec3(1.0f, 0.0f, 0.0f),
             SecondaryAxis = new Vec3(0.0f, 1.0f, 0.0f),
             AutoConfigureConnectedAnchor = true,
@@ -524,7 +524,7 @@ public struct SceneSliderJoint3D : ISceneJoint3D<SceneSliderJoint3D>
 
     static SceneJointKind3D ISceneJoint3D<SceneSliderJoint3D>.JointKind => SceneJointKind3D.Slider;
 
-    SceneJointActorRef ISceneJoint3D<SceneSliderJoint3D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint3D<SceneSliderJoint3D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint3D<SceneSliderJoint3D>.IsJointEnabled => Enabled;
 
@@ -555,8 +555,8 @@ public struct SceneSliderJoint3D : ISceneJoint3D<SceneSliderJoint3D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneSpringJoint3D : ISceneJoint3D<SceneSpringJoint3D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Local anchor on body A.</summary>
     public Vec3 Anchor;
@@ -618,7 +618,7 @@ public struct SceneSpringJoint3D : ISceneJoint3D<SceneSpringJoint3D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             Axis = new Vec3(1.0f, 0.0f, 0.0f),
             SecondaryAxis = new Vec3(0.0f, 1.0f, 0.0f),
             AutoConfigureConnectedAnchor = true,
@@ -640,7 +640,7 @@ public struct SceneSpringJoint3D : ISceneJoint3D<SceneSpringJoint3D>
 
     static SceneJointKind3D ISceneJoint3D<SceneSpringJoint3D>.JointKind => SceneJointKind3D.Spring;
 
-    SceneJointActorRef ISceneJoint3D<SceneSpringJoint3D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint3D<SceneSpringJoint3D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint3D<SceneSpringJoint3D>.IsJointEnabled => Enabled;
 
@@ -671,8 +671,8 @@ public struct SceneSpringJoint3D : ISceneJoint3D<SceneSpringJoint3D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneCharacterJoint3D : ISceneJoint3D<SceneCharacterJoint3D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Local anchor on body A.</summary>
     public Vec3 Anchor;
@@ -752,7 +752,7 @@ public struct SceneCharacterJoint3D : ISceneJoint3D<SceneCharacterJoint3D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             Axis = new Vec3(1.0f, 0.0f, 0.0f),
             SecondaryAxis = new Vec3(0.0f, 1.0f, 0.0f),
             AutoConfigureConnectedAnchor = true,
@@ -771,7 +771,7 @@ public struct SceneCharacterJoint3D : ISceneJoint3D<SceneCharacterJoint3D>
 
     static SceneJointKind3D ISceneJoint3D<SceneCharacterJoint3D>.JointKind => SceneJointKind3D.Character;
 
-    SceneJointActorRef ISceneJoint3D<SceneCharacterJoint3D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint3D<SceneCharacterJoint3D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint3D<SceneCharacterJoint3D>.IsJointEnabled => Enabled;
 
@@ -808,8 +808,8 @@ public struct SceneCharacterJoint3D : ISceneJoint3D<SceneCharacterJoint3D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneConfigurableJoint3D : ISceneJoint3D<SceneConfigurableJoint3D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Local anchor on body A.</summary>
     public Vec3 Anchor;
@@ -922,7 +922,7 @@ public struct SceneConfigurableJoint3D : ISceneJoint3D<SceneConfigurableJoint3D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             Axis = new Vec3(1.0f, 0.0f, 0.0f),
             SecondaryAxis = new Vec3(0.0f, 1.0f, 0.0f),
             AutoConfigureConnectedAnchor = true,
@@ -944,7 +944,7 @@ public struct SceneConfigurableJoint3D : ISceneJoint3D<SceneConfigurableJoint3D>
 
     static SceneJointKind3D ISceneJoint3D<SceneConfigurableJoint3D>.JointKind => SceneJointKind3D.Configurable;
 
-    SceneJointActorRef ISceneJoint3D<SceneConfigurableJoint3D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint3D<SceneConfigurableJoint3D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint3D<SceneConfigurableJoint3D>.IsJointEnabled => Enabled;
 

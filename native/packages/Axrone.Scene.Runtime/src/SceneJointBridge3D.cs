@@ -3,7 +3,7 @@ namespace Axrone.Scene.Runtime;
 using Axrone.Physics3D;
 
 /// <summary>
-/// Bridges scene actors carrying the 3D joint data components into the joint
+/// Bridges scene entities carrying the 3D joint data components into the joint
 /// store of a <see cref="ScenePhysicsBridge3D"/>. The body bridge must run
 /// <c>SyncBodies</c> first so entity references resolve to live <c>BodyId</c>
 /// values. Unresolved references stay pending and retry on the next sync;
@@ -11,7 +11,7 @@ using Axrone.Physics3D;
 /// </summary>
 public sealed class SceneJointBridge3D : IDisposable
 {
-    internal readonly record struct SceneJointKey3D(SceneActor Actor, SceneJointKind3D Kind);
+    internal readonly record struct SceneJointKey3D(SceneEntity Entity, SceneJointKind3D Kind);
 
     private readonly SceneWorld _world;
     private readonly ScenePhysicsBridge3D _physics;
@@ -50,13 +50,13 @@ public sealed class SceneJointBridge3D : IDisposable
     /// <summary>Backing body bridge whose physics world owns the joint store.</summary>
     public ScenePhysicsBridge3D Physics => _physics;
 
-    /// <summary>Resolves the solver joint id created for an actor and joint kind.</summary>
-    public bool TryGetJoint(SceneActor actor, SceneJointKind3D kind, out JointId jointId)
+    /// <summary>Resolves the solver joint id created for an entity and joint kind.</summary>
+    public bool TryGetJoint(SceneEntity entity, SceneJointKind3D kind, out JointId jointId)
     {
         ThrowIfDisposed();
 
         jointId = JointId.Invalid;
-        if (!_state.TryGetValue(new SceneJointKey3D(actor, kind), out SceneJointEntry3D entry) ||
+        if (!_state.TryGetValue(new SceneJointKey3D(entity, kind), out SceneJointEntry3D entry) ||
             entry.Result != SceneJointBuildResult3D.Created)
         {
             return false;
@@ -106,20 +106,20 @@ public sealed class SceneJointBridge3D : IDisposable
     internal BodyStore Bodies => _physics.PhysicsWorld.Bodies;
 
     internal bool TryResolvePair(
-        SceneActor actor,
-        in SceneJointActorRef connected,
+        SceneEntity entity,
+        in SceneJointEntityRef connected,
         out BodyId bodyA,
         out BodyId bodyB)
     {
         bodyA = BodyId.Invalid;
         bodyB = BodyId.Invalid;
 
-        if (!_physics.TryGetBody(actor, out bodyA))
+        if (!_physics.TryGetBody(entity, out bodyA))
         {
             return false;
         }
 
-        if (!connected.TryResolve(_world, out SceneActor target) ||
+        if (!connected.TryResolve(_world, out SceneEntity target) ||
             !_physics.TryGetBody(target, out bodyB))
         {
             bodyA = BodyId.Invalid;
@@ -129,14 +129,14 @@ public sealed class SceneJointBridge3D : IDisposable
         return true;
     }
 
-    private bool HasLiveBodies(SceneActor actor, in SceneJointActorRef connected)
+    private bool HasLiveBodies(SceneEntity entity, in SceneJointEntityRef connected)
     {
-        if (!_physics.TryGetBody(actor, out _))
+        if (!_physics.TryGetBody(entity, out _))
         {
             return false;
         }
 
-        return connected.TryResolve(_world, out SceneActor target) &&
+        return connected.TryResolve(_world, out SceneEntity target) &&
             _physics.TryGetBody(target, out _);
     }
 
@@ -146,11 +146,11 @@ public sealed class SceneJointBridge3D : IDisposable
         SceneJointKind3D kind = T.JointKind;
 
         _seen.Clear();
-        foreach (SceneActor actor in _world.Actors)
+        foreach (SceneEntity entity in _world.Entities)
         {
-            if (_world.IsActiveInHierarchy(actor) && _world.TryGetData(actor, out T probe))
+            if (_world.IsActiveInHierarchy(entity) && _world.TryGetData(entity, out T probe))
             {
-                _seen.Add(new SceneJointKey3D(actor, kind));
+                _seen.Add(new SceneJointKey3D(entity, kind));
             }
         }
 
@@ -171,8 +171,8 @@ public sealed class SceneJointBridge3D : IDisposable
         JointStore joints = Store;
         foreach (SceneJointKey3D seenKey in _seen)
         {
-            SceneActor actor = seenKey.Actor;
-            if (!_world.TryGetData(actor, out T value))
+            SceneEntity entity = seenKey.Entity;
+            if (!_world.TryGetData(entity, out T value))
             {
                 continue;
             }
@@ -192,7 +192,7 @@ public sealed class SceneJointBridge3D : IDisposable
 
             if (idAlive &&
                 entry.Hash == hash &&
-                HasLiveBodies(actor, value.TargetBodyRef))
+                HasLiveBodies(entity, value.TargetBodyRef))
             {
                 continue;
             }
@@ -209,7 +209,7 @@ public sealed class SceneJointBridge3D : IDisposable
                 continue;
             }
 
-            _context.Actor = actor;
+            _context.Entity = entity;
             SceneJointBuildResult3D result = T.Create(value, _context, out JointId jointId);
             _state[key] = new SceneJointEntry3D(jointId, hash, result);
 
@@ -288,7 +288,7 @@ internal sealed class SceneJointBuildContext3D
 
     public readonly SceneJointBridge3D Bridge;
 
-    public SceneActor Actor;
+    public SceneEntity Entity;
 }
 
 internal static class SceneJointRuntime3D
@@ -302,7 +302,7 @@ internal static class SceneJointRuntime3D
         in SceneFixedJoint3D value, SceneJointBuildContext3D context, out JointId jointId)
     {
         jointId = JointId.Invalid;
-        if (!context.Bridge.TryResolvePair(context.Actor, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
+        if (!context.Bridge.TryResolvePair(context.Entity, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
         {
             return SceneJointBuildResult3D.Pending;
         }
@@ -342,7 +342,7 @@ internal static class SceneJointRuntime3D
         in SceneHingeJoint3D value, SceneJointBuildContext3D context, out JointId jointId)
     {
         jointId = JointId.Invalid;
-        if (!context.Bridge.TryResolvePair(context.Actor, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
+        if (!context.Bridge.TryResolvePair(context.Entity, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
         {
             return SceneJointBuildResult3D.Pending;
         }
@@ -389,7 +389,7 @@ internal static class SceneJointRuntime3D
         in SceneSliderJoint3D value, SceneJointBuildContext3D context, out JointId jointId)
     {
         jointId = JointId.Invalid;
-        if (!context.Bridge.TryResolvePair(context.Actor, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
+        if (!context.Bridge.TryResolvePair(context.Entity, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
         {
             return SceneJointBuildResult3D.Pending;
         }
@@ -436,7 +436,7 @@ internal static class SceneJointRuntime3D
         in SceneSpringJoint3D value, SceneJointBuildContext3D context, out JointId jointId)
     {
         jointId = JointId.Invalid;
-        if (!context.Bridge.TryResolvePair(context.Actor, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
+        if (!context.Bridge.TryResolvePair(context.Entity, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
         {
             return SceneJointBuildResult3D.Pending;
         }
@@ -504,7 +504,7 @@ internal static class SceneJointRuntime3D
         in SceneCharacterJoint3D value, SceneJointBuildContext3D context, out JointId jointId)
     {
         jointId = JointId.Invalid;
-        if (!context.Bridge.TryResolvePair(context.Actor, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
+        if (!context.Bridge.TryResolvePair(context.Entity, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
         {
             return SceneJointBuildResult3D.Pending;
         }
@@ -575,7 +575,7 @@ internal static class SceneJointRuntime3D
         in SceneConfigurableJoint3D value, SceneJointBuildContext3D context, out JointId jointId)
     {
         jointId = JointId.Invalid;
-        if (!context.Bridge.TryResolvePair(context.Actor, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
+        if (!context.Bridge.TryResolvePair(context.Entity, in value.ConnectedBody, out BodyId bodyA, out BodyId bodyB))
         {
             return SceneJointBuildResult3D.Pending;
         }

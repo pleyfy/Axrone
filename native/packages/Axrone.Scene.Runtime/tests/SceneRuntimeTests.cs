@@ -51,8 +51,8 @@ public sealed class SceneRuntimeTests
 
         ScenePrefabInstantiationResult result = runtime.LoadSnapshot(snapshot);
 
-        result.Actors.Should().HaveCount(2);
-        runtime.World.ActorCount.Should().Be(2);
+        result.Entities.Should().HaveCount(2);
+        runtime.World.EntityCount.Should().Be(2);
         runtime.Assets.Shaders.Count.Should().Be(1);
         runtime.Assets.Materials.Count.Should().Be(1);
         runtime.Assets.RenderPasses.Count.Should().Be(1);
@@ -69,24 +69,24 @@ public sealed class SceneRuntimeTests
             "prefab/base",
             "prefab/variant",
             [
-                new ScenePrefabSetActorFieldOperation(
+                new ScenePrefabSetEntityFieldOperation(
                     "root",
-                    ScenePrefabActorField.Name,
-                    ScenePrefabActorFieldValue.FromString("VariantRoot"))
+                    ScenePrefabEntityField.Name,
+                    ScenePrefabEntityFieldValue.FromString("VariantRoot"))
             ]));
 
         ScenePrefabDefinition resolved = runtime.ResolvePrefab("prefab/variant");
         ScenePrefabInstantiationResult result = runtime.Instantiate(resolved);
 
         resolved.Kind.Should().Be(ScenePrefabKind.Resolved);
-        result.Actors.Should().HaveCount(2);
-        runtime.World.GetName(result.Actors[0]).Should().Be("VariantRoot");
+        result.Entities.Should().HaveCount(2);
+        runtime.World.GetName(result.Entities[0]).Should().Be("VariantRoot");
     }
 
     [Fact]
     public void Pipeline_PlansCameraLightingAndItems()
     {
-        using var runtime = CreateRenderableRuntime(out SceneActor camera, out _);
+        using var runtime = CreateRenderableRuntime(out SceneEntity camera, out _);
         _ = camera;
 
         bool planned = runtime.Frame.Plan(3);
@@ -128,15 +128,15 @@ public sealed class SceneRuntimeTests
     [Fact]
     public void Pipeline_SteadyStatePlanningDoesNotAllocateWithManyRenderers()
     {
-        using var runtime = CreateRenderableRuntime(out _, out SceneActor firstRenderer);
+        using var runtime = CreateRenderableRuntime(out _, out SceneEntity firstRenderer);
         SceneWorld world = runtime.World;
         SceneMeshRenderer template = world.GetData<SceneMeshRenderer>(firstRenderer);
 
         for (int i = 1; i < 1000; i++)
         {
-            SceneActor actor = world.CreateActor("Renderer");
-            world.GetTransform3D(actor).SetPosition(new Vec3(i % 32, i / 32, 0.0f));
-            world.AddData(actor, template);
+            SceneEntity entity = world.CreateEntity("Renderer");
+            world.GetTransform3D(entity).SetPosition(new Vec3(i % 32, i / 32, 0.0f));
+            world.AddData(entity, template);
         }
 
         world.UpdateTransforms();
@@ -167,12 +167,12 @@ public sealed class SceneRuntimeTests
 
         for (int i = 0; i < 3; i++)
         {
-            SceneActor spriteActor = world.CreateActor("Sprite");
-            world.GetTransform2D(spriteActor).SetPosition(new Vec2(i - 1.0f, 0.0f));
+            SceneEntity spriteEntity = world.CreateEntity("Sprite");
+            world.GetTransform2D(spriteEntity).SetPosition(new Vec2(i - 1.0f, 0.0f));
             SceneSpriteRenderer sprite = SceneSpriteRenderer.Default;
             sprite.TextureId = textureId;
             sprite.SortingLayer = i;
-            world.AddData(spriteActor, sprite);
+            world.AddData(spriteEntity, sprite);
         }
 
         world.UpdateTransforms();
@@ -245,13 +245,13 @@ public sealed class SceneRuntimeTests
         SceneAssetId<TextureAssetTag> textureId = assets.CreateId<TextureAssetTag>("texture/sprite");
         SceneWorld world = runtime.World;
 
-        SceneActor visible = world.CreateActor("Visible");
+        SceneEntity visible = world.CreateEntity("Visible");
         world.GetTransform2D(visible).SetPosition(Vec2.Zero);
         SceneSpriteRenderer visibleSprite = SceneSpriteRenderer.Default;
         visibleSprite.TextureId = textureId;
         world.AddData(visible, visibleSprite);
 
-        SceneActor culled = world.CreateActor("Culled");
+        SceneEntity culled = world.CreateEntity("Culled");
         world.GetTransform2D(culled).SetPosition(new Vec2(100.0f, 0.0f));
         SceneSpriteRenderer culledSprite = SceneSpriteRenderer.Default;
         culledSprite.TextureId = textureId;
@@ -268,12 +268,12 @@ public sealed class SceneRuntimeTests
     public void Pipeline_ResolvesFogState()
     {
         using var runtime = CreateRenderableRuntime(out _, out _);
-        SceneActor fogActor = runtime.World.CreateActor("Fog");
+        SceneEntity fogEntity = runtime.World.CreateEntity("Fog");
         SceneFog fog = SceneFog.Default;
         fog.Enabled = true;
         fog.Mode = SceneFogMode.Exponential;
         fog.Density = 0.5f;
-        runtime.World.AddData(fogActor, fog);
+        runtime.World.AddData(fogEntity, fog);
 
         _ = runtime.Frame.Plan(0);
 
@@ -286,7 +286,7 @@ public sealed class SceneRuntimeTests
     public void Pipeline_ReturnsFalseWithoutCamera()
     {
         using var runtime = new SceneRuntime(new SceneRuntimeOptions { Profile = CreateProfile() });
-        _ = runtime.World.CreateActor("NoCamera");
+        _ = runtime.World.CreateEntity("NoCamera");
 
         runtime.Frame.Plan(0).Should().BeFalse();
         runtime.Frame.Camera.Should().BeNull();
@@ -399,11 +399,11 @@ public sealed class SceneRuntimeTests
 
         for (int i = 0; i < 2; i++)
         {
-            SceneActor spriteActor = runtime.World.CreateActor("Sprite");
-            runtime.World.GetTransform2D(spriteActor).SetPosition(new Vec2(i - 0.5f, 0.0f));
+            SceneEntity spriteEntity = runtime.World.CreateEntity("Sprite");
+            runtime.World.GetTransform2D(spriteEntity).SetPosition(new Vec2(i - 0.5f, 0.0f));
             SceneSpriteRenderer sprite = SceneSpriteRenderer.Default;
             sprite.TextureId = textureId;
-            runtime.World.AddData(spriteActor, sprite);
+            runtime.World.AddData(spriteEntity, sprite);
         }
 
         runtime.World.UpdateTransforms();
@@ -443,8 +443,8 @@ public sealed class SceneRuntimeTests
             .Build();
 
         using var runtime = new SceneRuntime(new SceneRuntimeOptions { Profile = profile });
-        SceneActor actor = runtime.World.CreateActor("Actor");
-        CountingBehaviour behaviour = runtime.World.AddBehaviour<CountingBehaviour>(actor);
+        SceneEntity entity = runtime.World.CreateEntity("Entity");
+        CountingBehaviour behaviour = runtime.World.AddBehaviour<CountingBehaviour>(entity);
         using var loop = new SceneRuntimeLoop(runtime);
 
         _ = loop.Tick(GameTime.FromMilliseconds(16.67));
@@ -467,8 +467,8 @@ public sealed class SceneRuntimeTests
             .Build();
 
         using var runtime = new SceneRuntime(new SceneRuntimeOptions { Profile = profile });
-        SceneActor actor = runtime.World.CreateActor("Actor");
-        CountingBehaviour behaviour = runtime.World.AddBehaviour<CountingBehaviour>(actor);
+        SceneEntity entity = runtime.World.CreateEntity("Entity");
+        CountingBehaviour behaviour = runtime.World.AddBehaviour<CountingBehaviour>(entity);
         using var loop = new SceneRuntimeLoop(runtime);
 
         loop.Start(GameTime.FromMilliseconds(0.0));
@@ -521,16 +521,16 @@ public sealed class SceneRuntimeTests
             "prefab/base",
             "prefab/variant",
             [
-                new ScenePrefabSetActorFieldOperation(
+                new ScenePrefabSetEntityFieldOperation(
                     "root",
-                    ScenePrefabActorField.Name,
-                    ScenePrefabActorFieldValue.FromString("VariantRoot"))
+                    ScenePrefabEntityField.Name,
+                    ScenePrefabEntityFieldValue.FromString("VariantRoot"))
             ]);
         runtime.RegisterPrefab(variant);
 
         ScenePrefabInstantiationResult result = runtime.Instantiate(variant);
 
-        result.Actors.Should().HaveCount(2);
+        result.Entities.Should().HaveCount(2);
         runtime.World.GetName(result.NodeMap["root"]).Should().Be("VariantRoot");
     }
 
@@ -546,14 +546,14 @@ public sealed class SceneRuntimeTests
             {
                 LiveOverrides =
                 [
-                    new ScenePrefabSetActorFieldOperation(
+                    new ScenePrefabSetEntityFieldOperation(
                         "root",
-                        ScenePrefabActorField.Tag,
-                        ScenePrefabActorFieldValue.FromString("Live"))
+                        ScenePrefabEntityField.Tag,
+                        ScenePrefabEntityFieldValue.FromString("Live"))
                 ]
             });
 
-        result.Actors.Should().HaveCount(2);
+        result.Entities.Should().HaveCount(2);
         runtime.World.GetTag(result.NodeMap["root"]).Should().Be("Live");
     }
 
@@ -569,7 +569,7 @@ public sealed class SceneRuntimeTests
         var snapshot = new SceneSnapshot(variant, [], [], [], [], [], []);
         ScenePrefabInstantiationResult result = runtime.LoadSnapshot(snapshot);
 
-        result.Actors.Should().HaveCount(2);
+        result.Entities.Should().HaveCount(2);
     }
 
     [Fact]
@@ -581,7 +581,7 @@ public sealed class SceneRuntimeTests
         using var target = new SceneRuntime(new SceneRuntimeOptions { Profile = CreateProfile() });
         ScenePrefabInstantiationResult result = target.LoadSnapshot(snapshot);
 
-        result.Actors.Should().HaveCount(3);
+        result.Entities.Should().HaveCount(3);
         target.Assets.Shaders.Count.Should().Be(1);
         target.Assets.Meshes.Count.Should().Be(1);
         target.Assets.Materials.Count.Should().Be(1);
@@ -598,25 +598,25 @@ public sealed class SceneRuntimeTests
             Profile = CreateRuntimeComponentProfile()
         });
 
-        SceneActor actor = source.World.CreateActor("Body");
-        source.World.GetTransform3D(actor).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
+        SceneEntity entity = source.World.CreateEntity("Body");
+        source.World.GetTransform3D(entity).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
 
         SceneRigidbody3D body = SceneRigidbody3D.Default;
         body.BodyType = SceneBodyType.Kinematic;
         body.LinearVelocity = new Vec3(4.0f, 5.0f, 6.0f);
         body.GravityScale = 0.25f;
         body.Mass = 2.5f;
-        source.World.AddData(actor, body);
+        source.World.AddData(entity, body);
 
         SceneCollider3D collider = SceneCollider3D.Box(1.0f, 2.0f, 3.0f, density: 5.0f);
         collider.Friction = 0.75f;
-        source.World.AddData(actor, collider);
+        source.World.AddData(entity, collider);
 
         SceneParticleSystem particles = SceneParticleSystem.Default;
         particles.EmissionRate = 42.0f;
         particles.StartColor = new Vec4(0.1f, 0.2f, 0.3f, 0.4f);
         particles.MaxParticles = 64;
-        source.World.AddData(actor, particles);
+        source.World.AddData(entity, particles);
         source.World.UpdateTransforms();
 
         SceneSnapshot snapshot = source.CaptureSnapshot("prefab/runtime-components");
@@ -627,8 +627,8 @@ public sealed class SceneRuntimeTests
         });
         ScenePrefabInstantiationResult result = target.LoadSnapshot(snapshot);
 
-        result.Actors.Should().ContainSingle();
-        SceneActor loaded = result.Actors[0];
+        result.Entities.Should().ContainSingle();
+        SceneEntity loaded = result.Entities[0];
         target.World.GetData<SceneRigidbody3D>(loaded).Should().Be(body);
         target.World.GetData<SceneCollider3D>(loaded).Should().Be(collider);
         target.World.GetData<SceneParticleSystem>(loaded).Should().Be(particles);
@@ -642,17 +642,17 @@ public sealed class SceneRuntimeTests
             RuntimeProfile = SceneRuntimeProfiles.TwoD
         });
 
-        SceneActor actor = source.World.CreateActor("Body2D");
-        source.World.GetTransform2D(actor).SetPosition(new Vec2(1.0f, 2.0f));
+        SceneEntity entity = source.World.CreateEntity("Body2D");
+        source.World.GetTransform2D(entity).SetPosition(new Vec2(1.0f, 2.0f));
 
         SceneRigidbody2D body = SceneRigidbody2D.Default;
         body.Mass = 2.0f;
         body.AngularVelocity = 1.5f;
-        source.World.AddData(actor, body);
+        source.World.AddData(entity, body);
 
         SceneCollider2D collider = SceneCollider2D.Box(1.0f, 2.0f, density: 3.0f);
         collider.IsTrigger = true;
-        source.World.AddData(actor, collider);
+        source.World.AddData(entity, collider);
         source.World.UpdateTransforms();
 
         SceneSnapshot snapshot = source.CaptureSnapshot("prefab/runtime-2d");
@@ -663,8 +663,8 @@ public sealed class SceneRuntimeTests
         });
         ScenePrefabInstantiationResult result = target.LoadSnapshot(snapshot);
 
-        result.Actors.Should().ContainSingle();
-        SceneActor loaded = result.Actors[0];
+        result.Entities.Should().ContainSingle();
+        SceneEntity loaded = result.Entities[0];
         target.World.GetData<SceneRigidbody2D>(loaded).Should().Be(body);
         target.World.GetData<SceneCollider2D>(loaded).Should().Be(collider);
     }
@@ -751,13 +751,13 @@ public sealed class SceneRuntimeTests
         assets = runtime.Assets;
 
         SceneWorld world = runtime.World;
-        SceneActor cameraActor = world.CreateActor("Camera2D");
-        world.GetTransform2D(cameraActor).SetPosition(Vec2.Zero);
+        SceneEntity cameraEntity = world.CreateEntity("Camera2D");
+        world.GetTransform2D(cameraEntity).SetPosition(Vec2.Zero);
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
         camera.OrthographicSize = 5.0f;
-        world.AddData(cameraActor, camera);
-        world.AddData(cameraActor, SceneCamera2D.Default);
+        world.AddData(cameraEntity, camera);
+        world.AddData(cameraEntity, SceneCamera2D.Default);
         world.UpdateTransforms();
         return runtime;
     }
@@ -781,11 +781,11 @@ public sealed class SceneRuntimeTests
             ViewportHeight = 180
         });
 
-        SceneActor cameraActor = runtime.World.CreateActor("Camera3D");
-        runtime.World.GetTransform3D(cameraActor).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
+        SceneEntity cameraEntity = runtime.World.CreateEntity("Camera3D");
+        runtime.World.GetTransform3D(cameraEntity).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        runtime.World.AddData(cameraActor, camera);
+        runtime.World.AddData(cameraEntity, camera);
         runtime.World.UpdateTransforms();
         return runtime;
     }
@@ -805,8 +805,8 @@ public sealed class SceneRuntimeTests
             .Build();
 
     private static SceneRuntime CreateRenderableRuntime(
-        out SceneActor cameraActor,
-        out SceneActor rendererActor)
+        out SceneEntity cameraEntity,
+        out SceneEntity rendererEntity)
     {
         var runtime = new SceneRuntime(new SceneRuntimeOptions
         {
@@ -841,20 +841,20 @@ public sealed class SceneRuntimeTests
         runtime.Frame.RebuildPasses();
 
         SceneWorld world = runtime.World;
-        cameraActor = world.CreateActor("Camera");
-        world.GetTransform3D(cameraActor).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
+        cameraEntity = world.CreateEntity("Camera");
+        world.GetTransform3D(cameraEntity).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(cameraActor, camera);
+        world.AddData(cameraEntity, camera);
 
-        rendererActor = world.CreateActor("Renderer");
+        rendererEntity = world.CreateEntity("Renderer");
         SceneMeshRenderer renderer = SceneMeshRenderer.Default;
         renderer.MeshId = meshId;
         renderer.MaterialId = materialId;
         renderer.PassId = passId;
-        world.AddData(rendererActor, renderer);
+        world.AddData(rendererEntity, renderer);
 
-        SceneActor sun = world.CreateActor("Sun");
+        SceneEntity sun = world.CreateEntity("Sun");
         world.AddData(sun, SceneDirectionalLight.Default);
 
         world.UpdateTransforms();
@@ -892,14 +892,14 @@ public sealed class SceneRuntimeTests
     private static ScenePrefabDefinition CreatePrefab(string id) => new(
         id,
         [
-            Actor("root", "Root"),
-            Actor("child", "Child", parentNodeId: "root")
+            Entity("root", "Root"),
+            Entity("child", "Child", parentNodeId: "root")
         ]);
 
-    private static SceneActorSnapshot Actor(string nodeId, string name, string? parentNodeId = null)
+    private static SceneEntitySnapshot Entity(string nodeId, string name, string? parentNodeId = null)
     {
         using JsonDocument document = JsonDocument.Parse("""{"position":[0,0,0]}""");
-        return new SceneActorSnapshot(
+        return new SceneEntitySnapshot(
             nodeId,
             name,
             0,

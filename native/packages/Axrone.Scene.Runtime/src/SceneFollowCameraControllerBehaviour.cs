@@ -1,7 +1,7 @@
 namespace Axrone.Scene.Runtime;
 
 /// <summary>
-/// Follows another actor (or a fixed point) with a damped orbit camera. The
+/// Follows another entity (or a fixed point) with a damped orbit camera. The
 /// look direction is applied every late update so movement observed earlier in
 /// the frame is reflected in the final view.
 /// </summary>
@@ -9,7 +9,7 @@ public sealed class SceneFollowCameraControllerBehaviour : ISceneBehaviour
 {
     private static readonly Vec3 DefaultTargetOffset = new(0.0f, 1.5f, 0.0f);
 
-    private SceneActor _targetActor = SceneActor.Null;
+    private SceneEntity _targetEntity = SceneEntity.Null;
     private Vec3 _target;
     private Vec3 _targetOffset = DefaultTargetOffset;
     private Vec3 _up = Vec3.UnitY;
@@ -23,22 +23,22 @@ public sealed class SceneFollowCameraControllerBehaviour : ISceneBehaviour
     private float _targetDamping = 14.0f;
     private bool _initialized;
     private SceneWorld? _world;
-    private SceneActor _actor = SceneActor.Null;
+    private SceneEntity _entity = SceneEntity.Null;
 
     /// <summary>Creates a follow controller at the default distance.</summary>
     public SceneFollowCameraControllerBehaviour()
     {
     }
 
-    /// <summary>Fixed world point followed when no target actor is set.</summary>
+    /// <summary>Fixed world point followed when no target entity is set.</summary>
     public Vec3 Target
     {
         get => _target;
         set => _target = value;
     }
 
-    /// <summary>Actor followed when set; overrides <see cref="Target"/>.</summary>
-    public SceneActor TargetActor => _targetActor;
+    /// <summary>Entity followed when set; overrides <see cref="Target"/>.</summary>
+    public SceneEntity TargetEntity => _targetEntity;
 
     /// <summary>Offset added to the resolved target position.</summary>
     public Vec3 TargetOffset
@@ -112,10 +112,10 @@ public sealed class SceneFollowCameraControllerBehaviour : ISceneBehaviour
         set => _targetDamping = MathF.Max(0.0f, value);
     }
 
-    /// <summary>Sets the actor to follow, optionally snapping on the next update.</summary>
-    public void SetTarget(SceneActor target, bool snap = true)
+    /// <summary>Sets the entity to follow, optionally snapping on the next update.</summary>
+    public void SetTarget(SceneEntity target, bool snap = true)
     {
-        _targetActor = target;
+        _targetEntity = target;
         if (snap)
         {
             Snap();
@@ -140,7 +140,7 @@ public sealed class SceneFollowCameraControllerBehaviour : ISceneBehaviour
     {
         ArgumentNullException.ThrowIfNull(context);
         _world = context.World;
-        _actor = context.Actor;
+        _entity = context.Entity;
         context.OnLateUpdate(LateUpdate);
         context.OnDetach(ClearAttachment);
     }
@@ -148,7 +148,7 @@ public sealed class SceneFollowCameraControllerBehaviour : ISceneBehaviour
     private void ClearAttachment()
     {
         _world = null;
-        _actor = SceneActor.Null;
+        _entity = SceneEntity.Null;
     }
 
     private void LateUpdate(float deltaSeconds)
@@ -168,7 +168,7 @@ public sealed class SceneFollowCameraControllerBehaviour : ISceneBehaviour
                 _azimuth,
                 _elevation,
                 _distance);
-            ref SceneTransform3D initialTransform = ref world.GetTransform3D(_actor);
+            ref SceneTransform3D initialTransform = ref world.GetTransform3D(_entity);
             SceneCameraOrbitMath.ApplyLook(ref initialTransform, initialPosition, _smoothedTarget, _up);
             _initialized = true;
             return;
@@ -183,7 +183,7 @@ public sealed class SceneFollowCameraControllerBehaviour : ISceneBehaviour
             _elevation,
             _distance);
 
-        ref SceneTransform3D transform = ref world.GetTransform3D(_actor);
+        ref SceneTransform3D transform = ref world.GetTransform3D(_entity);
         float positionSmoothing = SmoothingFactor(_positionDamping, deltaSeconds);
         Vec3 position = Vec3.Lerp(transform.Position, desiredPosition, positionSmoothing);
         SceneCameraOrbitMath.ApplyLook(ref transform, position, _smoothedTarget, _up);
@@ -191,8 +191,8 @@ public sealed class SceneFollowCameraControllerBehaviour : ISceneBehaviour
 
     private Vec3 ResolveDesiredTarget(SceneWorld world)
     {
-        Vec3 source = _targetActor.IsValid && world.TryGetActor(_targetActor, out _)
-            ? world.GetWorldPosition3D(_targetActor)
+        Vec3 source = _targetEntity.IsValid && world.TryGetEntity(_targetEntity, out _)
+            ? world.GetWorldPosition3D(_targetEntity)
             : _target;
         return source + _targetOffset;
     }

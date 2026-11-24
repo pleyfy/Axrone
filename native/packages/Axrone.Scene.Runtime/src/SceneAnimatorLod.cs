@@ -3,7 +3,7 @@ namespace Axrone.Scene.Runtime;
 using Axrone.Numeric;
 
 /// <summary>
-/// Distance-based evaluation-rate policy for animators. Nearby actors update
+/// Distance-based evaluation-rate policy for animators. Nearby entities update
 /// every step; mid and far bands accumulate time and evaluate at a lower rate,
 /// preserving total elapsed time so playback speed does not change.
 /// </summary>

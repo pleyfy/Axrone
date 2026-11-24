@@ -15,7 +15,7 @@ public sealed class ScenePathAgentBridge : IDisposable
     private const int InitialPaths = 8;
 
     private readonly SceneWorld _world;
-    private readonly Dictionary<SceneActor, int> _agentIndex = new();
+    private readonly Dictionary<SceneEntity, int> _agentIndex = new();
     private readonly List<PathAgent> _agents = new();
     private readonly List<Aabb3D> _obstacles = new();
     private PathEntry?[] _paths = new PathEntry?[InitialPaths];
@@ -90,13 +90,13 @@ public sealed class ScenePathAgentBridge : IDisposable
     }
 
     /// <summary>
-    /// Registers (or replaces) the actor's path and resets progress to the
+    /// Registers (or replaces) the entity's path and resets progress to the
     /// component's start waypoint.
     /// </summary>
-    public bool SetPath(SceneActor actor, ReadOnlySpan<Vec3> waypoints)
+    public bool SetPath(SceneEntity entity, ReadOnlySpan<Vec3> waypoints)
     {
         ThrowIfDisposed();
-        if (!_world.TryGetData(actor, out ScenePathAgent component) || waypoints.IsEmpty)
+        if (!_world.TryGetData(entity, out ScenePathAgent component) || waypoints.IsEmpty)
         {
             return false;
         }
@@ -117,10 +117,10 @@ public sealed class ScenePathAgentBridge : IDisposable
             entry!.SetPoints(waypoints);
         }
 
-        ref ScenePathAgent live = ref _world.GetData<ScenePathAgent>(actor);
+        ref ScenePathAgent live = ref _world.GetData<ScenePathAgent>(entity);
         live.Path = path;
 
-        PathAgent agent = GetOrCreateAgent(actor);
+        PathAgent agent = GetOrCreateAgent(entity);
         agent.Path = path;
         agent.WaypointIndex = component.StartWaypoint < 0 ? 0 : component.StartWaypoint;
         if (agent.WaypointIndex >= entry!.Count)
@@ -132,40 +132,40 @@ public sealed class ScenePathAgentBridge : IDisposable
         return true;
     }
 
-    /// <summary>Assigns an already registered path to an actor.</summary>
-    public bool TrySetPath(SceneActor actor, ScenePathHandle path, int startWaypoint = 0)
+    /// <summary>Assigns an already registered path to an entity.</summary>
+    public bool TrySetPath(SceneEntity entity, ScenePathHandle path, int startWaypoint = 0)
     {
         ThrowIfDisposed();
         if (startWaypoint < 0 ||
-            !_world.HasData<ScenePathAgent>(actor) ||
+            !_world.HasData<ScenePathAgent>(entity) ||
             !TryGetPath(path, out _, out PathEntry? entry))
         {
             return false;
         }
 
-        ref ScenePathAgent component = ref _world.GetData<ScenePathAgent>(actor);
+        ref ScenePathAgent component = ref _world.GetData<ScenePathAgent>(entity);
         component.Path = path;
 
-        PathAgent agent = GetOrCreateAgent(actor);
+        PathAgent agent = GetOrCreateAgent(entity);
         agent.Path = path;
         agent.WaypointIndex = startWaypoint < entry!.Count ? startWaypoint : 0;
         agent.Status = ScenePathAgentStatus.Moving;
         return true;
     }
 
-    /// <summary>Removes the actor's path reference and idles its agent.</summary>
-    public bool ClearPath(SceneActor actor)
+    /// <summary>Removes the entity's path reference and idles its agent.</summary>
+    public bool ClearPath(SceneEntity entity)
     {
         ThrowIfDisposed();
-        if (!_world.HasData<ScenePathAgent>(actor))
+        if (!_world.HasData<ScenePathAgent>(entity))
         {
             return false;
         }
 
-        ref ScenePathAgent component = ref _world.GetData<ScenePathAgent>(actor);
+        ref ScenePathAgent component = ref _world.GetData<ScenePathAgent>(entity);
         component.Path = ScenePathHandle.Invalid;
 
-        if (_agentIndex.TryGetValue(actor, out int index))
+        if (_agentIndex.TryGetValue(entity, out int index))
         {
             PathAgent agent = _agents[index];
             agent.Path = ScenePathHandle.Invalid;
@@ -190,7 +190,7 @@ public sealed class ScenePathAgentBridge : IDisposable
         _obstacles.Clear();
     }
 
-    /// <summary>Drops agents whose actor or component disappeared.</summary>
+    /// <summary>Drops agents whose entity or component disappeared.</summary>
     public void Sync()
     {
         ThrowIfDisposed();
@@ -198,7 +198,7 @@ public sealed class ScenePathAgentBridge : IDisposable
         for (int i = _agents.Count - 1; i >= 0; i--)
         {
             PathAgent agent = _agents[i];
-            if (_world.TryGetData(agent.Actor, out ScenePathAgent component))
+            if (_world.TryGetData(agent.Entity, out ScenePathAgent component))
             {
                 if (component.Path != agent.Path)
                 {
@@ -209,13 +209,13 @@ public sealed class ScenePathAgentBridge : IDisposable
                 continue;
             }
 
-            _agentIndex.Remove(agent.Actor);
+            _agentIndex.Remove(agent.Entity);
             _agents.RemoveAt(i);
         }
 
         for (int i = 0; i < _agents.Count; i++)
         {
-            _agentIndex[_agents[i].Actor] = i;
+            _agentIndex[_agents[i].Entity] = i;
         }
     }
 
@@ -238,11 +238,11 @@ public sealed class ScenePathAgentBridge : IDisposable
                 continue;
             }
 
-            if (!_world.TryGetData(agent.Actor, out ScenePathAgent component) ||
+            if (!_world.TryGetData(agent.Entity, out ScenePathAgent component) ||
                 !component.Enabled ||
                 !TryGetPath(agent.Path, out _, out PathEntry? entry) ||
                 entry!.Count == 0 ||
-                !_world.HasData<SceneTransform3D>(agent.Actor))
+                !_world.HasData<SceneTransform3D>(agent.Entity))
             {
                 agent.Status = ScenePathAgentStatus.Idle;
                 continue;
@@ -253,10 +253,10 @@ public sealed class ScenePathAgentBridge : IDisposable
     }
 
     /// <summary>Reads one agent's progress.</summary>
-    public bool TryGetState(SceneActor actor, out ScenePathAgentState state)
+    public bool TryGetState(SceneEntity entity, out ScenePathAgentState state)
     {
         state = default;
-        if (!_agentIndex.TryGetValue(actor, out int index))
+        if (!_agentIndex.TryGetValue(entity, out int index))
         {
             return false;
         }
@@ -288,7 +288,7 @@ public sealed class ScenePathAgentBridge : IDisposable
 
     private void StepAgent(PathAgent agent, in ScenePathAgent component, PathEntry entry, float deltaSeconds)
     {
-        ref SceneTransform3D transform = ref _world.GetData<SceneTransform3D>(agent.Actor);
+        ref SceneTransform3D transform = ref _world.GetData<SceneTransform3D>(agent.Entity);
         Vec3 position = transform.Position;
 
         ReadOnlySpan<Vec3> points = entry.Points;
@@ -406,15 +406,15 @@ public sealed class ScenePathAgentBridge : IDisposable
         return push;
     }
 
-    private PathAgent GetOrCreateAgent(SceneActor actor)
+    private PathAgent GetOrCreateAgent(SceneEntity entity)
     {
-        if (_agentIndex.TryGetValue(actor, out int index))
+        if (_agentIndex.TryGetValue(entity, out int index))
         {
             return _agents[index];
         }
 
-        PathAgent agent = new(actor);
-        _agentIndex[actor] = _agents.Count;
+        PathAgent agent = new(entity);
+        _agentIndex[entity] = _agents.Count;
         _agents.Add(agent);
         return agent;
     }
@@ -496,9 +496,9 @@ public sealed class ScenePathAgentBridge : IDisposable
 
     private sealed class PathAgent
     {
-        public PathAgent(SceneActor actor) => Actor = actor;
+        public PathAgent(SceneEntity entity) => Entity = entity;
 
-        public SceneActor Actor { get; }
+        public SceneEntity Entity { get; }
 
         public ScenePathHandle Path { get; set; }
 

@@ -3,7 +3,7 @@ namespace Axrone.Scene.Runtime;
 using Axrone.Scene.Assets;
 
 /// <summary>
-/// Serialized animation source of a skinned actor. The scene document carries the
+/// Serialized animation source of a skinned entity. The scene document carries the
 /// skin and default clip asset ids; a host resolves them through its asset registry
 /// and rebuilds the runtime rig/controller with <see cref="SceneAnimationImporter"/>.
 /// </summary>

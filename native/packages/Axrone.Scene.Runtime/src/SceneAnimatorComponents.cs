@@ -3,7 +3,7 @@ namespace Axrone.Scene.Runtime;
 /// <summary>
 /// Generation-safe reference to a bridge-owned animator slot. A recycled slot
 /// carries a new generation, so a stale handle fails resolution instead of
-/// addressing another actor's controller.
+/// addressing another entity's controller.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct SceneAnimatorHandle(int Slot, uint Generation)
@@ -61,13 +61,13 @@ public struct SceneAnimator : ISceneDataComponent
     /// <summary>Whether the animator participates at all.</summary>
     public bool Enabled;
 
-    /// <summary>Whether extracted root motion is applied to the actor transform.</summary>
+    /// <summary>Whether extracted root motion is applied to the entity transform.</summary>
     public bool ApplyRootMotion;
 
     /// <summary>Layer queried by state accessors.</summary>
     public int ActiveLayer;
 
-    /// <summary>First curve slot holding this actor's morph weights.</summary>
+    /// <summary>First curve slot holding this entity's morph weights.</summary>
     public int MorphCurveOffset;
 
     /// <summary>Number of contiguous morph-weight curve slots.</summary>

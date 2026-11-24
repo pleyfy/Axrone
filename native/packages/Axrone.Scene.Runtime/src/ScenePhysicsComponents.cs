@@ -1,6 +1,6 @@
 namespace Axrone.Scene.Runtime;
 
-/// <summary>How a scene actor's physics body moves.</summary>
+/// <summary>How a scene entity's physics body moves.</summary>
 public enum SceneBodyType
 {
     /// <summary>Simulated under gravity and forces.</summary>
@@ -88,7 +88,7 @@ public enum SceneColliderShape3D
 }
 
 /// <summary>
-/// Collider data component. One actor can carry multiple colliders; the
+/// Collider data component. One entity can carry multiple colliders; the
 /// physics bridge attaches each as a shape on the owning body.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -106,7 +106,7 @@ public struct SceneCollider3D : ISceneDataComponent
     /// <summary>Half height for capsule colliders.</summary>
     public float CapsuleHalfHeight;
 
-    /// <summary>Local-space offset from the actor origin.</summary>
+    /// <summary>Local-space offset from the entity origin.</summary>
     public Vec3 Offset;
 
     /// <summary>Mass per unit volume.</summary>

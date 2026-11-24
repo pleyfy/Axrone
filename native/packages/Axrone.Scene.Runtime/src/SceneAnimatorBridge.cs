@@ -5,16 +5,16 @@ using Axrone.Scene.Rendering;
 
 /// <summary>
 /// Minimal CPU pose consumer. The bridge publishes the animated local pose and
-/// the composed world palette once per updated actor; GPU skinning stays a
+/// the composed world palette once per updated entity; GPU skinning stays a
 /// renderer concern and is deliberately not part of this contract.
 /// </summary>
 public interface IScenePoseSink
 {
-    /// <summary>Receives one actor's pose after a successful update.</summary>
-    /// <param name="actor">Animated actor.</param>
+    /// <summary>Receives one entity's pose after a successful update.</summary>
+    /// <param name="entity">Animated entity.</param>
     /// <param name="localPose">Local-space bone transforms, one per bone.</param>
     /// <param name="worldPalette">World bone matrices, one per bone.</param>
-    void ApplyPose(SceneActor actor, ReadOnlySpan<LocalTransform> localPose, ReadOnlySpan<Mat4> worldPalette);
+    void ApplyPose(SceneEntity entity, ReadOnlySpan<LocalTransform> localPose, ReadOnlySpan<Mat4> worldPalette);
 }
 
 /// <summary>
@@ -25,23 +25,23 @@ public interface IScenePoseSink
 public interface ISceneAnimatorEventSink
 {
     /// <summary>Receives one clip event.</summary>
-    /// <param name="actor">Actor whose controller emitted the event.</param>
+    /// <param name="entity">Entity whose controller emitted the event.</param>
     /// <param name="clipEvent">Event payload from the clip.</param>
-    void OnClipEvent(SceneActor actor, in ClipEvent clipEvent);
+    void OnClipEvent(SceneEntity entity, in ClipEvent clipEvent);
 }
 
 /// <summary>
 /// Receives root motion instead of having the bridge write it straight onto the
-/// actor transform. A character controller can sweep the delta through physics
+/// entity transform. A character controller can sweep the delta through physics
 /// and decide which axes survive.
 /// </summary>
 public interface ISceneRootMotionConsumer
 {
     /// <summary>Consumes one animator step's root delta.</summary>
-    /// <param name="actor">Animated actor.</param>
+    /// <param name="entity">Animated entity.</param>
     /// <param name="deltaPosition">World-space translation delta for this step.</param>
     /// <param name="deltaRotation">World-space rotation delta for this step.</param>
-    void ConsumeRootMotion(SceneActor actor, in Vec3 deltaPosition, in Quat deltaRotation);
+    void ConsumeRootMotion(SceneEntity entity, in Vec3 deltaPosition, in Quat deltaRotation);
 }
 
 /// <summary>
@@ -78,7 +78,7 @@ public sealed class SceneAnimatorBridge : IDisposable
     public int Count => _slotCount - _freeCount;
 
     /// <summary>
-    /// Optional distance-based update-rate policy. When set, actors outside the
+    /// Optional distance-based update-rate policy. When set, entities outside the
     /// near band accumulate time and evaluate on their band interval; the
     /// accumulated delta is applied in one step so playback speed is unchanged.
     /// </summary>
@@ -92,41 +92,41 @@ public sealed class SceneAnimatorBridge : IDisposable
     public ISceneRootMotionConsumer? RootMotionConsumer { get; set; }
 
     /// <summary>
-    /// Binds a controller to an actor that carries a <see cref="SceneAnimator"/>
+    /// Binds a controller to an entity that carries a <see cref="SceneAnimator"/>
     /// component and returns the generation-safe handle.
     /// </summary>
-    public bool Bind(SceneActor actor, AnimationController controller)
+    public bool Bind(SceneEntity entity, AnimationController controller)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(controller);
 
-        if (!actor.IsValid || !_world.TryGetData(actor, out SceneAnimator component))
+        if (!entity.IsValid || !_world.TryGetData(entity, out SceneAnimator component))
         {
             return false;
         }
 
         if (component.Handle.IsValid)
         {
-            Unbind(actor);
+            Unbind(entity);
         }
 
         int index = AllocateSlot();
-        AnimatorSlot slot = new(index, _generations[index], actor, controller);
+        AnimatorSlot slot = new(index, _generations[index], entity, controller);
         _slots[index] = slot;
         controller.BindAll();
 
-        ref SceneAnimator live = ref _world.GetData<SceneAnimator>(actor);
+        ref SceneAnimator live = ref _world.GetData<SceneAnimator>(entity);
         live.Handle = new SceneAnimatorHandle(index, slot.Generation);
         return true;
     }
 
     /// <summary>Binds a layer reference so its weight is reachable by index.</summary>
-    public bool BindLayer(SceneActor actor, AnimationLayer layer)
+    public bool BindLayer(SceneEntity entity, AnimationLayer layer)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(layer);
 
-        if (!TryResolve(actor, out _, out AnimatorSlot slot))
+        if (!TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return false;
         }
@@ -137,19 +137,19 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>
-    /// Starts a one-shot montage on the actor's controller. The normal event sink
+    /// Starts a one-shot montage on the entity's controller. The normal event sink
     /// then receives clip events for the montage, and the controller releases the
     /// layer when it completes or is stopped.
     /// </summary>
     public AnimationMontage? PlayMontage(
-        SceneActor actor,
+        SceneEntity entity,
         AnimationClip clip,
         AnimationMontageOptions options = default)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(clip);
 
-        if (!TryResolve(actor, out _, out AnimatorSlot slot))
+        if (!TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return null;
         }
@@ -157,19 +157,19 @@ public sealed class SceneAnimatorBridge : IDisposable
         return slot.Controller.PlayMontage(clip, options);
     }
 
-    /// <summary>Releases the animator bound to an actor.</summary>
-    public bool Unbind(SceneActor actor)
+    /// <summary>Releases the animator bound to an entity.</summary>
+    public bool Unbind(SceneEntity entity)
     {
         ThrowIfDisposed();
 
-        if (!TryResolve(actor, out int index, out AnimatorSlot slot))
+        if (!TryResolve(entity, out int index, out AnimatorSlot slot))
         {
             return false;
         }
 
-        if (_world.HasData<SceneAnimator>(actor))
+        if (_world.HasData<SceneAnimator>(entity))
         {
-            ref SceneAnimator component = ref _world.GetData<SceneAnimator>(actor);
+            ref SceneAnimator component = ref _world.GetData<SceneAnimator>(entity);
             if (component.Handle == new SceneAnimatorHandle(index, slot.Generation))
             {
                 component.Handle = SceneAnimatorHandle.Invalid;
@@ -180,7 +180,7 @@ public sealed class SceneAnimatorBridge : IDisposable
         return true;
     }
 
-    /// <summary>Removes bindings whose actor or component disappeared.</summary>
+    /// <summary>Removes bindings whose entity or component disappeared.</summary>
     public void Sync()
     {
         ThrowIfDisposed();
@@ -193,7 +193,7 @@ public sealed class SceneAnimatorBridge : IDisposable
                 continue;
             }
 
-            if (!_world.TryGetData(slot.Actor, out SceneAnimator component) ||
+            if (!_world.TryGetData(slot.Entity, out SceneAnimator component) ||
                 component.Handle != new SceneAnimatorHandle(i, slot.Generation))
             {
                 ReleaseSlot(i);
@@ -203,7 +203,7 @@ public sealed class SceneAnimatorBridge : IDisposable
 
     /// <summary>
     /// Advances every bound animator by the scaled delta and publishes poses.
-    /// Completed, faulted, paused, disabled and inactive actors are skipped.
+    /// Completed, faulted, paused, disabled and inactive entities are skipped.
     /// </summary>
     public void Step(float deltaSeconds, IScenePoseSink? poseSink = null, ISceneAnimatorEventSink? eventSink = null, ISceneMorphWeightSink? morphSink = null)
     {
@@ -224,8 +224,8 @@ public sealed class SceneAnimatorBridge : IDisposable
                 continue;
             }
 
-            if (!_world.IsActiveInHierarchy(slot.Actor) ||
-                !_world.TryGetData(slot.Actor, out SceneAnimator component))
+            if (!_world.IsActiveInHierarchy(slot.Entity) ||
+                !_world.TryGetData(slot.Entity, out SceneAnimator component))
             {
                 continue;
             }
@@ -249,9 +249,9 @@ public sealed class SceneAnimatorBridge : IDisposable
             }
 
             float stepDelta = deltaSeconds;
-            if (Lod is { } lod && _world.HasData<SceneTransform3D>(slot.Actor))
+            if (Lod is { } lod && _world.HasData<SceneTransform3D>(slot.Entity))
             {
-                float interval = lod.ResolveInterval(_world.GetWorldMatrix3D(slot.Actor).Translation);
+                float interval = lod.ResolveInterval(_world.GetWorldMatrix3D(slot.Entity).Translation);
                 if (interval > 0.0f)
                 {
                     slot.LodAccumulator += deltaSeconds;
@@ -283,11 +283,11 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Moves an animator into its terminal completed state.</summary>
-    public bool Complete(SceneActor actor)
+    public bool Complete(SceneEntity entity)
     {
         ThrowIfDisposed();
 
-        if (!TryResolve(actor, out _, out AnimatorSlot slot))
+        if (!TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return false;
         }
@@ -298,11 +298,11 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Clears a completed or faulted status and resumes playback.</summary>
-    public bool Reset(SceneActor actor)
+    public bool Reset(SceneEntity entity)
     {
         ThrowIfDisposed();
 
-        if (!TryResolve(actor, out _, out AnimatorSlot slot))
+        if (!TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return false;
         }
@@ -314,13 +314,13 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Gets the status of an animator.</summary>
-    public SceneAnimatorStatus GetStatus(SceneActor actor) =>
-        TryResolve(actor, out _, out AnimatorSlot slot) ? slot.Status : SceneAnimatorStatus.Unbound;
+    public SceneAnimatorStatus GetStatus(SceneEntity entity) =>
+        TryResolve(entity, out _, out AnimatorSlot slot) ? slot.Status : SceneAnimatorStatus.Unbound;
 
     /// <summary>Gets the fault captured by the isolated update path.</summary>
-    public bool TryGetFault(SceneActor actor, [NotNullWhen(true)] out Exception? fault)
+    public bool TryGetFault(SceneEntity entity, [NotNullWhen(true)] out Exception? fault)
     {
-        if (TryResolve(actor, out _, out AnimatorSlot slot) && slot.Fault is not null)
+        if (TryResolve(entity, out _, out AnimatorSlot slot) && slot.Fault is not null)
         {
             fault = slot.Fault;
             return true;
@@ -331,11 +331,11 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Reads the state machine view of the component's active layer.</summary>
-    public bool TryGetState(SceneActor actor, out SceneAnimatorStateSnapshot state)
+    public bool TryGetState(SceneEntity entity, out SceneAnimatorStateSnapshot state)
     {
         state = default;
-        if (!TryResolve(actor, out _, out AnimatorSlot slot) ||
-            !_world.TryGetData(actor, out SceneAnimator component) ||
+        if (!TryResolve(entity, out _, out AnimatorSlot slot) ||
+            !_world.TryGetData(entity, out SceneAnimator component) ||
             slot.Layers is null)
         {
             return false;
@@ -358,13 +358,13 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Snaps the active layer to a state without blending.</summary>
-    public bool TrySetState(SceneActor actor, int stateIndex, float normalizedTime)
+    public bool TrySetState(SceneEntity entity, int stateIndex, float normalizedTime)
     {
         ThrowIfDisposed();
 
         if (!float.IsFinite(normalizedTime) ||
-            !TryResolve(actor, out _, out AnimatorSlot slot) ||
-            !_world.TryGetData(actor, out SceneAnimator component) ||
+            !TryResolve(entity, out _, out AnimatorSlot slot) ||
+            !_world.TryGetData(entity, out SceneAnimator component) ||
             slot.Layers is null ||
             (uint)component.ActiveLayer >= (uint)slot.Layers.Count)
         {
@@ -383,10 +383,10 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Reads a layer weight.</summary>
-    public bool TryGetLayerWeight(SceneActor actor, int layerIndex, out float weight)
+    public bool TryGetLayerWeight(SceneEntity entity, int layerIndex, out float weight)
     {
         weight = 0.0f;
-        if (!TryResolve(actor, out _, out AnimatorSlot slot) ||
+        if (!TryResolve(entity, out _, out AnimatorSlot slot) ||
             slot.Layers is null ||
             (uint)layerIndex >= (uint)slot.Layers.Count)
         {
@@ -398,12 +398,12 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Writes a layer weight.</summary>
-    public bool TrySetLayerWeight(SceneActor actor, int layerIndex, float weight)
+    public bool TrySetLayerWeight(SceneEntity entity, int layerIndex, float weight)
     {
         ThrowIfDisposed();
 
         if (!float.IsFinite(weight) ||
-            !TryResolve(actor, out _, out AnimatorSlot slot) ||
+            !TryResolve(entity, out _, out AnimatorSlot slot) ||
             slot.Layers is null ||
             (uint)layerIndex >= (uint)slot.Layers.Count)
         {
@@ -415,11 +415,11 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Writes a float parameter by resolved handle.</summary>
-    public bool TrySetFloat(SceneActor actor, in ParameterHandle handle, float value)
+    public bool TrySetFloat(SceneEntity entity, in ParameterHandle handle, float value)
     {
         ThrowIfDisposed();
 
-        if (!handle.IsValid || !TryResolve(actor, out _, out AnimatorSlot slot))
+        if (!handle.IsValid || !TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return false;
         }
@@ -436,10 +436,10 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Reads a float parameter by resolved handle.</summary>
-    public bool TryGetFloat(SceneActor actor, in ParameterHandle handle, out float value)
+    public bool TryGetFloat(SceneEntity entity, in ParameterHandle handle, out float value)
     {
         value = 0.0f;
-        if (!handle.IsValid || !TryResolve(actor, out _, out AnimatorSlot slot))
+        if (!handle.IsValid || !TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return false;
         }
@@ -456,11 +456,11 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Writes an int parameter by resolved handle.</summary>
-    public bool TrySetInt(SceneActor actor, in ParameterHandle handle, int value)
+    public bool TrySetInt(SceneEntity entity, in ParameterHandle handle, int value)
     {
         ThrowIfDisposed();
 
-        if (!handle.IsValid || !TryResolve(actor, out _, out AnimatorSlot slot))
+        if (!handle.IsValid || !TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return false;
         }
@@ -477,10 +477,10 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Reads an int parameter by resolved handle.</summary>
-    public bool TryGetInt(SceneActor actor, in ParameterHandle handle, out int value)
+    public bool TryGetInt(SceneEntity entity, in ParameterHandle handle, out int value)
     {
         value = 0;
-        if (!handle.IsValid || !TryResolve(actor, out _, out AnimatorSlot slot))
+        if (!handle.IsValid || !TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return false;
         }
@@ -497,11 +497,11 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Writes a bool parameter by resolved handle.</summary>
-    public bool TrySetBool(SceneActor actor, in ParameterHandle handle, bool value)
+    public bool TrySetBool(SceneEntity entity, in ParameterHandle handle, bool value)
     {
         ThrowIfDisposed();
 
-        if (!handle.IsValid || !TryResolve(actor, out _, out AnimatorSlot slot))
+        if (!handle.IsValid || !TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return false;
         }
@@ -518,10 +518,10 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Reads a bool parameter by resolved handle.</summary>
-    public bool TryGetBool(SceneActor actor, in ParameterHandle handle, out bool value)
+    public bool TryGetBool(SceneEntity entity, in ParameterHandle handle, out bool value)
     {
         value = false;
-        if (!handle.IsValid || !TryResolve(actor, out _, out AnimatorSlot slot))
+        if (!handle.IsValid || !TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return false;
         }
@@ -538,11 +538,11 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Fires a trigger parameter by name.</summary>
-    public bool TrySetTrigger(SceneActor actor, string name)
+    public bool TrySetTrigger(SceneEntity entity, string name)
     {
         ThrowIfDisposed();
 
-        if (string.IsNullOrEmpty(name) || !TryResolve(actor, out _, out AnimatorSlot slot))
+        if (string.IsNullOrEmpty(name) || !TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return false;
         }
@@ -559,11 +559,11 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Clears a trigger without consuming it.</summary>
-    public bool TryResetTrigger(SceneActor actor, string name)
+    public bool TryResetTrigger(SceneEntity entity, string name)
     {
         ThrowIfDisposed();
 
-        if (string.IsNullOrEmpty(name) || !TryResolve(actor, out _, out AnimatorSlot slot))
+        if (string.IsNullOrEmpty(name) || !TryResolve(entity, out _, out AnimatorSlot slot))
         {
             return false;
         }
@@ -580,9 +580,9 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>Gets the rig driven by an animator.</summary>
-    public bool TryGetRig(SceneActor actor, [NotNullWhen(true)] out Rig? rig)
+    public bool TryGetRig(SceneEntity entity, [NotNullWhen(true)] out Rig? rig)
     {
-        if (TryResolve(actor, out _, out AnimatorSlot slot))
+        if (TryResolve(entity, out _, out AnimatorSlot slot))
         {
             rig = slot.Controller.Rig;
             return true;
@@ -596,9 +596,9 @@ public sealed class SceneAnimatorBridge : IDisposable
     /// Copies the last published pose into caller spans. Both spans must hold at
     /// least one entry per bone.
     /// </summary>
-    public bool TryCopyPose(SceneActor actor, Span<LocalTransform> localPose, Span<Mat4> worldPalette)
+    public bool TryCopyPose(SceneEntity entity, Span<LocalTransform> localPose, Span<Mat4> worldPalette)
     {
-        if (!TryResolve(actor, out _, out AnimatorSlot slot) || !slot.HasPose)
+        if (!TryResolve(entity, out _, out AnimatorSlot slot) || !slot.HasPose)
         {
             return false;
         }
@@ -621,9 +621,9 @@ public sealed class SceneAnimatorBridge : IDisposable
     /// see a mixed transform chain. Alpha 0 selects the previous step, 1 the
     /// current one; before the first completed step the current pose is copied.
     /// </summary>
-    public bool TrySamplePose(SceneActor actor, float alpha, Span<LocalTransform> localPose, Span<Mat4> worldPalette)
+    public bool TrySamplePose(SceneEntity entity, float alpha, Span<LocalTransform> localPose, Span<Mat4> worldPalette)
     {
-        if (!TryResolve(actor, out _, out AnimatorSlot slot) || !slot.HasPose)
+        if (!TryResolve(entity, out _, out AnimatorSlot slot) || !slot.HasPose)
         {
             return false;
         }
@@ -639,7 +639,7 @@ public sealed class SceneAnimatorBridge : IDisposable
     }
 
     /// <summary>
-    /// Samples every bound actor's render pose between the previous and current
+    /// Samples every bound entity's render pose between the previous and current
     /// fixed step and publishes it to the supplied sink. Call once in the render
     /// phase, before drawing, so skinned meshes receive the interpolated palette
     /// instead of the latest fixed-step pose.
@@ -665,7 +665,7 @@ public sealed class SceneAnimatorBridge : IDisposable
             Span<LocalTransform> localPose = slot.RenderLocalPose.AsSpan(0, boneCount);
             Span<Mat4> palette = slot.RenderPalette.AsSpan(0, boneCount);
             SampleSlot(slot, alpha, localPose, palette);
-            poseSink.ApplyPose(slot.Actor, localPose, palette);
+            poseSink.ApplyPose(slot.Entity, localPose, palette);
         }
     }
 
@@ -724,11 +724,11 @@ public sealed class SceneAnimatorBridge : IDisposable
         {
             if (RootMotionConsumer is { } consumer)
             {
-                consumer.ConsumeRootMotion(slot.Actor, in rootMotionPosition, in rootMotionRotation);
+                consumer.ConsumeRootMotion(slot.Entity, in rootMotionPosition, in rootMotionRotation);
             }
-            else if (_world.HasData<SceneTransform3D>(slot.Actor))
+            else if (_world.HasData<SceneTransform3D>(slot.Entity))
             {
-                ref SceneTransform3D transform = ref _world.GetData<SceneTransform3D>(slot.Actor);
+                ref SceneTransform3D transform = ref _world.GetData<SceneTransform3D>(slot.Entity);
                 transform.SetPosition(transform.Position + rootMotionPosition);
                 transform.SetRotation(Quat.Normalize(transform.Rotation * rootMotionRotation));
             }
@@ -755,7 +755,7 @@ public sealed class SceneAnimatorBridge : IDisposable
         controller.Rig.EvaluatePose(localPose, palette);
         slot.HasPose = true;
 
-        poseSink?.ApplyPose(slot.Actor, localPose, palette);
+        poseSink?.ApplyPose(slot.Entity, localPose, palette);
 
         if (morphSink is not null && component.MorphCurveCount > 0)
         {
@@ -763,7 +763,7 @@ public sealed class SceneAnimatorBridge : IDisposable
             int offset = component.MorphCurveOffset;
             if (offset >= 0 && offset + component.MorphCurveCount <= curves.Length)
             {
-                morphSink.ApplyMorphWeights(slot.Actor, curves.Slice(offset, component.MorphCurveCount));
+                morphSink.ApplyMorphWeights(slot.Entity, curves.Slice(offset, component.MorphCurveCount));
             }
         }
 
@@ -773,17 +773,17 @@ public sealed class SceneAnimatorBridge : IDisposable
             for (int i = 0; i < events.Count; i++)
             {
                 ClipEvent clipEvent = events[i];
-                eventSink.OnClipEvent(slot.Actor, in clipEvent);
+                eventSink.OnClipEvent(slot.Entity, in clipEvent);
             }
         }
     }
 
-    private bool TryResolve(SceneActor actor, out int index, out AnimatorSlot slot)
+    private bool TryResolve(SceneEntity entity, out int index, out AnimatorSlot slot)
     {
         index = -1;
         slot = null!;
-        if (!actor.IsValid ||
-            !_world.TryGetData(actor, out SceneAnimator component) ||
+        if (!entity.IsValid ||
+            !_world.TryGetData(entity, out SceneAnimator component) ||
             !component.Handle.IsValid)
         {
             return false;
@@ -798,7 +798,7 @@ public sealed class SceneAnimatorBridge : IDisposable
         AnimatorSlot? candidate = _slots[candidateIndex];
         if (candidate is null ||
             candidate.Generation != component.Handle.Generation ||
-            candidate.Actor != actor)
+            candidate.Entity != entity)
         {
             return false;
         }
@@ -858,11 +858,11 @@ public sealed class SceneAnimatorBridge : IDisposable
 
     private sealed class AnimatorSlot
     {
-        public AnimatorSlot(int index, uint generation, SceneActor actor, AnimationController controller)
+        public AnimatorSlot(int index, uint generation, SceneEntity entity, AnimationController controller)
         {
             _ = index;
             Generation = generation;
-            Actor = actor;
+            Entity = entity;
             Controller = controller;
             BoneCount = controller.Rig.BoneCount;
             LocalPose = new LocalTransform[BoneCount];
@@ -875,7 +875,7 @@ public sealed class SceneAnimatorBridge : IDisposable
 
         public uint Generation { get; }
 
-        public SceneActor Actor { get; }
+        public SceneEntity Entity { get; }
 
         public AnimationController Controller { get; }
 

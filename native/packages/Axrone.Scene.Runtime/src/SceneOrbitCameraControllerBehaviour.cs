@@ -16,7 +16,7 @@ public sealed class SceneOrbitCameraControllerBehaviour : ISceneBehaviour
     private float _elevation = 0.35f;
     private float _autoRotateSpeed;
     private SceneWorld? _world;
-    private SceneActor _actor = SceneActor.Null;
+    private SceneEntity _entity = SceneEntity.Null;
 
     /// <summary>Creates an orbit controller at the default distance.</summary>
     public SceneOrbitCameraControllerBehaviour()
@@ -109,7 +109,7 @@ public sealed class SceneOrbitCameraControllerBehaviour : ISceneBehaviour
     {
         ArgumentNullException.ThrowIfNull(context);
         _world = context.World;
-        _actor = context.Actor;
+        _entity = context.Entity;
         context.OnUpdate(Update);
         context.OnDetach(ClearAttachment);
     }
@@ -117,7 +117,7 @@ public sealed class SceneOrbitCameraControllerBehaviour : ISceneBehaviour
     private void ClearAttachment()
     {
         _world = null;
-        _actor = SceneActor.Null;
+        _entity = SceneEntity.Null;
     }
 
     private void Update(float deltaSeconds)
@@ -138,7 +138,7 @@ public sealed class SceneOrbitCameraControllerBehaviour : ISceneBehaviour
             _azimuth,
             _elevation,
             _distance);
-        ref SceneTransform3D transform = ref world.GetTransform3D(_actor);
+        ref SceneTransform3D transform = ref world.GetTransform3D(_entity);
         SceneCameraOrbitMath.ApplyLook(ref transform, position, _target, _up);
     }
 }

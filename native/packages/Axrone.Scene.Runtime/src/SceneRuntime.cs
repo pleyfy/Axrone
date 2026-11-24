@@ -93,7 +93,7 @@ public sealed class SceneRuntime : IDisposable
     /// <summary>Physics bridges this runtime's profile participates in.</summary>
     public ScenePhysicsBridgeSelection PhysicsBridges => RuntimeProfile.PhysicsBridges;
 
-    /// <summary>Scene world that owns actors, components and behaviours.</summary>
+    /// <summary>Scene world that owns entities, components and behaviours.</summary>
     public SceneWorld World { get; }
 
     /// <summary>Asset catalog shared by rendering and snapshot loading.</summary>
@@ -163,7 +163,7 @@ public sealed class SceneRuntime : IDisposable
     /// <summary>Pose sink that forwards animator output into <see cref="BonePalettes"/>.</summary>
     public SceneBonePalettePoseSink BonePaletteSink { get; }
 
-    /// <summary>Latest per-actor morph weights published by the animator bridge.</summary>
+    /// <summary>Latest per-entity morph weights published by the animator bridge.</summary>
     public SceneMorphWeightStore MorphWeights { get; }
 
     /// <summary>Path agent bridge; null when the profile does not register path agents.</summary>

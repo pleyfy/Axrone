@@ -4,7 +4,7 @@ using Axrone.Geometry;
 using Axrone.Physics3D;
 
 /// <summary>
-/// Bridges scene actors carrying <see cref="SceneRigidbody3D"/> and
+/// Bridges scene entities carrying <see cref="SceneRigidbody3D"/> and
 /// <see cref="SceneCollider3D"/> components into a <c>Axrone.Physics3D.World</c>.
 /// The bridge creates and destroys physics bodies, syncs transforms in both
 /// directions, steps the simulation and exposes contact/sensor events.
@@ -13,7 +13,7 @@ public sealed class ScenePhysicsBridge3D : IDisposable
 {
     private readonly SceneWorld _world;
     private readonly World _physicsWorld;
-    private readonly Dictionary<SceneActor, BodyId> _bodies;
+    private readonly Dictionary<SceneEntity, BodyId> _bodies;
     private bool _disposed;
     private long _stepCount;
 
@@ -31,7 +31,7 @@ public sealed class ScenePhysicsBridge3D : IDisposable
         {
             _physicsWorld = new World();
         }
-        _bodies = new Dictionary<SceneActor, BodyId>();
+        _bodies = new Dictionary<SceneEntity, BodyId>();
     }
 
     /// <summary>Backing physics world.</summary>
@@ -45,41 +45,41 @@ public sealed class ScenePhysicsBridge3D : IDisposable
     {
         ThrowIfDisposed();
 
-        var seen = new HashSet<SceneActor>();
+        var seen = new HashSet<SceneEntity>();
 
-        foreach (SceneActor actor in _world.Actors)
+        foreach (SceneEntity entity in _world.Entities)
         {
-            if (!_world.IsActiveInHierarchy(actor) ||
-                !_world.TryGetData(actor, out SceneRigidbody3D rigidbody) ||
+            if (!_world.IsActiveInHierarchy(entity) ||
+                !_world.TryGetData(entity, out SceneRigidbody3D rigidbody) ||
                 !rigidbody.Enabled)
             {
                 continue;
             }
 
-            seen.Add(actor);
+            seen.Add(entity);
 
-            if (_bodies.ContainsKey(actor))
+            if (_bodies.ContainsKey(entity))
             {
-                SyncBodyProperties(actor, in rigidbody);
+                SyncBodyProperties(entity, in rigidbody);
             }
             else
             {
-                CreateBody(actor, in rigidbody);
-                AttachColliders(actor, bodyId: _bodies[actor]);
-                ApplyMassOverride(actor, in rigidbody);
+                CreateBody(entity, in rigidbody);
+                AttachColliders(entity, bodyId: _bodies[entity]);
+                ApplyMassOverride(entity, in rigidbody);
             }
         }
 
         // Remove bodies whose rigidbody was deleted or disabled.
-        List<SceneActor>? stale = null;
-        foreach (SceneActor actor in _bodies.Keys)
+        List<SceneEntity>? stale = null;
+        foreach (SceneEntity entity in _bodies.Keys)
         {
-            bool stillActive = seen.Contains(actor) &&
-                _world.TryGetData(actor, out SceneRigidbody3D rb) &&
+            bool stillActive = seen.Contains(entity) &&
+                _world.TryGetData(entity, out SceneRigidbody3D rb) &&
                 rb.Enabled;
             if (!stillActive)
             {
-                (stale ??= new List<SceneActor>()).Add(actor);
+                (stale ??= new List<SceneEntity>()).Add(entity);
             }
         }
 
@@ -105,7 +105,7 @@ public sealed class ScenePhysicsBridge3D : IDisposable
     {
         ThrowIfDisposed();
 
-        foreach ((SceneActor actor, BodyId bodyId) in _bodies)
+        foreach ((SceneEntity entity, BodyId bodyId) in _bodies)
         {
             if (!_world.HasTransform3D)
             {
@@ -113,7 +113,7 @@ public sealed class ScenePhysicsBridge3D : IDisposable
             }
 
             RigidTransform3D transform = _physicsWorld.Bodies.GetTransform(bodyId);
-            ref SceneTransform3D sceneTransform = ref _world.GetTransform3D(actor);
+            ref SceneTransform3D sceneTransform = ref _world.GetTransform3D(entity);
             sceneTransform.SetPosition(transform.Position);
             sceneTransform.SetRotation(transform.Rotation);
         }
@@ -136,23 +136,23 @@ public sealed class ScenePhysicsBridge3D : IDisposable
     /// <summary>Returns a sensor event by index.</summary>
     public SensorEvent GetSensorEvent(int index) => _physicsWorld.GetSensorEvent(index);
 
-    /// <summary>Resolves the actor that owns a physics body, or null.</summary>
-    public SceneActor? GetActor(BodyId bodyId)
+    /// <summary>Resolves the entity that owns a physics body, or null.</summary>
+    public SceneEntity? GetEntity(BodyId bodyId)
     {
-        foreach ((SceneActor actor, BodyId id) in _bodies)
+        foreach ((SceneEntity entity, BodyId id) in _bodies)
         {
             if (id == bodyId)
             {
-                return actor;
+                return entity;
             }
         }
 
         return null;
     }
 
-    /// <summary>Resolves the physics body owned by a scene actor.</summary>
-    public bool TryGetBody(SceneActor actor, out BodyId bodyId) =>
-        _bodies.TryGetValue(actor, out bodyId);
+    /// <summary>Resolves the physics body owned by a scene entity.</summary>
+    public bool TryGetBody(SceneEntity entity, out BodyId bodyId) =>
+        _bodies.TryGetValue(entity, out bodyId);
 
     /// <inheritdoc/>
     public void Dispose()
@@ -167,13 +167,13 @@ public sealed class ScenePhysicsBridge3D : IDisposable
         _disposed = true;
     }
 
-    private void CreateBody(SceneActor actor, in SceneRigidbody3D rigidbody)
+    private void CreateBody(SceneEntity entity, in SceneRigidbody3D rigidbody)
     {
         Vec3 position = _world.HasTransform3D
-            ? _world.GetWorldPosition3D(actor)
+            ? _world.GetWorldPosition3D(entity)
             : default;
         Quat rotation = _world.HasTransform3D
-            ? Quat.Normalize(_world.GetWorldRotation3D(actor))
+            ? Quat.Normalize(_world.GetWorldRotation3D(entity))
             : Quat.Identity;
 
         var def = new BodyDef
@@ -193,20 +193,20 @@ public sealed class ScenePhysicsBridge3D : IDisposable
             GravityScale = rigidbody.GravityScale
         };
 
-        _bodies[actor] = _physicsWorld.Bodies.Create(in def);
+        _bodies[entity] = _physicsWorld.Bodies.Create(in def);
     }
 
-    private void DestroyBody(SceneActor actor)
+    private void DestroyBody(SceneEntity entity)
     {
-        if (_bodies.Remove(actor, out BodyId bodyId))
+        if (_bodies.Remove(entity, out BodyId bodyId))
         {
             _physicsWorld.Bodies.Destroy(bodyId);
         }
     }
 
-    private void SyncBodyProperties(SceneActor actor, in SceneRigidbody3D rigidbody)
+    private void SyncBodyProperties(SceneEntity entity, in SceneRigidbody3D rigidbody)
     {
-        if (!_bodies.TryGetValue(actor, out BodyId bodyId))
+        if (!_bodies.TryGetValue(entity, out BodyId bodyId))
         {
             return;
         }
@@ -218,9 +218,9 @@ public sealed class ScenePhysicsBridge3D : IDisposable
         }
     }
 
-    private void AttachColliders(SceneActor actor, BodyId bodyId)
+    private void AttachColliders(SceneEntity entity, BodyId bodyId)
     {
-        if (!_world.TryGetData(actor, out SceneCollider3D collider) || !collider.Enabled)
+        if (!_world.TryGetData(entity, out SceneCollider3D collider) || !collider.Enabled)
         {
             return;
         }
@@ -284,14 +284,14 @@ public sealed class ScenePhysicsBridge3D : IDisposable
         }
     }
 
-    private void ApplyMassOverride(SceneActor actor, in SceneRigidbody3D rigidbody)
+    private void ApplyMassOverride(SceneEntity entity, in SceneRigidbody3D rigidbody)
     {
         if (rigidbody.Mass <= 0.0f || rigidbody.BodyType == SceneBodyType.Static)
         {
             return;
         }
 
-        BodyId bodyId = _bodies[actor];
+        BodyId bodyId = _bodies[entity];
         Vec3 inverseInertia = _physicsWorld.Bodies.GetInverseInertia(bodyId);
         var inertia = new Vec3(
             inverseInertia.X > 0.0f ? 1.0f / inverseInertia.X : 0.0f,

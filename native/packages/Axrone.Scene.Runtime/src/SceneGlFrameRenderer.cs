@@ -93,10 +93,10 @@ public sealed class SceneGlFrameRenderer : IDisposable, ISceneGlShadowSource
     /// <param name="frameIndex">Frame index used by the render-state accumulator.</param>
     /// <param name="elapsedSeconds">Elapsed time for time-driven feature state.</param>
     /// <param name="cameraOverride">
-    /// Explicit camera actor for preview rendering; the primary camera is used
-    /// when this is <see cref="SceneActor.Null"/>.
+    /// Explicit camera entity for preview rendering; the primary camera is used
+    /// when this is <see cref="SceneEntity.Null"/>.
     /// </param>
-    public SceneRenderStats Render(int frameIndex, float elapsedSeconds = 0.0f, SceneActor cameraOverride = default)
+    public SceneRenderStats Render(int frameIndex, float elapsedSeconds = 0.0f, SceneEntity cameraOverride = default)
     {
         ThrowIfDisposed();
         _context.AssertRenderThread();

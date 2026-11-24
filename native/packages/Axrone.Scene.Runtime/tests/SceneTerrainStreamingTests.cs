@@ -70,9 +70,9 @@ public sealed class SceneTerrainStreamingTests
 
         terrain.TryGetChunk(coord, out SceneTerrainChunkHandle handle).Should().BeTrue();
         handle.LodLevel.Should().Be(1);
-        world.TryGetData(handle.Actor, out SceneTerrainChunk3D component).Should().BeTrue();
+        world.TryGetData(handle.Entity, out SceneTerrainChunk3D component).Should().BeTrue();
         component.LodLevel.Should().Be(1);
-        world.TryGetData(handle.Actor, out SceneMeshRenderer renderer).Should().BeTrue();
+        world.TryGetData(handle.Entity, out SceneMeshRenderer renderer).Should().BeTrue();
         assets.Meshes.TryGet(renderer.MeshId, out SceneMeshDefinition? definition).Should().BeTrue();
         definition!.VertexCount.Should().Be(TerrainChunkLod.VertexCount(1));
         engine.ChunkCount.Should().Be(1);

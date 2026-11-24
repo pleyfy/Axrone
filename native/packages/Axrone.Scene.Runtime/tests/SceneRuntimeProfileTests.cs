@@ -91,12 +91,12 @@ public sealed class SceneRuntimeProfileTests
     public void TwoDWorldResolvesSpriteMasks()
     {
         using SceneWorld world = SceneRuntimeProfiles.TwoD.Profile.CreateWorld();
-        SceneActor parent = world.CreateActor("Mask");
+        SceneEntity parent = world.CreateEntity("Mask");
         SceneSpriteMask mask = SceneSpriteMask.Default;
         mask.Kind = SceneSpriteMaskKind.Ellipse;
         world.AddData(parent, mask);
 
-        SceneActor sprite = world.CreateActor("Sprite");
+        SceneEntity sprite = world.CreateEntity("Sprite");
         world.Hierarchy.SetParent(sprite, parent);
 
         SceneSpriteMaskResolver.TryResolve(world, sprite, out SceneSpriteMask resolved).Should().BeTrue();
