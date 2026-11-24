@@ -39,7 +39,7 @@ bridge.AttachLoop(loop);   // pumps after every loop.Tick()
 
 **Event–Scene boundary:** `Scene.Core` and `Scene.Runtime` do **not** reference `Axrone.Event`.
 Structural mutations flow through `SceneChangeJournal`; `Axrone.Reactive.Scene` is the adapter
-(`ActorCreated/Destroyed`, `ComponentAdded/Removed/Changed<T>`, `BehaviourChanges`,
+(`EntityCreated/Destroyed`, `ComponentAdded/Removed/Changed<T>`, `BehaviourChanges`,
 `HierarchyChanges`, `Collisions`, `Sensors`). `Axrone.Event` stays the gameplay/backend transport,
 so deleting the ECS event bus does not touch this path.
 
@@ -47,15 +47,15 @@ so deleting the ECS event bus does not touch this path.
 
 | Stream | Payload |
 |---|---|
-| `ActorCreated` / `ActorDestroyed` | `SceneActor` |
-| `ComponentAdded<T>()` / `ComponentRemoved<T>()` / `ComponentChanged<T>()` | `SceneActor` |
+| `EntityCreated` / `EntityDestroyed` | `SceneEntity` |
+| `ComponentAdded<T>()` / `ComponentRemoved<T>()` / `ComponentChanged<T>()` | `SceneEntity` |
 | `BehaviourChanges` | `SceneBehaviourTypeId` + `SceneChangeKind` |
-| `HierarchyChanges` | `SceneActor` + `SceneChangeKind` (`ParentChanged` / `ActiveInHierarchyChanged`) |
-| `Collisions` | `SceneCollisionEvent` (actors resolved when possible) |
+| `HierarchyChanges` | `SceneEntity` + `SceneChangeKind` (`ParentChanged` / `ActiveInHierarchyChanged`) |
+| `Collisions` | `SceneCollisionEvent` (entities resolved when possible) |
 | `Sensors` | `SceneSensorEvent` |
 
 Component events deliberately carry **no payload**. They are notifications; the current value is
-read with `world.TryGetData<T>(actor, out value)` or `world.GetData<T>(actor)`. This keeps the
+read with `world.TryGetData<T>(entity, out value)` or `world.GetData<T>(entity)`. This keeps the
 journal allocation-free and avoids delivering stale values.
 
 ## SceneBehaviour lifetime
@@ -68,13 +68,13 @@ public sealed class PlayerController : ISceneBehaviour
         context.ObserveComponentAdded<SceneCollider3D>(_bridge, change => { });
         context.ObserveComponentChanged<SceneHealth>(_bridge, change => { });
         context.OnCollision(_bridge, collision => { });
-        context.OnActorDestroyed(_bridge, actor => { });
+        context.OnActorDestroyed(_bridge, entity => { });
     }
 }
 ```
 
 Every helper calls `SceneBehaviourContext.Track`. The behaviour table disposes the
-subscriptions when the behaviour is removed or its actor is destroyed, so no manual unsubscribe
+subscriptions when the behaviour is removed or its entity is destroyed, so no manual unsubscribe
 and no leak on hot reload/play-stop.
 
 ## Contracts
@@ -85,7 +85,7 @@ and no leak on hot reload/play-stop.
   payload-free event lets consumers query at pump time. Pump once per frame for predictable
   ordering.
 - **In-place writes.** `GetData<T>` returns `ref T`; a direct write is invisible to the journal.
-  Call `world.MarkChanged<T>(actor)` after mutating, or use `world.SetData<T>(actor, value)`.
+  Call `world.MarkChanged<T>(entity)` after mutating, or use `world.SetData<T>(entity, value)`.
 - **No special collider event.** A collider attach is `ComponentAdded<SceneCollider3D>`. The
   gameplay callback is `Collisions` / `OnCollision`, sourced from the physics step, so collisions
   are a stream instead of a virtual lifecycle method.
@@ -94,5 +94,5 @@ and no leak on hot reload/play-stop.
 ## Verification
 
 `dotnet test packages/Axrone.Reactive.Scene/tests -c Release` covers component add/remove/change,
-actor lifecycle, behaviour lifecycle, subscription disposal and pump draining. Scene.Core tests
+entity lifecycle, behaviour lifecycle, subscription disposal and pump draining. Scene.Core tests
 cover the journal ordering and drop-oldest behaviour.

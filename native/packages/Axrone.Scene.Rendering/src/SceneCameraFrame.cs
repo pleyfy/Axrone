@@ -13,8 +13,8 @@ public sealed class SceneCameraFrame
     {
     }
 
-    /// <summary>Camera actor.</summary>
-    public SceneActor Actor { get; private set; }
+    /// <summary>Camera entity.</summary>
+    public SceneEntity Entity { get; private set; }
 
     /// <summary>Camera data payload.</summary>
     public SceneCamera Camera { get; private set; }
@@ -51,7 +51,7 @@ public sealed class SceneCameraFrame
     }
 
     internal void Update(
-        in SceneActor actor,
+        in SceneEntity entity,
         in SceneCamera camera,
         in Vec3 position,
         in Quat rotation,
@@ -62,7 +62,7 @@ public sealed class SceneCameraFrame
         int viewportWidth,
         int viewportHeight)
     {
-        Actor = actor;
+        Entity = entity;
         Camera = camera;
         Position = position;
         Rotation = rotation;
@@ -92,15 +92,15 @@ public sealed class SceneCameraFrameCollector
     public SceneCameraFrame? Collect(SceneWorld world, int viewportWidth, int viewportHeight)
     {
         ArgumentNullException.ThrowIfNull(world);
-        return SceneCameraSelector.TrySelect(world, out SceneActor cameraActor)
-            ? Collect(world, cameraActor, viewportWidth, viewportHeight)
+        return SceneCameraSelector.TrySelect(world, out SceneEntity cameraEntity)
+            ? Collect(world, cameraEntity, viewportWidth, viewportHeight)
             : null;
     }
 
-    /// <summary>Collects the frame for an explicit camera actor.</summary>
+    /// <summary>Collects the frame for an explicit camera entity.</summary>
     public SceneCameraFrame? Collect(
         SceneWorld world,
-        SceneActor cameraActor,
+        SceneEntity cameraEntity,
         int viewportWidth,
         int viewportHeight)
     {
@@ -113,7 +113,7 @@ public sealed class SceneCameraFrameCollector
                 "Camera viewport dimensions must be positive.");
         }
 
-        if (!world.TryGetData(cameraActor, out SceneCamera camera) ||
+        if (!world.TryGetData(cameraEntity, out SceneCamera camera) ||
             !camera.Enabled ||
             !world.HasTransform3D)
         {
@@ -129,8 +129,8 @@ public sealed class SceneCameraFrameCollector
             fieldOfView = 2.0f * MathF.Atan(MathF.Tan(fieldOfView * 0.5f) / aspectRatio);
         }
 
-        Vec3 position = world.GetWorldPosition3D(cameraActor);
-        Quat rotation = Quat.Normalize(world.GetWorldRotation3D(cameraActor));
+        Vec3 position = world.GetWorldPosition3D(cameraEntity);
+        Quat rotation = Quat.Normalize(world.GetWorldRotation3D(cameraEntity));
         Vec3 forward = rotation * LocalForward;
         Vec3 up = rotation * LocalUp;
 
@@ -151,7 +151,7 @@ public sealed class SceneCameraFrameCollector
         Mat4 viewProjection = view * projection;
 
         _frame.Update(
-            in cameraActor,
+            in cameraEntity,
             in camera,
             in position,
             in rotation,

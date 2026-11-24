@@ -8,39 +8,39 @@ namespace Axrone.Scene.Rendering;
 /// </summary>
 public interface ISceneBonePaletteSink
 {
-    /// <summary>Publishes one actor's world-space bone palette.</summary>
-    /// <param name="actor">Animated actor.</param>
+    /// <summary>Publishes one entity's world-space bone palette.</summary>
+    /// <param name="entity">Animated entity.</param>
     /// <param name="worldPalette">World bone matrices, one per bone.</param>
-    void ApplyBonePalette(SceneActor actor, ReadOnlySpan<Mat4> worldPalette);
+    void ApplyBonePalette(SceneEntity entity, ReadOnlySpan<Mat4> worldPalette);
 }
 
-/// <summary>Reads the latest world-space bone palette of an actor.</summary>
+/// <summary>Reads the latest world-space bone palette of an entity.</summary>
 public interface ISceneBonePaletteSource
 {
-    /// <summary>Looks up an actor's current palette.</summary>
-    /// <param name="actor">Animated actor.</param>
+    /// <summary>Looks up an entity's current palette.</summary>
+    /// <param name="entity">Animated entity.</param>
     /// <param name="worldPalette">World bone matrices, one per bone.</param>
-    bool TryGetBonePalette(SceneActor actor, out ReadOnlySpan<Mat4> worldPalette);
+    bool TryGetBonePalette(SceneEntity entity, out ReadOnlySpan<Mat4> worldPalette);
 }
 
 /// <summary>
-/// Actor-keyed palette storage shared by the animator bridge and the skinned
+/// Entity-keyed palette storage shared by the animator bridge and the skinned
 /// mesh renderer. Palettes live in pinned arrays that only grow, so updating an
-/// existing actor is allocation-free. An empty palette removes the entry, which
+/// existing entity is allocation-free. An empty palette removes the entry, which
 /// makes an unbound animator stop contributing to skinning.
 /// </summary>
 /// <remarks>
-/// The actor index and revision are lock-guarded. <see cref="TryGetBonePalette"/>
+/// The entity index and revision are lock-guarded. <see cref="TryGetBonePalette"/>
 /// returns a view over the resident array; consume it before the next write for
-/// that actor (the normal same-frame render path does).
+/// that entity (the normal same-frame render path does).
 /// </remarks>
 public sealed class SceneBonePaletteStore : ISceneBonePaletteSink, ISceneBonePaletteSource
 {
-    private readonly Dictionary<SceneActor, PaletteSlot> _slots = new();
+    private readonly Dictionary<SceneEntity, PaletteSlot> _slots = new();
     private readonly Lock _gate = new();
     private long _revision;
 
-    /// <summary>Gets the number of actors with a resident palette.</summary>
+    /// <summary>Gets the number of entities with a resident palette.</summary>
     public int Count
     {
         get
@@ -56,9 +56,9 @@ public sealed class SceneBonePaletteStore : ISceneBonePaletteSink, ISceneBonePal
     public long Revision => Volatile.Read(ref _revision);
 
     /// <inheritdoc/>
-    public void ApplyBonePalette(SceneActor actor, ReadOnlySpan<Mat4> worldPalette)
+    public void ApplyBonePalette(SceneEntity entity, ReadOnlySpan<Mat4> worldPalette)
     {
-        if (!actor.IsValid)
+        if (!entity.IsValid)
         {
             return;
         }
@@ -67,15 +67,15 @@ public sealed class SceneBonePaletteStore : ISceneBonePaletteSink, ISceneBonePal
         {
             if (worldPalette.IsEmpty)
             {
-                _ = _slots.Remove(actor);
+                _ = _slots.Remove(entity);
                 _revision++;
                 return;
             }
 
-            if (!_slots.TryGetValue(actor, out PaletteSlot? slot))
+            if (!_slots.TryGetValue(entity, out PaletteSlot? slot))
             {
                 slot = new PaletteSlot();
-                _slots.Add(actor, slot);
+                _slots.Add(entity, slot);
             }
 
             slot.Set(worldPalette);
@@ -84,11 +84,11 @@ public sealed class SceneBonePaletteStore : ISceneBonePaletteSink, ISceneBonePal
     }
 
     /// <inheritdoc/>
-    public bool TryGetBonePalette(SceneActor actor, out ReadOnlySpan<Mat4> worldPalette)
+    public bool TryGetBonePalette(SceneEntity entity, out ReadOnlySpan<Mat4> worldPalette)
     {
         lock (_gate)
         {
-            if (actor.IsValid && _slots.TryGetValue(actor, out PaletteSlot? slot))
+            if (entity.IsValid && _slots.TryGetValue(entity, out PaletteSlot? slot))
             {
                 worldPalette = slot.Palette;
                 return true;
@@ -99,12 +99,12 @@ public sealed class SceneBonePaletteStore : ISceneBonePaletteSink, ISceneBonePal
         return false;
     }
 
-    /// <summary>Removes one actor's palette.</summary>
-    public bool Remove(SceneActor actor)
+    /// <summary>Removes one entity's palette.</summary>
+    public bool Remove(SceneEntity entity)
     {
         lock (_gate)
         {
-            if (!_slots.Remove(actor))
+            if (!_slots.Remove(entity))
             {
                 return false;
             }

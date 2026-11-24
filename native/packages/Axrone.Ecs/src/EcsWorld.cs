@@ -334,7 +334,7 @@ public sealed partial class World : IDisposable
                     _entities.UpdateRecord(movedEntity.Id, arch.Id, record.Row);
                 }
 
-                _actors.Unregister(entity);
+                _entityRegistry.Unregister(entity);
                 OnSingletonEntityFreed(entity, in mask);
 
                 _diagnostics.OnEntityDestroyed(entity);
@@ -381,7 +381,7 @@ public sealed partial class World : IDisposable
     public void Dispose()
     {
         Volatile.Write(ref _closed, true);
-        _actors.Clear();
+        _entityRegistry.Clear();
         _singletons.ClearAll();
         DisposeParallelInfrastructure();
         _archetypes.Dispose();

@@ -67,13 +67,13 @@ public sealed class SceneCamera2DDefaultsTests
         var builder = new SceneProfileBuilder(new SceneProfileId(SceneStringId.FromName("test/camera2d-defaults")));
         SceneWorld world = builder.AddTransform2D().AddRendering2D().Build().CreateWorld();
 
-        SceneActor cameraActor = world.CreateActor("Camera2D");
+        SceneEntity cameraEntity = world.CreateEntity("Camera2D");
         SceneCamera camera = SceneCamera2DDefaults.CreateCamera(720);
-        world.AddData(cameraActor, camera);
-        world.AddData(cameraActor, SceneCamera2DDefaults.CreateCamera2D());
+        world.AddData(cameraEntity, camera);
+        world.AddData(cameraEntity, SceneCamera2DDefaults.CreateCamera2D());
         world.UpdateTransforms();
 
-        SceneCameraFrame frame = new SceneCamera2DFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        SceneCameraFrame frame = new SceneCamera2DFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
         Mat4 expected = SceneCamera2DDefaults.CreateProjection(
             camera.OrthographicSize,
             1280.0f / 720.0f,

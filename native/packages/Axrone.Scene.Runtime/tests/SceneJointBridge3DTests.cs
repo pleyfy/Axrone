@@ -16,12 +16,12 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(2.0f, 5.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(2.0f, 5.0f, 0.0f));
 
         SceneFixedJoint3D joint = SceneFixedJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
-        world.AddData(actorA, joint);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
@@ -30,7 +30,7 @@ public sealed class SceneJointBridge3DTests
         joints.PendingJointCount.Should().Be(0);
         joints.FaultCount.Should().Be(0);
         physics.PhysicsWorld.Joints.Count.Should().Be(1);
-        joints.TryGetJoint(actorA, SceneJointKind3D.Fixed, out JointId jointId).Should().BeTrue();
+        joints.TryGetJoint(entityA, SceneJointKind3D.Fixed, out JointId jointId).Should().BeTrue();
         physics.PhysicsWorld.Joints.IsValid(jointId).Should().BeTrue();
     }
 
@@ -41,17 +41,17 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
 
         SceneHingeJoint3D joint = SceneHingeJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
         joint.Axis = new Vec3(0.0f, 1.0f, 0.0f);
         joint.UseLimits = true;
         joint.Limits = new SceneJointLimits3D(-1.0f, 1.0f, 0.2f, 0.01f);
         joint.UseMotor = true;
         joint.Motor = new SceneJointMotor3D(1.5f, 30.0f, false);
-        world.AddData(actorA, joint);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
@@ -67,13 +67,13 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
 
         SceneHingeJoint3D joint = SceneHingeJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
         joint.Axis = Vec3.Zero;
-        world.AddData(actorA, joint);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
@@ -90,14 +90,14 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
 
         SceneCharacterJoint3D joint = SceneCharacterJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
         joint.LowTwistLimit = new SceneSoftJointLimit3D(1.0f, 0.0f, 0.0f);
         joint.HighTwistLimit = new SceneSoftJointLimit3D(0.5f, 0.0f, 0.0f);
-        world.AddData(actorA, joint);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
@@ -113,18 +113,18 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
 
         SceneCharacterJoint3D joint = SceneCharacterJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
         joint.LowTwistLimit = new SceneSoftJointLimit3D(-0.4f, 0.0f, 0.0f);
         joint.HighTwistLimit = new SceneSoftJointLimit3D(0.4f, 0.0f, 0.0f);
         joint.Swing1Limit = new SceneSoftJointLimit3D(0.6f, 0.0f, 0.0f);
         joint.Swing2Limit = new SceneSoftJointLimit3D(0.0f, 0.0f, 0.0f);
         joint.MotorSpeed = 0.5f;
         joint.MaxMotorTorque = 10.0f;
-        world.AddData(actorA, joint);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
@@ -140,14 +140,14 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
 
         SceneSpringJoint3D joint = SceneSpringJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
         joint.Spring = 20.0f;
         joint.Damper = 1.0f;
-        world.AddData(actorA, joint);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
@@ -163,15 +163,15 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
 
         SceneSliderJoint3D joint = SceneSliderJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
         joint.Axis = new Vec3(0.0f, 1.0f, 0.0f);
         joint.UseLimits = true;
         joint.Limits = new SceneJointLimits3D(-1.0f, 1.0f, 0.0f, 0.0f);
-        world.AddData(actorA, joint);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
@@ -187,11 +187,11 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
 
         SceneConfigurableJoint3D joint = SceneConfigurableJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
         joint.XMotion = 2.0f;
         joint.LinearLimit = new SceneSoftJointLimit3D(0.5f, 0.0f, 0.0f);
         joint.YMotion = 1.0f;
@@ -200,7 +200,7 @@ public sealed class SceneJointBridge3DTests
         joint.LowAngularXLimit = new SceneSoftJointLimit3D(-0.3f, 0.0f, 0.0f);
         joint.HighAngularXLimit = new SceneSoftJointLimit3D(0.3f, 0.0f, 0.0f);
         joint.TargetVelocity = new Vec3(0.0f, 0.0f, 0.0f);
-        world.AddData(actorA, joint);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
@@ -216,14 +216,14 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = world.CreateActor("NoBodyYet");
-        world.GetTransform3D(actorB).SetPosition(new Vec3(0.0f, 2.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = world.CreateEntity("NoBodyYet");
+        world.GetTransform3D(entityB).SetPosition(new Vec3(0.0f, 2.0f, 0.0f));
         world.UpdateTransforms();
 
         SceneFixedJoint3D joint = SceneFixedJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
-        world.AddData(actorA, joint);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
@@ -231,8 +231,8 @@ public sealed class SceneJointBridge3DTests
         joints.JointCount.Should().Be(0);
         joints.PendingJointCount.Should().Be(1);
 
-        world.AddData(actorB, SceneRigidbody3D.Default);
-        world.AddData(actorB, SceneCollider3D.Default);
+        world.AddData(entityB, SceneRigidbody3D.Default);
+        world.AddData(entityB, SceneCollider3D.Default);
         physics.SyncBodies();
         joints.SyncJoints();
 
@@ -247,18 +247,18 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(2.0f, 5.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(2.0f, 5.0f, 0.0f));
 
         SceneFixedJoint3D joint = SceneFixedJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
-        world.AddData(actorA, joint);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
         physics.PhysicsWorld.Joints.Count.Should().Be(1);
 
-        world.RemoveData<SceneFixedJoint3D>(actorA);
+        world.RemoveData<SceneFixedJoint3D>(entityA);
         joints.SyncJoints();
 
         joints.JointCount.Should().Be(0);
@@ -272,21 +272,21 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(0.0f, 2.0f, 0.0f));
 
         SceneHingeJoint3D joint = SceneHingeJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
         joint.Axis = new Vec3(0.0f, 1.0f, 0.0f);
-        world.AddData(actorA, joint);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
 
-        SceneHingeJoint3D updated = world.GetData<SceneHingeJoint3D>(actorA);
+        SceneHingeJoint3D updated = world.GetData<SceneHingeJoint3D>(entityA);
         updated.UseLimits = true;
         updated.Limits = new SceneJointLimits3D(-0.5f, 0.5f, 0.0f, 0.0f);
-        world.GetData<SceneHingeJoint3D>(actorA) = updated;
+        world.GetData<SceneHingeJoint3D>(entityA) = updated;
         joints.SyncJoints();
 
         joints.JointCount.Should().Be(1);
@@ -300,30 +300,30 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(2.0f, 5.0f, 0.0f));
-        SceneJointActorRef pair = SceneJointActorRef.FromActor(actorB);
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(2.0f, 5.0f, 0.0f));
+        SceneJointEntityRef pair = SceneJointEntityRef.FromEntity(entityB);
 
         SceneFixedJoint3D weld = SceneFixedJoint3D.Default;
         weld.ConnectedBody = pair;
-        world.AddData(actorA, weld);
+        world.AddData(entityA, weld);
 
         SceneSpringJoint3D spring = SceneSpringJoint3D.Default;
         spring.ConnectedBody = pair;
-        world.AddData(actorA, spring);
+        world.AddData(entityA, spring);
 
         physics.SyncBodies();
         joints.SyncJoints();
 
         joints.JointCount.Should().Be(2);
         physics.PhysicsWorld.Joints.Count.Should().Be(2);
-        joints.TryGetJoint(actorA, SceneJointKind3D.Fixed, out JointId weldId).Should().BeTrue();
+        joints.TryGetJoint(entityA, SceneJointKind3D.Fixed, out JointId weldId).Should().BeTrue();
 
-        world.RemoveData<SceneSpringJoint3D>(actorA);
+        world.RemoveData<SceneSpringJoint3D>(entityA);
         joints.SyncJoints();
 
         joints.JointCount.Should().Be(1);
-        joints.TryGetJoint(actorA, SceneJointKind3D.Fixed, out JointId surviving).Should().BeTrue();
+        joints.TryGetJoint(entityA, SceneJointKind3D.Fixed, out JointId surviving).Should().BeTrue();
         surviving.Should().Be(weldId);
     }
 
@@ -334,13 +334,13 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(2.0f, 5.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(2.0f, 5.0f, 0.0f));
 
         SceneFixedJoint3D joint = SceneFixedJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
         joint.MassScale = 0.0f;
-        world.AddData(actorA, joint);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
@@ -356,29 +356,29 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor actorA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
-        SceneActor actorB = AddBody(world, "B", new Vec3(2.0f, 5.0f, 0.0f));
+        SceneEntity entityA = AddBody(world, "A", new Vec3(0.0f, 5.0f, 0.0f));
+        SceneEntity entityB = AddBody(world, "B", new Vec3(2.0f, 5.0f, 0.0f));
 
         SceneFixedJoint3D joint = SceneFixedJoint3D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
-        world.AddData(actorA, joint);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
+        world.AddData(entityA, joint);
 
         physics.SyncBodies();
         joints.SyncJoints();
         joints.JointCount.Should().Be(1);
 
-        SceneRigidbody3D disabled = world.GetData<SceneRigidbody3D>(actorB);
+        SceneRigidbody3D disabled = world.GetData<SceneRigidbody3D>(entityB);
         disabled.Enabled = false;
-        world.GetData<SceneRigidbody3D>(actorB) = disabled;
+        world.GetData<SceneRigidbody3D>(entityB) = disabled;
         physics.SyncBodies();
         joints.SyncJoints();
 
         joints.JointCount.Should().Be(0);
         joints.PendingJointCount.Should().Be(1);
 
-        SceneRigidbody3D restored = world.GetData<SceneRigidbody3D>(actorB);
+        SceneRigidbody3D restored = world.GetData<SceneRigidbody3D>(entityB);
         restored.Enabled = true;
-        world.GetData<SceneRigidbody3D>(actorB) = restored;
+        world.GetData<SceneRigidbody3D>(entityB) = restored;
         physics.SyncBodies();
         joints.SyncJoints();
 
@@ -393,43 +393,43 @@ public sealed class SceneJointBridge3DTests
         using var physics = new ScenePhysicsBridge3D(world);
         using var joints = new SceneJointBridge3D(world, physics);
 
-        SceneActor host = AddBody(world, "Host", new Vec3(0.0f, 30.0f, 0.0f));
+        SceneEntity host = AddBody(world, "Host", new Vec3(0.0f, 30.0f, 0.0f));
 
-        SceneActor targetA = AddBody(world, "TA", new Vec3(2.0f, 5.0f, 0.0f));
-        SceneActor targetB = AddBody(world, "TB", new Vec3(2.0f, 10.0f, 0.0f));
-        SceneActor targetC = AddBody(world, "TC", new Vec3(2.0f, 15.0f, 0.0f));
-        SceneActor targetD = AddBody(world, "TD", new Vec3(2.0f, 20.0f, 0.0f));
-        SceneActor targetE = AddBody(world, "TE", new Vec3(2.0f, 25.0f, 0.0f));
-        SceneActor targetF = AddBody(world, "TF", new Vec3(2.0f, 30.0f, 0.0f));
+        SceneEntity targetA = AddBody(world, "TA", new Vec3(2.0f, 5.0f, 0.0f));
+        SceneEntity targetB = AddBody(world, "TB", new Vec3(2.0f, 10.0f, 0.0f));
+        SceneEntity targetC = AddBody(world, "TC", new Vec3(2.0f, 15.0f, 0.0f));
+        SceneEntity targetD = AddBody(world, "TD", new Vec3(2.0f, 20.0f, 0.0f));
+        SceneEntity targetE = AddBody(world, "TE", new Vec3(2.0f, 25.0f, 0.0f));
+        SceneEntity targetF = AddBody(world, "TF", new Vec3(2.0f, 30.0f, 0.0f));
 
         SceneFixedJoint3D fixedJoint = SceneFixedJoint3D.Default;
-        fixedJoint.ConnectedBody = SceneJointActorRef.FromActor(targetA);
+        fixedJoint.ConnectedBody = SceneJointEntityRef.FromEntity(targetA);
         world.AddData(host, fixedJoint);
 
         SceneHingeJoint3D hinge = SceneHingeJoint3D.Default;
-        hinge.ConnectedBody = SceneJointActorRef.FromActor(targetB);
+        hinge.ConnectedBody = SceneJointEntityRef.FromEntity(targetB);
         hinge.AutoConfigureConnectedAnchor = false;
         world.AddData(host, hinge);
 
         SceneSliderJoint3D slider = SceneSliderJoint3D.Default;
-        slider.ConnectedBody = SceneJointActorRef.FromActor(targetC);
+        slider.ConnectedBody = SceneJointEntityRef.FromEntity(targetC);
         slider.AutoConfigureConnectedAnchor = false;
         world.AddData(host, slider);
 
         SceneSpringJoint3D spring = SceneSpringJoint3D.Default;
-        spring.ConnectedBody = SceneJointActorRef.FromActor(targetD);
+        spring.ConnectedBody = SceneJointEntityRef.FromEntity(targetD);
         spring.AutoConfigureDistance = false;
         spring.MinDistance = 2.0f;
         spring.MaxDistance = 2.0f;
         world.AddData(host, spring);
 
         SceneCharacterJoint3D character = SceneCharacterJoint3D.Default;
-        character.ConnectedBody = SceneJointActorRef.FromActor(targetE);
+        character.ConnectedBody = SceneJointEntityRef.FromEntity(targetE);
         character.AutoConfigureConnectedAnchor = false;
         world.AddData(host, character);
 
         SceneConfigurableJoint3D configurable = SceneConfigurableJoint3D.Default;
-        configurable.ConnectedBody = SceneJointActorRef.FromActor(targetF);
+        configurable.ConnectedBody = SceneJointEntityRef.FromEntity(targetF);
         configurable.AutoConfigureConnectedAnchor = false;
         world.AddData(host, configurable);
 
@@ -442,14 +442,14 @@ public sealed class SceneJointBridge3DTests
         joints.TryGetJoint(host, SceneJointKind3D.Configurable, out _).Should().BeTrue();
     }
 
-    private static SceneActor AddBody(SceneWorld world, string name, Vec3 position, bool staticBody = false)
+    private static SceneEntity AddBody(SceneWorld world, string name, Vec3 position, bool staticBody = false)
     {
-        SceneActor actor = world.CreateActor(name);
-        world.GetTransform3D(actor).SetPosition(position);
-        world.AddData(actor, staticBody ? SceneRigidbody3D.Static : SceneRigidbody3D.Default);
-        world.AddData(actor, SceneCollider3D.Default);
+        SceneEntity entity = world.CreateEntity(name);
+        world.GetTransform3D(entity).SetPosition(position);
+        world.AddData(entity, staticBody ? SceneRigidbody3D.Static : SceneRigidbody3D.Default);
+        world.AddData(entity, SceneCollider3D.Default);
         world.UpdateTransforms();
-        return actor;
+        return entity;
     }
 
     private static SceneWorld CreateWorld()

@@ -15,7 +15,7 @@ namespace Axrone.Render.OpenGL.FrameGraph;
 /// missed <c>Dispose</c> would leak GL state invisibly. Here, state restoration is
 /// a value the command carries and replays, so it is deterministic and cannot be
 /// skipped.</para>
-/// <para>The parameters stay raw GL handles — object names and blend factors are
+/// <para>The parameters stay raw GL handles — object names and blend fentities are
 /// <see cref="uint"/> by definition — but an implementation must never forward
 /// them to the driver directly. They go through the invoker's state cache so the
 /// shadow state stays authoritative for every later pass.</para>
@@ -34,7 +34,7 @@ public interface IGLFullscreenInvoker<TSelf> where TSelf : struct, IGLFullscreen
     static abstract void BindTextureUnit(in TSelf ctx, uint unit, uint texture);
 
     /// <summary>
-    /// Applies blend enable plus the RGB/alpha blend factors. The factors are
+    /// Applies blend enable plus the RGB/alpha blend fentities. The fentities are
     /// recorded even on the disable path so the state cache and the driver agree
     /// on what a later enable will blend against.
     /// </summary>
@@ -83,10 +83,10 @@ public interface IFullscreenDrawCommand<TInvoker> where TInvoker : struct, IGLFu
 /// always opaque (blend off) yet it frequently follows geometry passes that left
 /// blending on. Disabling blend with a raw <c>glDisable</c> would leave the state
 /// cache still believing blend is enabled, so the next pass that enables blending
-/// would see a cache hit, skip the GL call, and blend against whatever factors
+/// would see a cache hit, skip the GL call, and blend against whatever fentities
 /// happened to be current — a silent, frame-wide rendering bug. Routing the
 /// disable through the cache keeps shadow state and driver state in lockstep; the
-/// factors are pushed alongside the enable bit precisely so that a later re-enable
+/// fentities are pushed alongside the enable bit precisely so that a later re-enable
 /// is deduplicated against a known-correct pair.</para>
 /// </remarks>
 public readonly struct GLContextInvoker : IGLFullscreenInvoker<GLContextInvoker>, IEquatable<GLContextInvoker>
@@ -145,7 +145,7 @@ public readonly struct GLContextInvoker : IGLFullscreenInvoker<GLContextInvoker>
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static void SetBlendState(in GLContextInvoker ctx, bool enable, uint srcFactor, uint dstFactor)
     {
-        // Factors first, then the enable bit: setting the factors while blending is
+        // Fentities first, then the enable bit: setting the fentities while blending is
         // off is legal GL and keeps the cache's blend pair meaningful on both paths.
         GLStateCache state = ctx._context.State;
         state.SetBlendFuncSeparate(srcFactor, dstFactor, srcFactor, dstFactor);

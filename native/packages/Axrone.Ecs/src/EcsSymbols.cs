@@ -1,99 +1,99 @@
 namespace Axrone.Ecs;
 
 /// <summary>
-/// Interned actor name identity used by the world actor registry.
+/// Interned entity name identity used by the world entity registry.
 /// </summary>
 /// <param name="Value">Symbol table slot.</param>
-public readonly record struct EcsActorName(int Value)
+public readonly record struct EcsEntityName(int Value)
 {
     /// <summary>Unresolved sentinel.</summary>
-    public static readonly EcsActorName Empty;
+    public static readonly EcsEntityName Empty;
 
     private const string EmptySymbolText = "<empty>";
 
     /// <inheritdoc/>
-    public override string ToString() => Value >= 1 ? EcsActorNames.Table.GetName(Value) : EmptySymbolText;
+    public override string ToString() => Value >= 1 ? EcsEntityNames.Table.GetName(Value) : EmptySymbolText;
 }
 
 /// <summary>
-/// Interned actor tag identity used by the world actor registry; slot zero means
-/// the actor carries no tag.
+/// Interned entity tag identity used by the world entity registry; slot zero means
+/// the entity carries no tag.
 /// </summary>
 /// <param name="Value">Symbol table slot.</param>
-public readonly record struct EcsActorTag(int Value)
+public readonly record struct EcsEntityTag(int Value)
 {
-    /// <summary>Unresolved sentinel: an actor without a tag.</summary>
-    public static readonly EcsActorTag Empty;
+    /// <summary>Unresolved sentinel: an entity without a tag.</summary>
+    public static readonly EcsEntityTag Empty;
 
     private const string EmptySymbolText = "<empty>";
 
     /// <inheritdoc/>
-    public override string ToString() => Value >= 1 ? EcsActorTags.Table.GetName(Value) : EmptySymbolText;
+    public override string ToString() => Value >= 1 ? EcsEntityTags.Table.GetName(Value) : EmptySymbolText;
 }
 
 /// <summary>
-/// Interned actor names. Interning is a setup-time operation: the hot path uses
-/// <see cref="EcsActorName"/> slots and never hashes a string.
+/// Interned entity names. Interning is a setup-time operation: the hot path uses
+/// <see cref="EcsEntityName"/> slots and never hashes a string.
 /// </summary>
-public static class EcsActorNames
+public static class EcsEntityNames
 {
-    internal static readonly EcsSymbolTable Table = new("actor-name");
+    internal static readonly EcsSymbolTable Table = new("entity-name");
 
-    /// <summary>Interns an actor name.</summary>
+    /// <summary>Interns an entity name.</summary>
     /// <param name="name">Non-empty ordinal name.</param>
-    public static EcsActorName Intern(string name)
+    public static EcsEntityName Intern(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        return new EcsActorName(Table.Intern(name));
+        return new EcsEntityName(Table.Intern(name));
     }
 
-    /// <summary>Interns an actor name from a view.</summary>
+    /// <summary>Interns an entity name from a view.</summary>
     /// <param name="name">Non-empty ordinal name.</param>
-    public static EcsActorName Intern(ReadOnlySpan<char> name)
+    public static EcsEntityName Intern(ReadOnlySpan<char> name)
     {
         if (name.IsEmpty || char.IsWhiteSpace(name[0]))
         {
-            EcsThrowHelper.ThrowEmptySymbol("actor-name");
+            EcsThrowHelper.ThrowEmptySymbol("entity-name");
         }
 
-        return new EcsActorName(Table.Intern(name));
+        return new EcsEntityName(Table.Intern(name));
     }
 
-    /// <summary>Resolves the text of an interned actor name.</summary>
+    /// <summary>Resolves the text of an interned entity name.</summary>
     /// <param name="name">Slot handle.</param>
-    public static string GetName(in EcsActorName name) => Table.GetName(name.Value);
+    public static string GetName(in EcsEntityName name) => Table.GetName(name.Value);
 }
 
 /// <summary>
-/// Interned actor tags; see <see cref="EcsActorName"/> for the slot contract.
+/// Interned entity tags; see <see cref="EcsEntityName"/> for the slot contract.
 /// </summary>
-public static class EcsActorTags
+public static class EcsEntityTags
 {
-    internal static readonly EcsSymbolTable Table = new("actor-tag");
+    internal static readonly EcsSymbolTable Table = new("entity-tag");
 
-    /// <summary>Interns an actor tag.</summary>
+    /// <summary>Interns an entity tag.</summary>
     /// <param name="tag">Non-empty ordinal tag.</param>
-    public static EcsActorTag Intern(string tag)
+    public static EcsEntityTag Intern(string tag)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tag);
-        return new EcsActorTag(Table.Intern(tag));
+        return new EcsEntityTag(Table.Intern(tag));
     }
 
-    /// <summary>Interns an actor tag from a view.</summary>
+    /// <summary>Interns an entity tag from a view.</summary>
     /// <param name="tag">Non-empty ordinal tag.</param>
-    public static EcsActorTag Intern(ReadOnlySpan<char> tag)
+    public static EcsEntityTag Intern(ReadOnlySpan<char> tag)
     {
         if (tag.IsEmpty || char.IsWhiteSpace(tag[0]))
         {
-            EcsThrowHelper.ThrowEmptySymbol("actor-tag");
+            EcsThrowHelper.ThrowEmptySymbol("entity-tag");
         }
 
-        return new EcsActorTag(Table.Intern(tag));
+        return new EcsEntityTag(Table.Intern(tag));
     }
 
     /// <summary>Resolves the text of an interned tag.</summary>
     /// <param name="tag">Slot handle.</param>
-    public static string GetName(in EcsActorTag tag) => Table.GetName(tag.Value);
+    public static string GetName(in EcsEntityTag tag) => Table.GetName(tag.Value);
 }
 
 /// <summary>

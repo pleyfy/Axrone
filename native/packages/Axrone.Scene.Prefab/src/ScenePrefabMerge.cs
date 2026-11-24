@@ -40,8 +40,8 @@ public enum ScenePrefabConflictBaseValueKind
     /// <summary>The base definition has no value at the conflict key.</summary>
     None = 0,
 
-    /// <summary>An actor snapshot.</summary>
-    Actor = 1,
+    /// <summary>An entity snapshot.</summary>
+    Entity = 1,
 
     /// <summary>A component snapshot.</summary>
     Component = 2,
@@ -51,23 +51,23 @@ public enum ScenePrefabConflictBaseValueKind
 }
 
 /// <summary>
-/// Base value reported with a merge conflict. The union keeps actor and
+/// Base value reported with a merge conflict. The union keeps entity and
 /// component snapshots unboxed while still exposing scalar values as JSON.
 /// </summary>
 public readonly struct ScenePrefabConflictBaseValue
 {
-    private readonly SceneActorSnapshot? _actor;
+    private readonly SceneEntitySnapshot? _entity;
     private readonly SceneComponentSnapshot? _component;
     private readonly JsonElement _json;
 
     private ScenePrefabConflictBaseValue(
         ScenePrefabConflictBaseValueKind kind,
-        SceneActorSnapshot? actor,
+        SceneEntitySnapshot? entity,
         SceneComponentSnapshot? component,
         JsonElement json)
     {
         Kind = kind;
-        _actor = actor;
+        _entity = entity;
         _component = component;
         _json = json;
     }
@@ -75,8 +75,8 @@ public readonly struct ScenePrefabConflictBaseValue
     /// <summary>Stored value kind.</summary>
     public ScenePrefabConflictBaseValueKind Kind { get; }
 
-    /// <summary>Actor snapshot for actor conflicts.</summary>
-    public SceneActorSnapshot? Actor => _actor;
+    /// <summary>Entity snapshot for entity conflicts.</summary>
+    public SceneEntitySnapshot? Entity => _entity;
 
     /// <summary>Component snapshot for component conflicts.</summary>
     public SceneComponentSnapshot? Component => _component;
@@ -88,13 +88,13 @@ public readonly struct ScenePrefabConflictBaseValue
     public static ScenePrefabConflictBaseValue None =>
         new(ScenePrefabConflictBaseValueKind.None, null, null, default);
 
-    /// <summary>Wraps an actor snapshot.</summary>
-    public static ScenePrefabConflictBaseValue FromActor(SceneActorSnapshot actor)
+    /// <summary>Wraps an entity snapshot.</summary>
+    public static ScenePrefabConflictBaseValue FromEntity(SceneEntitySnapshot entity)
     {
-        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(entity);
         return new ScenePrefabConflictBaseValue(
-            ScenePrefabConflictBaseValueKind.Actor,
-            actor,
+            ScenePrefabConflictBaseValueKind.Entity,
+            entity,
             null,
             default);
     }
@@ -134,7 +134,7 @@ public sealed class ScenePrefabConflict
         BaseValue = baseValue;
     }
 
-    /// <summary>Conflict key grouping operations on the same actor/property.</summary>
+    /// <summary>Conflict key grouping operations on the same entity/property.</summary>
     public string Key { get; }
 
     /// <summary>Local operation.</summary>
@@ -190,7 +190,7 @@ public sealed class ScenePrefabMergeResult
 /// <summary>
 /// Three-way merge over resolved prefab definitions. Local and incoming deltas
 /// are computed against the base; conflicting operations are grouped by the
-/// actor/component/property they touch and resolved through the policy.
+/// entity/component/property they touch and resolved through the policy.
 /// </summary>
 public static class ScenePrefabMerge
 {
@@ -330,13 +330,13 @@ public static class ScenePrefabMerge
         ScenePrefabOperationDescriptor leftDescriptor = Describe(left);
         ScenePrefabOperationDescriptor rightDescriptor = Describe(right);
 
-        if (!string.Equals(leftDescriptor.ActorId, rightDescriptor.ActorId, StringComparison.Ordinal))
+        if (!string.Equals(leftDescriptor.EntityId, rightDescriptor.EntityId, StringComparison.Ordinal))
         {
             return false;
         }
 
-        if (leftDescriptor.Scope is ScenePrefabOperationScope.ActorRemove or ScenePrefabOperationScope.ActorAdd ||
-            rightDescriptor.Scope is ScenePrefabOperationScope.ActorRemove or ScenePrefabOperationScope.ActorAdd)
+        if (leftDescriptor.Scope is ScenePrefabOperationScope.EntityRemove or ScenePrefabOperationScope.EntityAdd ||
+            rightDescriptor.Scope is ScenePrefabOperationScope.EntityRemove or ScenePrefabOperationScope.EntityAdd)
         {
             return true;
         }
@@ -431,8 +431,8 @@ public static class ScenePrefabMerge
         ScenePrefabDefinition basePrefab,
         in ScenePrefabOperationDescriptor descriptor)
     {
-        Dictionary<string, SceneActorSnapshot> actors = ScenePrefabComparisons.IndexActors(basePrefab.Actors);
-        if (!actors.TryGetValue(descriptor.ActorId, out SceneActorSnapshot? actor))
+        Dictionary<string, SceneEntitySnapshot> entities = ScenePrefabComparisons.IndexEntities(basePrefab.Entities);
+        if (!entities.TryGetValue(descriptor.EntityId, out SceneEntitySnapshot? entity))
         {
             return ScenePrefabConflictBaseValue.None;
         }
@@ -440,12 +440,12 @@ public static class ScenePrefabMerge
         if (descriptor.ComponentKey is null)
         {
             return descriptor.FieldKey is null
-                ? ScenePrefabConflictBaseValue.FromActor(actor)
-                : ExtractFieldValue(actor, descriptor.FieldKey);
+                ? ScenePrefabConflictBaseValue.FromEntity(entity)
+                : ExtractFieldValue(entity, descriptor.FieldKey);
         }
 
         Dictionary<string, ScenePrefabComparisons.IndexedComponent> components =
-            ScenePrefabComparisons.IndexComponents(actor.Components);
+            ScenePrefabComparisons.IndexComponents(entity.Components);
         if (!components.TryGetValue(descriptor.ComponentKey, out ScenePrefabComparisons.IndexedComponent entry))
         {
             return ScenePrefabConflictBaseValue.None;
@@ -462,16 +462,16 @@ public static class ScenePrefabMerge
     }
 
     private static ScenePrefabConflictBaseValue ExtractFieldValue(
-        SceneActorSnapshot actor,
+        SceneEntitySnapshot entity,
         string fieldKey) => fieldKey switch
         {
-            "parentNodeId" => ScenePrefabConflictBaseValue.FromJson(JsonString(actor.ParentNodeId)),
-            "name" => ScenePrefabConflictBaseValue.FromJson(JsonString(actor.Name)),
-            "layer" => ScenePrefabConflictBaseValue.FromJson(JsonInt32(actor.Layer)),
-            "tag" => ScenePrefabConflictBaseValue.FromJson(JsonString(actor.Tag)),
-            "active" => ScenePrefabConflictBaseValue.FromJson(JsonBoolean(actor.Active)),
-            "persistent" => ScenePrefabConflictBaseValue.FromJson(JsonBoolean(actor.Persistent)),
-            "pooled" => ScenePrefabConflictBaseValue.FromJson(JsonBoolean(actor.Pooled)),
+            "parentNodeId" => ScenePrefabConflictBaseValue.FromJson(JsonString(entity.ParentNodeId)),
+            "name" => ScenePrefabConflictBaseValue.FromJson(JsonString(entity.Name)),
+            "layer" => ScenePrefabConflictBaseValue.FromJson(JsonInt32(entity.Layer)),
+            "tag" => ScenePrefabConflictBaseValue.FromJson(JsonString(entity.Tag)),
+            "active" => ScenePrefabConflictBaseValue.FromJson(JsonBoolean(entity.Active)),
+            "persistent" => ScenePrefabConflictBaseValue.FromJson(JsonBoolean(entity.Persistent)),
+            "pooled" => ScenePrefabConflictBaseValue.FromJson(JsonBoolean(entity.Pooled)),
             _ => ScenePrefabConflictBaseValue.None
         };
 
@@ -540,14 +540,14 @@ public static class ScenePrefabMerge
         if (componentKey is null)
         {
             return left.FieldKey is { } field && string.Equals(field, right.FieldKey, StringComparison.Ordinal)
-                ? $"actor:{left.ActorId}:field:{field}"
-                : $"actor:{left.ActorId}";
+                ? $"entity:{left.EntityId}:field:{field}"
+                : $"entity:{left.EntityId}";
         }
 
         ScenePrefabPropertyPath? path = left.Path ?? right.Path;
         return path is { Count: > 0 }
-            ? $"component:{left.ActorId}:{componentKey}:path:{SerializePath(path)}"
-            : $"component:{left.ActorId}:{componentKey}";
+            ? $"component:{left.EntityId}:{componentKey}:path:{SerializePath(path)}"
+            : $"component:{left.EntityId}:{componentKey}";
     }
 
     private static string SerializePath(ScenePrefabPropertyPath path)
@@ -576,27 +576,27 @@ public static class ScenePrefabMerge
     private static ScenePrefabOperationDescriptor Describe(ScenePrefabOverrideOperation operation) =>
         operation switch
         {
-            ScenePrefabAddActorOperation add => new ScenePrefabOperationDescriptor(
-                add.Actor.NodeId,
-                ScenePrefabOperationScope.ActorAdd,
+            ScenePrefabAddEntityOperation add => new ScenePrefabOperationDescriptor(
+                add.Entity.NodeId,
+                ScenePrefabOperationScope.EntityAdd,
                 null,
                 null,
                 null),
-            ScenePrefabRemoveActorOperation remove => new ScenePrefabOperationDescriptor(
+            ScenePrefabRemoveEntityOperation remove => new ScenePrefabOperationDescriptor(
                 remove.NodeId,
-                ScenePrefabOperationScope.ActorRemove,
+                ScenePrefabOperationScope.EntityRemove,
                 null,
                 null,
                 null),
-            ScenePrefabReparentActorOperation reparent => new ScenePrefabOperationDescriptor(
+            ScenePrefabReparentEntityOperation reparent => new ScenePrefabOperationDescriptor(
                 reparent.NodeId,
-                ScenePrefabOperationScope.ActorField,
+                ScenePrefabOperationScope.EntityField,
                 null,
                 "parentNodeId",
                 null),
-            ScenePrefabSetActorFieldOperation setField => new ScenePrefabOperationDescriptor(
+            ScenePrefabSetEntityFieldOperation setField => new ScenePrefabOperationDescriptor(
                 setField.NodeId,
-                ScenePrefabOperationScope.ActorField,
+                ScenePrefabOperationScope.EntityField,
                 null,
                 FieldKey(setField.Field),
                 null),
@@ -637,14 +637,14 @@ public static class ScenePrefabMerge
                 $"Unknown override operation '{operation.GetType().Name}'.")
         };
 
-    private static string FieldKey(ScenePrefabActorField field) => field switch
+    private static string FieldKey(ScenePrefabEntityField field) => field switch
     {
-        ScenePrefabActorField.Name => "name",
-        ScenePrefabActorField.Layer => "layer",
-        ScenePrefabActorField.Tag => "tag",
-        ScenePrefabActorField.Active => "active",
-        ScenePrefabActorField.Persistent => "persistent",
-        ScenePrefabActorField.Pooled => "pooled",
+        ScenePrefabEntityField.Name => "name",
+        ScenePrefabEntityField.Layer => "layer",
+        ScenePrefabEntityField.Tag => "tag",
+        ScenePrefabEntityField.Active => "active",
+        ScenePrefabEntityField.Persistent => "persistent",
+        ScenePrefabEntityField.Pooled => "pooled",
         _ => field.ToString()
     };
 }
@@ -652,9 +652,9 @@ public static class ScenePrefabMerge
 /// <summary>Operation scopes used for conflict detection.</summary>
 internal enum ScenePrefabOperationScope
 {
-    ActorAdd,
-    ActorRemove,
-    ActorField,
+    EntityAdd,
+    EntityRemove,
+    EntityField,
     ComponentAdd,
     ComponentRemove,
     ComponentReplace,
@@ -663,7 +663,7 @@ internal enum ScenePrefabOperationScope
 
 /// <summary>Conflict-relevant operation identity.</summary>
 internal readonly record struct ScenePrefabOperationDescriptor(
-    string ActorId,
+    string EntityId,
     ScenePrefabOperationScope Scope,
     string? ComponentKey,
     string? FieldKey,

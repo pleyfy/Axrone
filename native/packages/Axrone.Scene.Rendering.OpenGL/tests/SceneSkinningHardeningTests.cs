@@ -99,13 +99,13 @@ public sealed class SceneSkinningHardeningTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
         using var world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        SceneActor actor = CreateSkinnedActor(world, mesh, material);
+        SceneEntity entity = CreateSkinnedEntity(world, mesh, material);
         world.UpdateTransforms();
 
         using var cache = new SceneGlAssetCache(context, assets);
         _ = cache.UploadAll();
         var palettes = new SceneBonePaletteStore();
-        palettes.ApplyBonePalette(actor, [Mat4.Identity]);
+        palettes.ApplyBonePalette(entity, [Mat4.Identity]);
         SceneSkinnedMeshRenderItem[] items = Collect(world, frame, assets).ToArray();
 
         using var renderer = new SceneGlSkinnedMeshRenderer(context, cache, palettes);
@@ -132,7 +132,7 @@ public sealed class SceneSkinningHardeningTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
         using var world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        SceneActor actor = CreateSkinnedActor(world, mesh, material);
+        SceneEntity entity = CreateSkinnedEntity(world, mesh, material);
         world.UpdateTransforms();
 
         using var cache = new SceneGlAssetCache(context, assets);
@@ -147,12 +147,12 @@ public sealed class SceneSkinningHardeningTests
         var state = new SceneRenderFrameState();
         state.Begin(0);
 
-        palettes.ApplyBonePalette(actor, CreatePalette(65));
+        palettes.ApplyBonePalette(entity, CreatePalette(65));
         renderer.Render(world, frame, items, null, pass, state).Should().Be(0);
         renderer.Diagnostics.PaletteOverflow.Should().Be(1);
         renderer.LastFailure.Should().Be(SceneSkinningFailureReason.PaletteOverflow);
 
-        palettes.ApplyBonePalette(actor, CreatePalette(64));
+        palettes.ApplyBonePalette(entity, CreatePalette(64));
         renderer.Render(world, frame, items, null, pass, state).Should().Be(1);
         renderer.LastBoneCount.Should().Be(64);
         renderer.Options.MaxBones.Should().Be(64);
@@ -170,12 +170,12 @@ public sealed class SceneSkinningHardeningTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
         using var world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        SceneActor actor = CreateSkinnedActor(world, mesh, material);
+        SceneEntity entity = CreateSkinnedEntity(world, mesh, material);
         world.UpdateTransforms();
         using var cache = new SceneGlAssetCache(context, assets);
         _ = cache.UploadAll();
         var palettes = new SceneBonePaletteStore();
-        palettes.ApplyBonePalette(actor, CreatePalette(3));
+        palettes.ApplyBonePalette(entity, CreatePalette(3));
         SceneSkinnedMeshRenderItem[] items = Collect(world, frame, assets).ToArray();
         using var renderer = new SceneGlSkinnedMeshRenderer(
             context,
@@ -202,7 +202,7 @@ public sealed class SceneSkinningHardeningTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
         using var world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        _ = CreateSkinnedActor(world, mesh, material);
+        _ = CreateSkinnedEntity(world, mesh, material);
         world.UpdateTransforms();
         using var cache = new SceneGlAssetCache(context, assets);
         _ = cache.UploadAll();
@@ -233,12 +233,12 @@ public sealed class SceneSkinningHardeningTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
         using var world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        SceneActor actor = CreateSkinnedActor(world, mesh, material);
+        SceneEntity entity = CreateSkinnedEntity(world, mesh, material);
         world.UpdateTransforms();
         using var cache = new SceneGlAssetCache(context, assets);
         _ = cache.UploadAll();
         var palettes = new SceneBonePaletteStore();
-        palettes.ApplyBonePalette(actor, [Mat4.Identity]);
+        palettes.ApplyBonePalette(entity, [Mat4.Identity]);
         SceneSkinnedMeshRenderItem[] items = Collect(world, frame, assets).ToArray();
         using var renderer = new SceneGlSkinnedMeshRenderer(
             context,
@@ -266,12 +266,12 @@ public sealed class SceneSkinningHardeningTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
         using var world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        SceneActor actor = CreateSkinnedActor(world, mesh, material);
+        SceneEntity entity = CreateSkinnedEntity(world, mesh, material);
         world.UpdateTransforms();
         using var cache = new SceneGlAssetCache(context, assets);
         _ = cache.UploadAll();
         var palettes = new SceneBonePaletteStore();
-        palettes.ApplyBonePalette(actor, [Mat4.Identity]);
+        palettes.ApplyBonePalette(entity, [Mat4.Identity]);
         SceneSkinnedMeshRenderItem[] items = Collect(world, frame, assets).ToArray();
         using var renderer = new SceneGlSkinnedMeshRenderer(
             context,
@@ -328,7 +328,7 @@ public sealed class SceneSkinningHardeningTests
         state.Begin(0);
         var item = new SceneSkinnedMeshRenderItem
         {
-            Actor = world.CreateActor("Ghost"),
+            Entity = world.CreateEntity("Ghost"),
             MeshId = SceneAssetId<MeshAssetTag>.FromName("mesh/ghost"),
             MaterialId = material
         };
@@ -343,10 +343,10 @@ public sealed class SceneSkinningHardeningTests
         missingMaterialRenderer.Render(world, frame, [materialItem], null, pass, state).Should().Be(0);
         missingMaterialRenderer.Diagnostics.MissingMaterial.Should().Be(1);
 
-        SceneActor actor = CreateSkinnedActor(world, plainMesh, material);
+        SceneEntity entity = CreateSkinnedEntity(world, plainMesh, material);
         world.UpdateTransforms();
         var palettes = new SceneBonePaletteStore();
-        palettes.ApplyBonePalette(actor, [Mat4.Identity]);
+        palettes.ApplyBonePalette(entity, [Mat4.Identity]);
         SceneSkinnedMeshRenderItem[] items = Collect(world, frame, assets).ToArray();
         using var skinAttributeRenderer = new SceneGlSkinnedMeshRenderer(context, cache, palettes);
         skinAttributeRenderer.Render(world, frame, items, null, pass, state).Should().Be(0);
@@ -365,12 +365,12 @@ public sealed class SceneSkinningHardeningTests
         SceneRenderPassDefinition pass = RegisterPass(assets);
         using var world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        SceneActor actor = CreateSkinnedActor(world, mesh, material);
+        SceneEntity entity = CreateSkinnedEntity(world, mesh, material);
         world.UpdateTransforms();
         using var cache = new SceneGlAssetCache(context, assets);
         _ = cache.UploadAll();
         var palettes = new SceneBonePaletteStore();
-        palettes.ApplyBonePalette(actor, [Mat4.Identity]);
+        palettes.ApplyBonePalette(entity, [Mat4.Identity]);
         SceneSkinnedMeshRenderItem[] items = Collect(world, frame, assets).ToArray();
         using var renderer = new SceneGlSkinnedMeshRenderer(context, cache, palettes);
         var state = new SceneRenderFrameState();
@@ -464,26 +464,26 @@ public sealed class SceneSkinningHardeningTests
 
     private static SceneCameraFrame CreateCameraFrame(SceneWorld world)
     {
-        SceneActor actor = world.CreateActor("Camera");
-        world.GetTransform3D(actor).SetPosition(new Vec3(0, 0, 10));
+        SceneEntity entity = world.CreateEntity("Camera");
+        world.GetTransform3D(entity).SetPosition(new Vec3(0, 0, 10));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(actor, camera);
+        world.AddData(entity, camera);
         world.UpdateTransforms();
-        return new SceneCameraFrameCollector().Collect(world, actor, 800, 600)!;
+        return new SceneCameraFrameCollector().Collect(world, entity, 800, 600)!;
     }
 
-    private static SceneActor CreateSkinnedActor(
+    private static SceneEntity CreateSkinnedEntity(
         SceneWorld world,
         SceneAssetId<MeshAssetTag> mesh,
         SceneAssetId<MaterialAssetTag> material)
     {
-        SceneActor actor = world.CreateActor("Skinned");
+        SceneEntity entity = world.CreateEntity("Skinned");
         SceneSkinnedMeshRenderer renderer = SceneSkinnedMeshRenderer.Default;
         renderer.MeshId = mesh;
         renderer.MaterialId = material;
-        world.AddData(actor, renderer);
-        return actor;
+        world.AddData(entity, renderer);
+        return entity;
     }
 
     private static SceneAssetId<ShaderAssetTag> RegisterShader(

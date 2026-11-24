@@ -6,14 +6,14 @@ namespace Axrone.Scene;
 /// </summary>
 public static class SceneErrorCodes
 {
-    /// <summary>Actor handle is unknown or its generation is stale.</summary>
-    public const string ActorStale = "scene.actor.stale";
+    /// <summary>Entity handle is unknown or its generation is stale.</summary>
+    public const string EntityStale = "scene.entity.stale";
 
-    /// <summary>Actor handle does not resolve in the owning world.</summary>
-    public const string ActorNotFound = "scene.actor.not-found";
+    /// <summary>Entity handle does not resolve in the owning world.</summary>
+    public const string EntityNotFound = "scene.entity.not-found";
 
-    /// <summary>The actor has already been destroyed.</summary>
-    public const string ActorDestroyed = "scene.actor.destroyed";
+    /// <summary>The entity has already been destroyed.</summary>
+    public const string EntityDestroyed = "scene.entity.destroyed";
 
     /// <summary>A component of the same type is already attached.</summary>
     public const string ComponentDuplicate = "scene.component.duplicate";

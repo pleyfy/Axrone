@@ -16,7 +16,7 @@ public sealed class SceneJointCodecTests
     public void DistanceJoint_RoundTripsBitExact()
     {
         SceneDistanceJoint2D value = SceneDistanceJoint2D.Default;
-        value.ConnectedBody = new SceneJointActorRef(3, 7u);
+        value.ConnectedBody = new SceneJointEntityRef(3, 7u);
         value.Distance = 2.5f;
         value.MinDistance = 0.25f;
         value.Stiffness = 4.0f;
@@ -34,7 +34,7 @@ public sealed class SceneJointCodecTests
     public void HingeJoint_RoundTripsBitExact()
     {
         SceneHingeJoint2D value = SceneHingeJoint2D.Default;
-        value.ConnectedBody = new SceneJointActorRef(5, 2u);
+        value.ConnectedBody = new SceneJointEntityRef(5, 2u);
         value.Anchor = new Vec2(1.5f, -2.5f);
         value.UseMotor = true;
         value.MotorSpeed = 3.25f;
@@ -50,13 +50,13 @@ public sealed class SceneJointCodecTests
     public void FixedAndSliderAndSpringAndMotor_RoundTripBitExact()
     {
         SceneFixedJoint2D fixedValue = SceneFixedJoint2D.Default;
-        fixedValue.ConnectedBody = new SceneJointActorRef(1, 1u);
+        fixedValue.ConnectedBody = new SceneJointEntityRef(1, 1u);
         fixedValue.Anchor = new Vec2(0.5f, 0.25f);
         fixedValue.Frequency = 3.0f;
         RoundTrip(new SceneFixedJoint2DCodec(), fixedValue).Should().Be(fixedValue);
 
         SceneSliderJoint2D sliderValue = SceneSliderJoint2D.Default;
-        sliderValue.ConnectedBody = new SceneJointActorRef(2, 4u);
+        sliderValue.ConnectedBody = new SceneJointEntityRef(2, 4u);
         sliderValue.Axis = new Vec2(0.6f, 0.8f);
         sliderValue.UseMotor = true;
         sliderValue.MotorSpeed = -1.0f;
@@ -66,12 +66,12 @@ public sealed class SceneJointCodecTests
         RoundTrip(new SceneSliderJoint2DCodec(), sliderValue).Should().Be(sliderValue);
 
         SceneSpringJoint2D springValue = SceneSpringJoint2D.Default;
-        springValue.ConnectedBody = new SceneJointActorRef(6, 9u);
+        springValue.ConnectedBody = new SceneJointEntityRef(6, 9u);
         springValue.Stiffness = 12.5f;
         RoundTrip(new SceneSpringJoint2DCodec(), springValue).Should().Be(springValue);
 
         SceneMotorJoint2D motorValue = SceneMotorJoint2D.Default;
-        motorValue.ConnectedBody = new SceneJointActorRef(7, 3u);
+        motorValue.ConnectedBody = new SceneJointEntityRef(7, 3u);
         motorValue.LinearOffset = new Vec2(0.5f, 0.5f);
         motorValue.AngularOffset = 0.2f;
         motorValue.CorrectionFactor = 0.8f;
@@ -82,7 +82,7 @@ public sealed class SceneJointCodecTests
     public void WheelRopeMouseGear_RoundTripBitExact()
     {
         SceneWheelJoint2D wheelValue = SceneWheelJoint2D.Default;
-        wheelValue.ConnectedBody = new SceneJointActorRef(8, 5u);
+        wheelValue.ConnectedBody = new SceneJointEntityRef(8, 5u);
         wheelValue.AnchorA = new Vec2(0.1f, 0.2f);
         wheelValue.AnchorB = new Vec2(0.3f, 0.4f);
         wheelValue.EnableLimit = true;
@@ -95,18 +95,18 @@ public sealed class SceneJointCodecTests
         RoundTrip(new SceneWheelJoint2DCodec(), wheelValue).Should().Be(wheelValue);
 
         SceneRopeJoint2D ropeValue = SceneRopeJoint2D.Default;
-        ropeValue.ConnectedBody = new SceneJointActorRef(9, 6u);
+        ropeValue.ConnectedBody = new SceneJointEntityRef(9, 6u);
         ropeValue.MaxLength = 7.5f;
         RoundTrip(new SceneRopeJoint2DCodec(), ropeValue).Should().Be(ropeValue);
 
         SceneMouseJoint2D mouseValue = SceneMouseJoint2D.Default;
-        mouseValue.ConnectedBody = new SceneJointActorRef(10, 8u);
+        mouseValue.ConnectedBody = new SceneJointEntityRef(10, 8u);
         mouseValue.Target = new Vec2(3.0f, -4.0f);
         mouseValue.MaxForce = 500.0f;
         RoundTrip(new SceneMouseJoint2DCodec(), mouseValue).Should().Be(mouseValue);
 
         SceneGearJoint2D gearValue = SceneGearJoint2D.Default;
-        gearValue.ConnectedBody = new SceneJointActorRef(11, 2u);
+        gearValue.ConnectedBody = new SceneJointEntityRef(11, 2u);
         gearValue.JointA = new SceneJointRef2D(4, 3u, SceneJointKind2D.Hinge);
         gearValue.JointB = new SceneJointRef2D(5, 1u, SceneJointKind2D.Slider);
         gearValue.Ratio = -2.0f;
@@ -144,7 +144,7 @@ public sealed class SceneJointCodecTests
         SceneDistanceJoint2D roundTripped = RoundTrip(new SceneDistanceJoint2DCodec(), value);
         roundTripped.BreakForce.Should().Be(100.0f);
 
-        SceneJointActorRef invalid = SceneJointActorRef.Invalid;
+        SceneJointEntityRef invalid = SceneJointEntityRef.Invalid;
         invalid.IsValid.Should().BeFalse();
     }
 
@@ -152,7 +152,7 @@ public sealed class SceneJointCodecTests
     public void Joint3DCodecs_RoundTripBitExact()
     {
         SceneFixedJoint3D fixedValue = SceneFixedJoint3D.Default;
-        fixedValue.ConnectedBody = new SceneJointActorRef(12, 3u);
+        fixedValue.ConnectedBody = new SceneJointEntityRef(12, 3u);
         fixedValue.Anchor = new Vec3(0.1f, 0.2f, 0.3f);
         fixedValue.AutoConfigureConnectedAnchor = false;
         fixedValue.ConnectedAnchor = new Vec3(0.4f, 0.5f, 0.6f);
@@ -162,7 +162,7 @@ public sealed class SceneJointCodecTests
         RoundTrip(new SceneFixedJoint3DCodec(), fixedValue).Should().Be(fixedValue);
 
         SceneHingeJoint3D hingeValue = SceneHingeJoint3D.Default;
-        hingeValue.ConnectedBody = new SceneJointActorRef(13, 4u);
+        hingeValue.ConnectedBody = new SceneJointEntityRef(13, 4u);
         hingeValue.Axis = new Vec3(0.0f, 1.0f, 0.0f);
         hingeValue.AutoConfigureConnectedAnchor = false;
         hingeValue.UseLimits = true;
@@ -174,14 +174,14 @@ public sealed class SceneJointCodecTests
         RoundTrip(new SceneHingeJoint3DCodec(), hingeValue).Should().Be(hingeValue);
 
         SceneSliderJoint3D sliderValue = SceneSliderJoint3D.Default;
-        sliderValue.ConnectedBody = new SceneJointActorRef(14, 5u);
+        sliderValue.ConnectedBody = new SceneJointEntityRef(14, 5u);
         sliderValue.AutoConfigureConnectedAnchor = false;
         sliderValue.UseLimits = true;
         sliderValue.Limits = new SceneJointLimits3D(-1.0f, 1.0f, 0.0f, 0.0f);
         RoundTrip(new SceneSliderJoint3DCodec(), sliderValue).Should().Be(sliderValue);
 
         SceneSpringJoint3D springValue = SceneSpringJoint3D.Default;
-        springValue.ConnectedBody = new SceneJointActorRef(15, 6u);
+        springValue.ConnectedBody = new SceneJointEntityRef(15, 6u);
         springValue.MinDistance = 1.0f;
         springValue.MaxDistance = 3.0f;
         springValue.Spring = 25.0f;
@@ -192,7 +192,7 @@ public sealed class SceneJointCodecTests
         RoundTrip(new SceneSpringJoint3DCodec(), springValue).Should().Be(springValue);
 
         SceneCharacterJoint3D characterValue = SceneCharacterJoint3D.Default;
-        characterValue.ConnectedBody = new SceneJointActorRef(16, 7u);
+        characterValue.ConnectedBody = new SceneJointEntityRef(16, 7u);
         characterValue.SwingAxis = new Vec3(0.0f, 1.0f, 0.0f);
         characterValue.LowTwistLimit = new SceneSoftJointLimit3D(-0.4f, 0.1f, 0.02f);
         characterValue.HighTwistLimit = new SceneSoftJointLimit3D(0.4f, 0.1f, 0.02f);
@@ -209,7 +209,7 @@ public sealed class SceneJointCodecTests
         RoundTrip(new SceneCharacterJoint3DCodec(), characterValue).Should().Be(characterValue);
 
         SceneConfigurableJoint3D configurableValue = SceneConfigurableJoint3D.Default;
-        configurableValue.ConnectedBody = new SceneJointActorRef(17, 8u);
+        configurableValue.ConnectedBody = new SceneJointEntityRef(17, 8u);
         configurableValue.AutoConfigureConnectedAnchor = false;
         configurableValue.XMotion = 2.0f;
         configurableValue.YMotion = 1.0f;
@@ -350,21 +350,21 @@ public sealed class SceneJointCodecTests
             RuntimeProfile = SceneRuntimeProfiles.TwoD
         });
 
-        SceneActor actorA = source.World.CreateActor("A");
-        source.World.GetTransform2D(actorA).SetPosition(Vec2.Zero);
-        source.World.AddData(actorA, SceneRigidbody2D.Default);
-        source.World.AddData(actorA, SceneCollider2D.Default);
+        SceneEntity entityA = source.World.CreateEntity("A");
+        source.World.GetTransform2D(entityA).SetPosition(Vec2.Zero);
+        source.World.AddData(entityA, SceneRigidbody2D.Default);
+        source.World.AddData(entityA, SceneCollider2D.Default);
 
-        SceneActor actorB = source.World.CreateActor("B");
-        source.World.GetTransform2D(actorB).SetPosition(new Vec2(4.0f, 0.0f));
-        source.World.AddData(actorB, SceneRigidbody2D.Default);
-        source.World.AddData(actorB, SceneCollider2D.Default);
+        SceneEntity entityB = source.World.CreateEntity("B");
+        source.World.GetTransform2D(entityB).SetPosition(new Vec2(4.0f, 0.0f));
+        source.World.AddData(entityB, SceneRigidbody2D.Default);
+        source.World.AddData(entityB, SceneCollider2D.Default);
 
         SceneHingeJoint2D joint = SceneHingeJoint2D.Default;
-        joint.ConnectedBody = SceneJointActorRef.FromActor(actorB);
+        joint.ConnectedBody = SceneJointEntityRef.FromEntity(entityB);
         joint.UseLimits = true;
         joint.LimitsMin = -60.0f;
-        source.World.AddData(actorA, joint);
+        source.World.AddData(entityA, joint);
         source.World.UpdateTransforms();
 
         SceneSnapshot snapshot = source.CaptureSnapshot("prefab/joints-2d");
@@ -375,7 +375,7 @@ public sealed class SceneJointCodecTests
         });
         ScenePrefabInstantiationResult result = target.LoadSnapshot(snapshot);
 
-        SceneActor loadedA = result.NodeMap[actorA.Slot.ToString("D", System.Globalization.CultureInfo.InvariantCulture)];
+        SceneEntity loadedA = result.NodeMap[entityA.Slot.ToString("D", System.Globalization.CultureInfo.InvariantCulture)];
         target.World.GetData<SceneHingeJoint2D>(loadedA).Should().Be(joint);
     }
 
@@ -387,10 +387,10 @@ public sealed class SceneJointCodecTests
             RuntimeProfile = SceneRuntimeProfiles.TwoD
         });
 
-        SceneActor actorA = source.World.CreateActor("A");
-        source.World.GetTransform2D(actorA).SetPosition(Vec2.Zero);
-        source.World.AddData(actorA, SceneRigidbody2D.Default);
-        source.World.AddData(actorA, SceneDistanceJoint2D.Default);
+        SceneEntity entityA = source.World.CreateEntity("A");
+        source.World.GetTransform2D(entityA).SetPosition(Vec2.Zero);
+        source.World.AddData(entityA, SceneRigidbody2D.Default);
+        source.World.AddData(entityA, SceneDistanceJoint2D.Default);
         source.World.UpdateTransforms();
 
         SceneSnapshot snapshot = source.CaptureSnapshot("prefab/joints-rejected");

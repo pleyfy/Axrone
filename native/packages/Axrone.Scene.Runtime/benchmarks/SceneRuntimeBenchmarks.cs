@@ -49,20 +49,20 @@ public class SceneFramePlanningBenchmarks
             clearMask: SceneClearMask.Color | SceneClearMask.Depth));
 
         SceneWorld world = _runtime.World;
-        SceneActor camera = world.CreateActor("BenchCamera");
+        SceneEntity camera = world.CreateEntity("BenchCamera");
         world.GetTransform3D(camera).SetPosition(new Vec3(0.0f, 0.0f, 40.0f));
         SceneCamera cameraData = SceneCamera.Default;
         cameraData.Primary = true;
         world.AddData(camera, cameraData);
 
-        SceneActor sun = world.CreateActor("BenchSun");
+        SceneEntity sun = world.CreateEntity("BenchSun");
         world.AddData(sun, SceneDirectionalLight.Default);
 
         int columns = (int)MathF.Ceiling(MathF.Sqrt(RendererCount));
         for (int i = 0; i < RendererCount; i++)
         {
-            SceneActor actor = world.CreateActor("Renderer");
-            world.GetTransform3D(actor).SetPosition(new Vec3(
+            SceneEntity entity = world.CreateEntity("Renderer");
+            world.GetTransform3D(entity).SetPosition(new Vec3(
                 (i % columns) - (columns * 0.5f),
                 (i / columns) - (columns * 0.5f),
                 0.0f));
@@ -71,7 +71,7 @@ public class SceneFramePlanningBenchmarks
             renderer.MeshId = meshId;
             renderer.MaterialId = materialId;
             renderer.PassId = _passId;
-            world.AddData(actor, renderer);
+            world.AddData(entity, renderer);
         }
 
         world.UpdateTransforms();

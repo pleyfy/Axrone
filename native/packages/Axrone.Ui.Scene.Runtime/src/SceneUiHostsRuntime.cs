@@ -145,7 +145,7 @@ public sealed class SceneUiHostsRuntime : IDisposable, ISceneRuntimeAttachment
     }
 
     /// <summary>Rebuilds one host runtime from its asset.</summary>
-    public bool Reload(SceneActor actor)
+    public bool Reload(SceneEntity entity)
     {
         if (IsDisposed)
         {
@@ -154,7 +154,7 @@ public sealed class SceneUiHostsRuntime : IDisposable, ISceneRuntimeAttachment
 
         try
         {
-            bool reloaded = _bridge.Reload(actor);
+            bool reloaded = _bridge.Reload(entity);
             LastError = reloaded ? null : LastError;
             return reloaded;
         }

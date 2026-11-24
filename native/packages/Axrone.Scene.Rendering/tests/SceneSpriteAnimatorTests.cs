@@ -12,17 +12,17 @@ public sealed class SceneSpriteAnimatorTests
     public void Animator_AdvancesFramesAndWritesUvRect()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor actor = CreateSprite(world);
-        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(actor);
+        SceneEntity entity = CreateSprite(world);
+        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(entity);
         animator.Play(CreateClip(loop: true));
 
         world.Start();
-        SceneSpriteRenderer renderer = world.GetData<SceneSpriteRenderer>(actor);
+        SceneSpriteRenderer renderer = world.GetData<SceneSpriteRenderer>(entity);
         renderer.UvRect.Should().Be(new Vec4(0.0f, 0.0f, 0.5f, 1.0f));
 
         world.Update(0.1f);
 
-        renderer = world.GetData<SceneSpriteRenderer>(actor);
+        renderer = world.GetData<SceneSpriteRenderer>(entity);
         renderer.UvRect.Should().Be(new Vec4(0.5f, 0.0f, 0.5f, 1.0f));
         animator.FrameIndex.Should().Be(1);
     }
@@ -31,8 +31,8 @@ public sealed class SceneSpriteAnimatorTests
     public void Animator_LoopsWhenClipLoops()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor actor = CreateSprite(world);
-        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(actor);
+        SceneEntity entity = CreateSprite(world);
+        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(entity);
         animator.Play(CreateClip(loop: true));
 
         world.Start();
@@ -46,8 +46,8 @@ public sealed class SceneSpriteAnimatorTests
     public void Animator_StopsOnLastFrameWhenClipDoesNotLoop()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor actor = CreateSprite(world);
-        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(actor);
+        SceneEntity entity = CreateSprite(world);
+        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(entity);
         animator.Play(CreateClip(loop: false));
 
         world.Start();
@@ -55,7 +55,7 @@ public sealed class SceneSpriteAnimatorTests
 
         animator.FrameIndex.Should().Be(1);
         animator.IsComplete.Should().BeTrue();
-        world.GetData<SceneSpriteRenderer>(actor).UvRect
+        world.GetData<SceneSpriteRenderer>(entity).UvRect
             .Should().Be(new Vec4(0.5f, 0.0f, 0.5f, 1.0f));
     }
 
@@ -63,8 +63,8 @@ public sealed class SceneSpriteAnimatorTests
     public void Animator_PausedHoldsCurrentFrame()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor actor = CreateSprite(world);
-        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(actor);
+        SceneEntity entity = CreateSprite(world);
+        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(entity);
         animator.Play(CreateClip(loop: true));
 
         world.Start();
@@ -78,8 +78,8 @@ public sealed class SceneSpriteAnimatorTests
     public void Animator_AppliesFrameOverrides()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor actor = CreateSprite(world);
-        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(actor);
+        SceneEntity entity = CreateSprite(world);
+        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(entity);
 
         var clip = new SceneSpriteAnimationClip(
             "override",
@@ -92,17 +92,17 @@ public sealed class SceneSpriteAnimatorTests
             ]);
         animator.Play(clip);
 
-        SceneSpriteRenderer renderer = world.GetData<SceneSpriteRenderer>(actor);
+        SceneSpriteRenderer renderer = world.GetData<SceneSpriteRenderer>(entity);
         renderer.Size.Should().Be(new Vec2(3.0f, 4.0f));
         renderer.Anchor.Should().Be(new Vec2(0.25f, 0.75f));
     }
 
     [Fact]
-    public void Animator_IgnoresActorsWithoutSpriteRenderer()
+    public void Animator_IgnoresEntitiesWithoutSpriteRenderer()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor actor = world.CreateActor("Empty");
-        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity("Empty");
+        var animator = world.AddBehaviour<SceneSpriteAnimatorBehaviour>(entity);
         animator.Play(CreateClip(loop: true));
 
         world.Start();
@@ -131,10 +131,10 @@ public sealed class SceneSpriteAnimatorTests
         return profile.CreateWorld();
     }
 
-    private static SceneActor CreateSprite(SceneWorld world)
+    private static SceneEntity CreateSprite(SceneWorld world)
     {
-        SceneActor actor = world.CreateActor("Sprite");
-        world.AddData(actor, SceneSpriteRenderer.Default);
-        return actor;
+        SceneEntity entity = world.CreateEntity("Sprite");
+        world.AddData(entity, SceneSpriteRenderer.Default);
+        return entity;
     }
 }

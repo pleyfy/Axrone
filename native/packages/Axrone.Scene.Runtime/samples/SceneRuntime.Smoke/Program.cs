@@ -34,18 +34,18 @@ runtime.Assets.RenderPasses.Register(new SceneRenderPassDefinition(
     clearColor: new Vec4(0.05f, 0.05f, 0.08f, 1.0f)));
 runtime.Frame.RebuildPasses();
 
-SceneActor cameraActor = runtime.World.CreateActor("SmokeCamera");
-runtime.World.GetTransform3D(cameraActor).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
+SceneEntity cameraEntity = runtime.World.CreateEntity("SmokeCamera");
+runtime.World.GetTransform3D(cameraEntity).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
 SceneCamera camera = SceneCamera.Default;
 camera.Primary = true;
-runtime.World.AddData(cameraActor, camera);
+runtime.World.AddData(cameraEntity, camera);
 
-SceneActor boxActor = runtime.World.CreateActor("SmokeBox");
+SceneEntity boxEntity = runtime.World.CreateEntity("SmokeBox");
 SceneMeshRenderer renderer = SceneMeshRenderer.Default;
 renderer.MeshId = meshId;
 renderer.MaterialId = materialId;
 renderer.PassId = passId;
-runtime.World.AddData(boxActor, renderer);
+runtime.World.AddData(boxEntity, renderer);
 runtime.World.UpdateTransforms();
 
 if (!runtime.Frame.Plan(0))
@@ -66,12 +66,12 @@ byte[] json = SceneSnapshotJson.Serialize(snapshot, runtime.Assets.Names);
 SceneSnapshot restored = SceneSnapshotJson.Deserialize(json);
 
 if (restored.Meshes.Count != 1 ||
-    restored.Prefab.Actors.Count != runtime.World.ActorCount)
+    restored.Prefab.Entities.Count != runtime.World.EntityCount)
 {
     Console.Error.WriteLine("scene-smoke failed: snapshot round trip mismatch");
     return 3;
 }
 
 Console.WriteLine(
-    $"scene-smoke ok items={items} actors={runtime.World.ActorCount} bytes={json.Length}");
+    $"scene-smoke ok items={items} entities={runtime.World.EntityCount} bytes={json.Length}");
 return 0;

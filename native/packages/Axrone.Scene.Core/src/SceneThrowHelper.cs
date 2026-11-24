@@ -6,37 +6,37 @@ namespace Axrone.Scene;
 /// </summary>
 internal static class SceneThrowHelper
 {
-    /// <summary>Throws when an actor handle does not resolve.</summary>
+    /// <summary>Throws when an entity handle does not resolve.</summary>
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ThrowActorNotFound(in SceneActor actor) =>
-        throw new SceneActorNotFoundException(in actor);
+    public static void ThrowEntityNotFound(in SceneEntity entity) =>
+        throw new SceneEntityNotFoundException(in entity);
 
-    /// <summary>Throws when an actor generation has been recycled.</summary>
+    /// <summary>Throws when an entity generation has been recycled.</summary>
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ThrowStaleActor(in SceneActor actor) =>
-        throw new SceneStaleHandleException(in actor);
+    public static void ThrowStaleEntity(in SceneEntity entity) =>
+        throw new SceneStaleHandleException(in entity);
 
     /// <summary>Throws when a singleton component is already attached.</summary>
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ThrowComponentDuplicate(in SceneActor actor, string componentName) =>
+    public static void ThrowComponentDuplicate(in SceneEntity entity, string componentName) =>
         throw new SceneComponentException(
             SceneErrorCodes.ComponentDuplicate,
-            in actor,
+            in entity,
             componentName,
-            "is already attached to the actor.");
+            "is already attached to the entity.");
 
     /// <summary>Throws when a requested component is absent.</summary>
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ThrowComponentMissing(in SceneActor actor, string componentName) =>
+    public static void ThrowComponentMissing(in SceneEntity entity, string componentName) =>
         throw new SceneComponentException(
             SceneErrorCodes.ComponentMissing,
-            in actor,
+            in entity,
             componentName,
-            "is not attached to the actor.");
+            "is not attached to the entity.");
 
     /// <summary>Throws when a data component type has no registration.</summary>
     [DoesNotReturn]

@@ -14,7 +14,7 @@ public sealed class SceneCameraControllerTests
     public void Orbit_PlacesCameraOnSphereAndAimsAtTarget()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor camera = world.CreateActor("Camera");
+        SceneEntity camera = world.CreateEntity("Camera");
         var orbit = world.AddBehaviour<SceneOrbitCameraControllerBehaviour>(camera);
         orbit.Target = new Vec3(0.0f, 1.0f, 0.0f);
         orbit.Distance = 6.0f;
@@ -38,7 +38,7 @@ public sealed class SceneCameraControllerTests
     public void Orbit_ClampsDistanceAndElevation()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor camera = world.CreateActor("Camera");
+        SceneEntity camera = world.CreateEntity("Camera");
         var orbit = world.AddBehaviour<SceneOrbitCameraControllerBehaviour>(camera);
 
         orbit.MinDistance = 2.0f;
@@ -57,7 +57,7 @@ public sealed class SceneCameraControllerTests
     public void Orbit_AutoRotateAdvancesAzimuth()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor camera = world.CreateActor("Camera");
+        SceneEntity camera = world.CreateEntity("Camera");
         var orbit = world.AddBehaviour<SceneOrbitCameraControllerBehaviour>(camera);
         orbit.AutoRotateSpeed = 0.5f;
 
@@ -71,10 +71,10 @@ public sealed class SceneCameraControllerTests
     public void Follow_SnapsToTargetWithOffset()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor target = world.CreateActor("Player");
+        SceneEntity target = world.CreateEntity("Player");
         world.GetTransform3D(target).SetPosition(new Vec3(10.0f, 0.0f, 0.0f));
 
-        SceneActor camera = world.CreateActor("Camera");
+        SceneEntity camera = world.CreateEntity("Camera");
         var follow = world.AddBehaviour<SceneFollowCameraControllerBehaviour>(camera);
         follow.Distance = 7.0f;
         follow.Azimuth = 0.0f;
@@ -97,9 +97,9 @@ public sealed class SceneCameraControllerTests
     public void Follow_DampingMovesCameraTowardTarget()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor target = world.CreateActor("Player");
+        SceneEntity target = world.CreateEntity("Player");
 
-        SceneActor camera = world.CreateActor("Camera");
+        SceneEntity camera = world.CreateEntity("Camera");
         var follow = world.AddBehaviour<SceneFollowCameraControllerBehaviour>(camera);
         follow.PositionDamping = 5.0f;
         follow.TargetDamping = 5.0f;

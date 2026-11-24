@@ -47,7 +47,7 @@ public sealed class GltfImportTests
         result.Meshes[0].Bounds.Should().NotBeNull();
         result.Prefabs.Should().HaveCount(1);
         result.Prefabs[0].RootNodeIds.Should().HaveCount(1);
-        result.Prefabs[0].Definition.Actors.Should().HaveCount(1);
+        result.Prefabs[0].Definition.Entities.Should().HaveCount(1);
         result.Document.Stats.MeshCount.Should().Be(1);
         result.Document.Stats.PrimitiveCount.Should().Be(1);
         result.Document.Stats.SceneCount.Should().Be(1);
@@ -99,10 +99,10 @@ public sealed class GltfImportTests
         result.Prefabs[0].MeshKeys.Should().Equal(expectedKeys);
 
         GltfPrefabAsset prefab = result.Prefabs[0];
-        prefab.Definition.Actors.Should().HaveCount(3);
+        prefab.Definition.Entities.Should().HaveCount(3);
 
-        string[] rendererMeshIds = prefab.Definition.Actors
-            .SelectMany(static actor => actor.Components)
+        string[] rendererMeshIds = prefab.Definition.Entities
+            .SelectMany(static entity => entity.Components)
             .OfType<GltfMeshRendererComponent>()
             .Select(static component => component.MeshId)
             .ToArray();
@@ -330,8 +330,8 @@ public sealed class GltfImportTests
 
         result.Document.Stats.CameraCount.Should().Be(2);
 
-        GltfCameraComponent[] cameras = result.Prefabs[0].Definition.Actors
-            .SelectMany(static actor => actor.Components)
+        GltfCameraComponent[] cameras = result.Prefabs[0].Definition.Entities
+            .SelectMany(static entity => entity.Components)
             .OfType<GltfCameraComponent>()
             .ToArray();
 
@@ -697,8 +697,8 @@ public sealed class GltfImportTests
 
         result.Diagnostics.Should().Contain(diagnostic =>
             diagnostic.Code == "gltf.light.local.runtime-limit");
-        result.Prefabs[0].Definition.Actors
-            .SelectMany(static actor => actor.Components)
+        result.Prefabs[0].Definition.Entities
+            .SelectMany(static entity => entity.Components)
             .OfType<GltfPointLightComponent>()
             .Should().HaveCount(3);
     }
@@ -801,8 +801,8 @@ public sealed class GltfImportTests
         GltfImportResult result = await importer.ImportAsync(glb);
 
         result.Prefabs[0].MaterialKeys.Should().Equal("gltf/material/0");
-        result.Prefabs[0].Definition.Actors
-            .SelectMany(static actor => actor.Components)
+        result.Prefabs[0].Definition.Entities
+            .SelectMany(static entity => entity.Components)
             .OfType<GltfMeshRendererComponent>()
             .Should().ContainSingle()
             .Which.MaterialId.Should().Be("gltf/material/0");

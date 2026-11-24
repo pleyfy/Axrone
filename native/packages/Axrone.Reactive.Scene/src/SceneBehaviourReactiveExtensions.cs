@@ -5,7 +5,7 @@ using Axrone.Scene;
 /// <summary>
 /// Lifetime-bound subscriptions for a scene behaviour attachment. Every helper registers the
 /// returned subscription with <see cref="SceneBehaviourContext.Track"/>, so the owning table
-/// disposes it when the behaviour is removed or its actor is destroyed.
+/// disposes it when the behaviour is removed or its entity is destroyed.
 /// </summary>
 public static class SceneBehaviourReactiveExtensions
 {
@@ -54,7 +54,7 @@ public static class SceneBehaviourReactiveExtensions
         return context.Track(subscription);
     }
 
-    /// <summary>Observes collisions that involve this behaviour's actor.</summary>
+    /// <summary>Observes collisions that involve this behaviour's entity.</summary>
     public static IDisposable OnCollision(
         this SceneBehaviourContext context,
         SceneReactiveBridge bridge,
@@ -64,11 +64,11 @@ public static class SceneBehaviourReactiveExtensions
         ArgumentNullException.ThrowIfNull(bridge);
         ArgumentNullException.ThrowIfNull(handler);
 
-        SceneActor actor = context.Actor;
+        SceneEntity entity = context.Entity;
         IDisposable subscription = bridge.Collisions.Subscribe(new ActionObserver<SceneCollisionEvent>(
             collision =>
             {
-                if (collision.ActorA == actor || collision.ActorB == actor)
+                if (collision.EntityA == entity || collision.EntityB == entity)
                 {
                     handler(collision);
                 }
@@ -77,7 +77,7 @@ public static class SceneBehaviourReactiveExtensions
         return context.Track(subscription);
     }
 
-    /// <summary>Observes sensor overlaps that involve this behaviour's actor.</summary>
+    /// <summary>Observes sensor overlaps that involve this behaviour's entity.</summary>
     public static IDisposable OnSensor(
         this SceneBehaviourContext context,
         SceneReactiveBridge bridge,
@@ -87,11 +87,11 @@ public static class SceneBehaviourReactiveExtensions
         ArgumentNullException.ThrowIfNull(bridge);
         ArgumentNullException.ThrowIfNull(handler);
 
-        SceneActor actor = context.Actor;
+        SceneEntity entity = context.Entity;
         IDisposable subscription = bridge.Sensors.Subscribe(new ActionObserver<SceneSensorEvent>(
             sensor =>
             {
-                if (sensor.SensorActor == actor || sensor.VisitorActor == actor)
+                if (sensor.SensorEntity == entity || sensor.VisitorEntity == entity)
                 {
                     handler(sensor);
                 }
@@ -100,21 +100,21 @@ public static class SceneBehaviourReactiveExtensions
         return context.Track(subscription);
     }
 
-    /// <summary>Runs the handler once when this behaviour's actor is destroyed.</summary>
-    public static IDisposable OnActorDestroyed(
+    /// <summary>Runs the handler once when this behaviour's entity is destroyed.</summary>
+    public static IDisposable OnEntityDestroyed(
         this SceneBehaviourContext context,
         SceneReactiveBridge bridge,
-        Action<SceneActor> handler)
+        Action<SceneEntity> handler)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(bridge);
         ArgumentNullException.ThrowIfNull(handler);
 
-        SceneActor actor = context.Actor;
-        IDisposable subscription = bridge.ActorDestroyed.Subscribe(new ActionObserver<SceneActor>(
+        SceneEntity entity = context.Entity;
+        IDisposable subscription = bridge.EntityDestroyed.Subscribe(new ActionObserver<SceneEntity>(
             destroyed =>
             {
-                if (destroyed == actor)
+                if (destroyed == entity)
                 {
                     handler(destroyed);
                 }

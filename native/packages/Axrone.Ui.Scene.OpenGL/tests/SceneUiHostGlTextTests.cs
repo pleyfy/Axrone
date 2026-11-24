@@ -53,7 +53,7 @@ public sealed class SceneUiHostGlTextTests
         using UiHostGlyphAtlasUploader uploader = new(context);
         using SceneUiHostBridge bridge = new(world, BridgeOptions(fonts, family, style, uploader, enableSdf: false));
         using SceneUiHostGlRenderer renderer = new(context, bridge, uploader);
-        SceneActor actor = AddHost(world, SceneUiHostRenderMode.ScreenOverlay);
+        SceneEntity entity = AddHost(world, SceneUiHostRenderMode.ScreenOverlay);
         bridge.Sync();
         bridge.Update(in Viewport);
 
@@ -64,7 +64,7 @@ public sealed class SceneUiHostGlTextTests
         renderer.SdfGlyphBatches.Should().Be(0);
         renderer.CoverageGlyphBatches.Should().BeGreaterThan(0);
 
-        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        bridge.TryGetHost(entity, out SceneUiHostInstance? host).Should().BeTrue();
         UiFrame frame = host!.BuildFrame(in Viewport);
         AssertAtlasFormat(bridge, frame, UiGlyphFormat.Alpha8);
     }
@@ -79,7 +79,7 @@ public sealed class SceneUiHostGlTextTests
         using UiHostGlyphAtlasUploader uploader = new(context);
         using SceneUiHostBridge bridge = new(world, BridgeOptions(fonts, family, style, uploader));
         using SceneUiHostGlRenderer renderer = new(context, bridge, uploader);
-        SceneActor actor = AddHost(world, SceneUiHostRenderMode.ScreenOverlay);
+        SceneEntity entity = AddHost(world, SceneUiHostRenderMode.ScreenOverlay);
         bridge.Sync();
         bridge.Update(in Viewport);
 
@@ -93,7 +93,7 @@ public sealed class SceneUiHostGlTextTests
         renderer.DrawCalls.Should().BeGreaterThan(0);
         renderer.LastScreenHosts.Should().Be(1);
 
-        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        bridge.TryGetHost(entity, out SceneUiHostInstance? host).Should().BeTrue();
         UiFrame frame = host!.BuildFrame(in Viewport);
         frame.Commands.ToArray().Should().Contain(static c => c.Kind == UiRenderCommandKind.Text);
         AssertAtlasFormat(bridge, frame, UiGlyphFormat.Sdf);
@@ -110,7 +110,7 @@ public sealed class SceneUiHostGlTextTests
         using UiHostGlyphAtlasUploader uploader = new(context);
         using SceneUiHostBridge bridge = new(world, BridgeOptions(fonts, family, style, uploader));
         using SceneUiHostGlRenderer renderer = new(context, bridge);
-        SceneActor hostActor = AddHost(world, SceneUiHostRenderMode.WorldSpace);
+        SceneEntity hostEntity = AddHost(world, SceneUiHostRenderMode.WorldSpace);
         SceneCameraFrame camera = CreateCamera(world);
         bridge.Sync();
 
@@ -124,7 +124,7 @@ public sealed class SceneUiHostGlTextTests
         renderer.DrawCalls.Should().BeGreaterThan(0);
         renderer.LastWorldHosts.Should().Be(1);
 
-        bridge.TryGetHost(hostActor, out SceneUiHostInstance? host).Should().BeTrue();
+        bridge.TryGetHost(hostEntity, out SceneUiHostInstance? host).Should().BeTrue();
         UiViewport surface = host!.SurfaceViewport;
         UiFrame frame = host.BuildFrame(in surface);
         frame.Commands.ToArray().Should().Contain(static c => c.Kind == UiRenderCommandKind.Text);
@@ -206,24 +206,24 @@ public sealed class SceneUiHostGlTextTests
             .Build()
             .CreateWorld();
 
-    private static SceneActor AddHost(SceneWorld world, SceneUiHostRenderMode mode)
+    private static SceneEntity AddHost(SceneWorld world, SceneUiHostRenderMode mode)
     {
-        SceneActor actor = world.CreateActor("Hud");
+        SceneEntity entity = world.CreateEntity("Hud");
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(AssetId);
         component.RenderMode = mode;
-        world.AddData(actor, component);
+        world.AddData(entity, component);
         world.UpdateTransforms();
-        return actor;
+        return entity;
     }
 
     private static SceneCameraFrame CreateCamera(SceneWorld world)
     {
-        SceneActor actor = world.CreateActor("Camera");
-        world.GetTransform3D(actor).SetPosition(new Vec3(0.0f, 0.0f, 5.0f));
+        SceneEntity entity = world.CreateEntity("Camera");
+        world.GetTransform3D(entity).SetPosition(new Vec3(0.0f, 0.0f, 5.0f));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(actor, camera);
+        world.AddData(entity, camera);
         world.UpdateTransforms();
         return new SceneCameraFrameCollector().Collect(world, 320, 180)!;
     }

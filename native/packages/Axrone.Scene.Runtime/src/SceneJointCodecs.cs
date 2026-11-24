@@ -5,7 +5,7 @@ using System.Text.Json;
 /// <summary>Shared JSON primitives for joint payloads and reference fields.</summary>
 internal static class SceneJointJson
 {
-    public static void WriteRef(Utf8JsonWriter writer, string name, in SceneJointActorRef value)
+    public static void WriteRef(Utf8JsonWriter writer, string name, in SceneJointEntityRef value)
     {
         writer.WriteStartObject(name);
         writer.WriteNumber("slot", value.Slot);
@@ -22,11 +22,11 @@ internal static class SceneJointJson
         writer.WriteEndObject();
     }
 
-    public static SceneJointActorRef ReadRef(JsonElement data, string name)
+    public static SceneJointEntityRef ReadRef(JsonElement data, string name)
     {
         if (!data.TryGetProperty(name, out JsonElement element) || element.ValueKind == JsonValueKind.Null)
         {
-            return SceneJointActorRef.Invalid;
+            return SceneJointEntityRef.Invalid;
         }
 
         if (element.ValueKind != JsonValueKind.Object)
@@ -44,7 +44,7 @@ internal static class SceneJointJson
             throw SceneRuntimeJson.Invalid($"'{name}' slot {slot} / generation {generation} is inconsistent.");
         }
 
-        return new SceneJointActorRef(slot, generation);
+        return new SceneJointEntityRef(slot, generation);
     }
 
     public static SceneJointRef2D ReadJointRef(JsonElement data, string name)
@@ -1064,7 +1064,7 @@ internal static class SceneJoint3DJson
 
     private static void WriteFields(
         Utf8JsonWriter writer,
-        in SceneJointActorRef connectedBody,
+        in SceneJointEntityRef connectedBody,
         in Vec3 anchor,
         in Vec3 connectedAnchor,
         bool autoConfigureConnectedAnchor,
@@ -1095,7 +1095,7 @@ internal static class SceneJoint3DJson
 
     private static void ReadFields(
         JsonElement data,
-        out SceneJointActorRef connectedBody,
+        out SceneJointEntityRef connectedBody,
         ref Vec3 anchor,
         ref Vec3 connectedAnchor,
         ref bool autoConfigureConnectedAnchor,

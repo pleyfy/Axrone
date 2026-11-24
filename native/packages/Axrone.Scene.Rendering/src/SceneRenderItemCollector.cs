@@ -55,15 +55,15 @@ public sealed class SceneRenderItemCollector
 
         _count = 0;
         CulledCount = 0;
-        EnsureCapacity(Math.Max(world.ActorCount, 16));
+        EnsureCapacity(Math.Max(world.EntityCount, 16));
 
         CameraFrustum frustum = cameraFrame.Frustum;
         Vec3 cameraPosition = cameraFrame.Position;
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            if (!world.IsActiveInHierarchy(actor) ||
-                !world.TryGetData(actor, out SceneMeshRenderer renderer) ||
+            if (!world.IsActiveInHierarchy(entity) ||
+                !world.TryGetData(entity, out SceneMeshRenderer renderer) ||
                 !renderer.Visible ||
                 !renderer.MeshId.IsValid ||
                 !renderer.MaterialId.IsValid ||
@@ -92,7 +92,7 @@ public sealed class SceneRenderItemCollector
 
             if (hasLocalBounds)
             {
-                Mat4 worldMatrix = world.GetWorldMatrix3D(actor);
+                Mat4 worldMatrix = world.GetWorldMatrix3D(entity);
                 worldBounds = SceneBounds.TransformSphere(in worldMatrix, in localBounds);
                 hasWorldBounds = true;
             }
@@ -103,7 +103,7 @@ public sealed class SceneRenderItemCollector
                 continue;
             }
 
-            Vec3 worldPosition = world.GetWorldPosition3D(actor);
+            Vec3 worldPosition = world.GetWorldPosition3D(entity);
             float dx = worldPosition.X - cameraPosition.X;
             float dy = worldPosition.Y - cameraPosition.Y;
             float dz = worldPosition.Z - cameraPosition.Z;
@@ -114,7 +114,7 @@ public sealed class SceneRenderItemCollector
             }
 
             ref SceneRenderItem item = ref _items[_count];
-            item.Actor = actor;
+            item.Entity = entity;
             item.MeshId = renderer.MeshId;
             item.MaterialId = renderer.MaterialId;
             item.RenderOrder = renderer.RenderOrder;
@@ -214,7 +214,7 @@ public sealed class SceneRenderItemCollector
             }
 
             int mesh = left.MeshId.CompareTo(right.MeshId);
-            return mesh != 0 ? mesh : left.Actor.CompareTo(right.Actor);
+            return mesh != 0 ? mesh : left.Entity.CompareTo(right.Entity);
         }
     }
 }

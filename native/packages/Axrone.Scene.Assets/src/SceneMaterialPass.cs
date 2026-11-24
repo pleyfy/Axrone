@@ -72,7 +72,7 @@ public sealed class SceneMaterialPass
     /// <summary>Optional blending override.</summary>
     public bool? Blend { get; }
 
-    /// <summary>Optional explicit blend factors and equations.</summary>
+    /// <summary>Optional explicit blend fentities and equations.</summary>
     public SceneBlendState? BlendState { get; }
 
     /// <summary>Optional pass-specific built-in or generated shader identifier.</summary>

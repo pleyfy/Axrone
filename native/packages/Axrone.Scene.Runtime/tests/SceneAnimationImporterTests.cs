@@ -18,12 +18,12 @@ public sealed class SceneAnimationImporterTests
     public void ImportsSkinAndClipIntoRuntimeObjects()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor root = world.CreateActor("Root");
-        SceneActor child = world.CreateActor("Child");
+        SceneEntity root = world.CreateEntity("Root");
+        SceneEntity child = world.CreateEntity("Child");
         world.Hierarchy.SetParent(child, root);
         world.UpdateTransforms();
 
-        var nodeMap = new Dictionary<string, SceneActor>(StringComparer.Ordinal)
+        var nodeMap = new Dictionary<string, SceneEntity>(StringComparer.Ordinal)
         {
             ["node/root"] = root,
             ["node/child"] = child,
@@ -66,13 +66,13 @@ public sealed class SceneAnimationImporterTests
 
         imported.Should().BeTrue(reason);
         result.Should().NotBeNull();
-        result!.MeshActor.Should().Be(root);
+        result!.MeshEntity.Should().Be(root);
         result.Rig.BoneCount.Should().Be(2);
         result.Clips.Should().ContainSingle();
         result.Clips[0].Channels.Length.Should().Be(1);
         result.Controller.LayerCount.Should().Be(1);
         result.InverseBind.Should().HaveCount(2);
-        result.JointActors.Should().Equal(root, child);
+        result.JointEntities.Should().Equal(root, child);
         world.TryGetData(root, out SceneAnimationBinding binding).Should().BeTrue();
         binding.Skin.Should().Be(skin.Id);
         binding.DefaultClip.Should().Be(clip.Id);
@@ -83,8 +83,8 @@ public sealed class SceneAnimationImporterTests
     public void MissingJointFailsWithReason()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor root = world.CreateActor("Root");
-        var nodeMap = new Dictionary<string, SceneActor>(StringComparer.Ordinal)
+        SceneEntity root = world.CreateEntity("Root");
+        var nodeMap = new Dictionary<string, SceneEntity>(StringComparer.Ordinal)
         {
             ["node/root"] = root,
         };
@@ -117,12 +117,12 @@ public sealed class SceneAnimationImporterTests
     public void ImportedClipsBecomeAddressableStates()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor root = world.CreateActor("Root");
-        SceneActor child = world.CreateActor("Child");
+        SceneEntity root = world.CreateEntity("Root");
+        SceneEntity child = world.CreateEntity("Child");
         world.Hierarchy.SetParent(child, root);
         world.UpdateTransforms();
 
-        var nodeMap = new Dictionary<string, SceneActor>(StringComparer.Ordinal)
+        var nodeMap = new Dictionary<string, SceneEntity>(StringComparer.Ordinal)
         {
             ["node/root"] = root,
             ["node/child"] = child,
@@ -168,12 +168,12 @@ public sealed class SceneAnimationImporterTests
     public void ImportsMorphWeightsAsCurveChannels()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor root = world.CreateActor("Root");
-        SceneActor child = world.CreateActor("Child");
+        SceneEntity root = world.CreateEntity("Root");
+        SceneEntity child = world.CreateEntity("Child");
         world.Hierarchy.SetParent(child, root);
         world.UpdateTransforms();
 
-        var nodeMap = new Dictionary<string, SceneActor>(StringComparer.Ordinal)
+        var nodeMap = new Dictionary<string, SceneEntity>(StringComparer.Ordinal)
         {
             ["node/root"] = root,
             ["node/child"] = child,

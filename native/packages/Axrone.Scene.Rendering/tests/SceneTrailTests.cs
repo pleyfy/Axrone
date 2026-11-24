@@ -68,8 +68,8 @@ public sealed class SceneTrailTests
     public void CollectorEmitsFadingSegments()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Trail);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         var registry = new SceneTrailRegistry();
         registry.Register(1, capacity: 8);
@@ -77,8 +77,8 @@ public sealed class SceneTrailTests
         registry.Push(1, new Vec3(1, 0, 0), 1.0f);
         registry.Push(1, new Vec3(2, 0, 0), 2.0f);
 
-        SceneActor actor = world.CreateActor("Trail");
-        world.AddData(actor, Trail(1, lifetime: 2.0f));
+        SceneEntity entity = world.CreateEntity("Trail");
+        world.AddData(entity, Trail(1, lifetime: 2.0f));
         world.UpdateTransforms();
 
         var collector = new SceneTrailItemCollector();
@@ -94,16 +94,16 @@ public sealed class SceneTrailTests
     public void ConstantFadeKeepsFullAlpha()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Trail);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         var registry = new SceneTrailRegistry();
         registry.Register(2, capacity: 4);
         registry.Push(2, new Vec3(0, 0, 0), 0.0f);
         registry.Push(2, new Vec3(1, 0, 0), 1.0f);
 
-        SceneActor actor = world.CreateActor("Trail");
-        world.AddData(actor, Trail(2, lifetime: 1.0f, fade: SceneTrailFade.Constant));
+        SceneEntity entity = world.CreateEntity("Trail");
+        world.AddData(entity, Trail(2, lifetime: 1.0f, fade: SceneTrailFade.Constant));
         world.UpdateTransforms();
 
         var collector = new SceneTrailItemCollector();
@@ -116,16 +116,16 @@ public sealed class SceneTrailTests
     public void ExpiredHistoryProducesNoSegments()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Trail);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         var registry = new SceneTrailRegistry();
         registry.Register(3, capacity: 4);
         registry.Push(3, new Vec3(0, 0, 0), 0.0f);
         registry.Push(3, new Vec3(1, 0, 0), 0.5f);
 
-        SceneActor actor = world.CreateActor("Trail");
-        world.AddData(actor, Trail(3, lifetime: 1.0f));
+        SceneEntity entity = world.CreateEntity("Trail");
+        world.AddData(entity, Trail(3, lifetime: 1.0f));
         world.UpdateTransforms();
 
         var collector = new SceneTrailItemCollector();
@@ -136,8 +136,8 @@ public sealed class SceneTrailTests
     public void CollectorIsZeroAllocationAfterWarmup()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Trail);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
 
         var registry = new SceneTrailRegistry();
         registry.Register(4, capacity: 32);
@@ -146,8 +146,8 @@ public sealed class SceneTrailTests
             registry.Push(4, new Vec3(i * 0.1f, 0.0f, 0.0f), i * 0.05f);
         }
 
-        SceneActor actor = world.CreateActor("Trail");
-        world.AddData(actor, Trail(4, lifetime: 10.0f));
+        SceneEntity entity = world.CreateEntity("Trail");
+        world.AddData(entity, Trail(4, lifetime: 10.0f));
         world.UpdateTransforms();
 
         var collector = new SceneTrailItemCollector();

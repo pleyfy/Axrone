@@ -18,8 +18,8 @@ public static unsafe partial class SimdBatchKernels
     /// <summary>
     /// Multiplies quaternion pairs: <c>destination[i] = left[i] * right[i]</c>.
     /// </summary>
-    /// <param name="left">First factors.</param>
-    /// <param name="right">Second factors.</param>
+    /// <param name="left">First fentities.</param>
+    /// <param name="right">Second fentities.</param>
     /// <param name="destination">Receives the products; must be at least <paramref name="left"/>.Length.</param>
     /// <exception cref="ArgumentException">A span is shorter than <paramref name="left"/>.</exception>
     /// <remarks>

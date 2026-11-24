@@ -77,10 +77,10 @@ internal static class UiHostTestAssets
             .Build()
             .CreateWorld();
 
-    public static SceneActor AddHost(SceneWorld world, in SceneUiHost component)
+    public static SceneEntity AddHost(SceneWorld world, in SceneUiHost component)
     {
-        SceneActor actor = world.CreateActor("Hud");
-        world.AddData(actor, component);
-        return actor;
+        SceneEntity entity = world.CreateEntity("Hud");
+        world.AddData(entity, component);
+        return entity;
     }
 }

@@ -2,7 +2,7 @@ namespace Axrone.Scene.Rendering;
 
 /// <summary>
 /// Synchronizes scene light components into a reusable <see cref="LightingRig"/>
-/// and resolves the frame selection. Stable actor-derived ids let the rig
+/// and resolves the frame selection. Stable entity-derived ids let the rig
 /// update lights in place and remove stale entries without string keys.
 /// </summary>
 public sealed class SceneLightingCollector : IDisposable
@@ -77,33 +77,33 @@ public sealed class SceneLightingCollector : IDisposable
         _seen.Clear();
         _areaLightCount = 0;
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            if (!world.IsActiveInHierarchy(actor))
+            if (!world.IsActiveInHierarchy(entity))
             {
                 continue;
             }
 
-            int slot = actor.Slot;
+            int slot = entity.Slot;
 
-            if (world.TryGetData(actor, out SceneDirectionalLight directional) && directional.Enabled)
+            if (world.TryGetData(entity, out SceneDirectionalLight directional) && directional.Enabled)
             {
-                SyncDirectional(world, actor, slot, in directional);
+                SyncDirectional(world, entity, slot, in directional);
             }
 
-            if (world.TryGetData(actor, out ScenePointLight point) && point.Enabled)
+            if (world.TryGetData(entity, out ScenePointLight point) && point.Enabled)
             {
-                SyncPoint(world, actor, slot, in point);
+                SyncPoint(world, entity, slot, in point);
             }
 
-            if (world.TryGetData(actor, out SceneSpotLight spot) && spot.Enabled)
+            if (world.TryGetData(entity, out SceneSpotLight spot) && spot.Enabled)
             {
-                SyncSpot(world, actor, slot, in spot);
+                SyncSpot(world, entity, slot, in spot);
             }
 
-            if (world.TryGetData(actor, out SceneAreaLight area) && area.Enabled)
+            if (world.TryGetData(entity, out SceneAreaLight area) && area.Enabled)
             {
-                SyncArea(world, actor, slot, in area);
+                SyncArea(world, entity, slot, in area);
             }
         }
 
@@ -144,13 +144,13 @@ public sealed class SceneLightingCollector : IDisposable
 
     private void SyncDirectional(
         SceneWorld world,
-        SceneActor actor,
+        SceneEntity entity,
         int slot,
         in SceneDirectionalLight light)
     {
         LightId id = MakeId(slot, DirectionalKind);
         ulong sequence = MakeSequence(slot, DirectionalKind);
-        Quat rotation = Quat.Normalize(world.GetWorldRotation3D(actor));
+        Quat rotation = Quat.Normalize(world.GetWorldRotation3D(entity));
         Vec3 direction = rotation * LocalForward;
         LightPriority priority = light.Primary
             ? new LightPriority(PrimaryDirectionalPriority)
@@ -169,13 +169,13 @@ public sealed class SceneLightingCollector : IDisposable
 
     private void SyncPoint(
         SceneWorld world,
-        SceneActor actor,
+        SceneEntity entity,
         int slot,
         in ScenePointLight light)
     {
         LightId id = MakeId(slot, PointKind);
         ulong sequence = MakeSequence(slot, PointKind);
-        Vec3 position = world.GetWorldPosition3D(actor);
+        Vec3 position = world.GetWorldPosition3D(entity);
 
         LightData data = LightData.CreatePoint(
             id,
@@ -191,7 +191,7 @@ public sealed class SceneLightingCollector : IDisposable
 
     private void SyncSpot(
         SceneWorld world,
-        SceneActor actor,
+        SceneEntity entity,
         int slot,
         in SceneSpotLight light)
     {
@@ -206,8 +206,8 @@ public sealed class SceneLightingCollector : IDisposable
 
         LightId id = MakeId(slot, SpotKind);
         ulong sequence = MakeSequence(slot, SpotKind);
-        Vec3 position = world.GetWorldPosition3D(actor);
-        Quat rotation = Quat.Normalize(world.GetWorldRotation3D(actor));
+        Vec3 position = world.GetWorldPosition3D(entity);
+        Quat rotation = Quat.Normalize(world.GetWorldRotation3D(entity));
         Vec3 direction = rotation * LocalForward;
         ConeCosine inner = new(MathF.Cos(light.InnerConeAngleRadians));
         ConeCosine outer = new(MathF.Cos(light.OuterConeAngleRadians));
@@ -229,14 +229,14 @@ public sealed class SceneLightingCollector : IDisposable
 
     private void SyncArea(
         SceneWorld world,
-        SceneActor actor,
+        SceneEntity entity,
         int slot,
         in SceneAreaLight light)
     {
         LightId id = MakeId(slot, AreaKind);
         ulong sequence = MakeSequence(slot, AreaKind);
-        Vec3 position = world.GetWorldPosition3D(actor);
-        Quat rotation = Quat.Normalize(world.GetWorldRotation3D(actor));
+        Vec3 position = world.GetWorldPosition3D(entity);
+        Quat rotation = Quat.Normalize(world.GetWorldRotation3D(entity));
         float footprint = 0.5f * MathF.Max(light.Size.X, light.Size.Y);
         float range = MathF.Max(light.Range, footprint);
 
@@ -257,7 +257,7 @@ public sealed class SceneLightingCollector : IDisposable
         }
 
         ref SceneAreaLightRenderItem item = ref _areaLights[_areaLightCount];
-        item.Actor = actor;
+        item.Entity = entity;
         item.Shape = light.Shape;
         item.Size = light.Size;
         item.Position = position;

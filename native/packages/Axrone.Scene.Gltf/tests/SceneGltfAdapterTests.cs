@@ -26,7 +26,7 @@ public sealed class SceneGltfAdapterTests
         snapshot.Materials.Should().ContainSingle();
         snapshot.Textures.Should().ContainSingle();
         snapshot.Samplers.Should().ContainSingle();
-        snapshot.Prefab.Actors.Should().ContainSingle();
+        snapshot.Prefab.Entities.Should().ContainSingle();
 
         SceneMeshDefinition mesh = snapshot.Meshes[0];
         mesh.Id.Should().Be(SceneAssetId<MeshAssetTag>.FromName("gltf/mesh0"));
@@ -52,12 +52,12 @@ public sealed class SceneGltfAdapterTests
     public void Import_ConvertsPrefabComponents()
     {
         SceneGltfImportResult result = SceneGltfAdapter.Import(CreateResult());
-        SceneActorSnapshot actor = result.Snapshot.Prefab.Actors[0];
+        SceneEntitySnapshot entity = result.Snapshot.Prefab.Entities[0];
 
-        actor.NodeId.Should().Be("node_0_Root");
-        actor.Name.Should().Be("Root");
-        actor.Components.Should().Contain(component => component.Type == "Transform3D");
-        SceneComponentSnapshot renderer = actor.Components.Should()
+        entity.NodeId.Should().Be("node_0_Root");
+        entity.Name.Should().Be("Root");
+        entity.Components.Should().Contain(component => component.Type == "Transform3D");
+        SceneComponentSnapshot renderer = entity.Components.Should()
             .ContainSingle(component => component.Type == "MeshRenderer").Subject;
         renderer.Data.GetProperty("mesh").GetString().Should().Be("gltf/mesh0");
         renderer.Data.GetProperty("material").GetString().Should().Be("gltf/material0");
@@ -116,7 +116,7 @@ public sealed class SceneGltfAdapterTests
         SceneGltfImportResult result = SceneGltfAdapter.Import(source);
 
         result.Snapshot.Prefab.Id.Should().Be("gltf/scene/1");
-        result.Snapshot.Prefab.Actors[0].NodeId.Should().Be("node_1_Second");
+        result.Snapshot.Prefab.Entities[0].NodeId.Should().Be("node_1_Second");
     }
 
     private static GltfImportResult CreateResult(
@@ -191,7 +191,7 @@ public sealed class SceneGltfAdapterTests
                     new GltfMaterialTextureBinding { TextureKey = "texture0", TexCoord = 0 })
         };
 
-        var actor = new GltfActorSnapshot
+        var entity = new GltfEntitySnapshot
         {
             NodeId = "node_0_Root",
             Name = "Root",
@@ -210,7 +210,7 @@ public sealed class SceneGltfAdapterTests
         {
             Id = "gltf/scene/0",
             SceneIndex = 0,
-            Definition = new GltfPrefabDefinition { Actors = [actor] },
+            Definition = new GltfPrefabDefinition { Entities = [entity] },
             RootNodeIds = ["node_0_Root"],
             NodeIds = ["node_0_Root"],
             MeshKeys = ["mesh0"],
@@ -223,7 +223,7 @@ public sealed class SceneGltfAdapterTests
 
         if (additionalSceneIndex is { } sceneIndex)
         {
-            var secondActor = new GltfActorSnapshot
+            var secondEntity = new GltfEntitySnapshot
             {
                 NodeId = "node_1_Second",
                 Name = "Second",
@@ -236,7 +236,7 @@ public sealed class SceneGltfAdapterTests
             {
                 Id = "gltf/scene/1",
                 SceneIndex = 1,
-                Definition = new GltfPrefabDefinition { Actors = [secondActor] },
+                Definition = new GltfPrefabDefinition { Entities = [secondEntity] },
                 RootNodeIds = ["node_1_Second"],
                 NodeIds = ["node_1_Second"],
                 MeshKeys = [],

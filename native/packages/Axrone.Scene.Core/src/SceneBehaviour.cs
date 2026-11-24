@@ -3,7 +3,7 @@ namespace Axrone.Scene;
 /// <summary>Lifecycle position of a managed scene behaviour.</summary>
 public enum SceneBehaviourState : byte
 {
-    /// <summary>Constructed but not attached to an actor.</summary>
+    /// <summary>Constructed but not attached to an entity.</summary>
     Detached = 0,
 
     /// <summary>OnAttach has run.</summary>
@@ -36,7 +36,7 @@ public enum SceneBehaviourState : byte
 public interface ISceneBehaviour
 {
     /// <summary>
-    /// Called once when the instance is attached to an actor. Register callbacks and
+    /// Called once when the instance is attached to an entity. Register callbacks and
     /// lifetime-bound subscriptions here; the context is valid for the whole attachment.
     /// </summary>
     void OnAttach(SceneBehaviourContext context);
@@ -44,7 +44,7 @@ public interface ISceneBehaviour
 
 /// <summary>
 /// Attachment context for one <see cref="ISceneBehaviour"/> instance. It exposes the owning
-/// actor and world, live lifecycle state, typed scene-component access, and explicit
+/// entity and world, live lifecycle state, typed scene-component access, and explicit
 /// registration of the phases the behaviour actually uses.
 /// </summary>
 /// <remarks>
@@ -63,14 +63,14 @@ public sealed class SceneBehaviourContext
     internal SceneBehaviourContext(
         SceneBehaviourTable table,
         int slot,
-        SceneActor actor,
+        SceneEntity entity,
         SceneWorld world,
         SceneBehaviourTypeId typeId,
         int priority)
     {
         _table = table;
         _slot = slot;
-        Actor = actor;
+        Entity = entity;
         World = world;
         TypeId = typeId;
         Priority = priority;
@@ -78,8 +78,8 @@ public sealed class SceneBehaviourContext
         ActiveInHierarchyFlag = true;
     }
 
-    /// <summary>Owning actor.</summary>
-    public SceneActor Actor { get; }
+    /// <summary>Owning entity.</summary>
+    public SceneEntity Entity { get; }
 
     /// <summary>Owning world.</summary>
     public SceneWorld World { get; }
@@ -103,10 +103,10 @@ public sealed class SceneBehaviourContext
         set => _table.SetEnabled(this, value);
     }
 
-    /// <summary>Whether the behaviour is still attached to its actor.</summary>
+    /// <summary>Whether the behaviour is still attached to its entity.</summary>
     public bool IsAttached => !_detached;
 
-    /// <summary>Whether the actor's hierarchy branch is active.</summary>
+    /// <summary>Whether the entity's hierarchy branch is active.</summary>
     public bool IsActiveInHierarchy => !_detached && ActiveInHierarchyFlag;
 
     /// <summary>Whether the owning world has started.</summary>
@@ -120,15 +120,15 @@ public sealed class SceneBehaviourContext
 
     internal bool ActiveInHierarchyFlag;
 
-    /// <summary>Tries to read one unmanaged scene component from the owning actor.</summary>
+    /// <summary>Tries to read one unmanaged scene component from the owning entity.</summary>
     public bool TryGet<T>(out T value)
         where T : unmanaged, ISceneDataComponent =>
-        World.TryGetData(Actor, out value);
+        World.TryGetData(Entity, out value);
 
-    /// <summary>Reads one unmanaged scene component from the owning actor.</summary>
+    /// <summary>Reads one unmanaged scene component from the owning entity.</summary>
     public T Get<T>()
         where T : unmanaged, ISceneDataComponent =>
-        World.GetData<T>(Actor);
+        World.GetData<T>(Entity);
 
     /// <summary>Registers the callback that runs when the world starts.</summary>
     public void OnStart(Action callback)
@@ -172,7 +172,7 @@ public sealed class SceneBehaviourContext
         _table.RegisterLateUpdate(this, callback);
     }
 
-    /// <summary>Registers cleanup that runs when the behaviour is removed or its actor is destroyed.</summary>
+    /// <summary>Registers cleanup that runs when the behaviour is removed or its entity is destroyed.</summary>
     public void OnDetach(Action callback)
     {
         EnsureAttached();

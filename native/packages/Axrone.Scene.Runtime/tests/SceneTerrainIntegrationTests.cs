@@ -54,7 +54,7 @@ public sealed class SceneTerrainIntegrationTests
     }
 
     [Fact]
-    public void RuntimeBindsChunkToActorMeshAndComponent()
+    public void RuntimeBindsChunkToEntityMeshAndComponent()
     {
         using SceneWorld world = SceneRuntimeProfiles.ThreeD.Profile.CreateWorld();
         var assets = new SceneAssetRegistry();
@@ -71,33 +71,33 @@ public sealed class SceneTerrainIntegrationTests
         terrain.ChunkCount.Should().Be(1);
         engine.ChunkCount.Should().Be(1);
         assets.Meshes.Count.Should().Be(1);
-        world.ActiveActorCount.Should().Be(1);
+        world.ActiveEntityCount.Should().Be(1);
 
-        SceneActor actor = default;
-        foreach (SceneActor candidate in world.Actors)
+        SceneEntity entity = default;
+        foreach (SceneEntity candidate in world.Entities)
         {
-            actor = candidate;
+            entity = candidate;
             break;
         }
 
-        world.TryGetData(actor, out SceneTerrainChunk3D component).Should().BeTrue();
+        world.TryGetData(entity, out SceneTerrainChunk3D component).Should().BeTrue();
         component.TerrainId.Should().Be(7u);
         component.Coord.Should().Be(coord);
 
-        world.TryGetData(actor, out SceneMeshRenderer renderer).Should().BeTrue();
+        world.TryGetData(entity, out SceneMeshRenderer renderer).Should().BeTrue();
         assets.Meshes.TryGet(renderer.MeshId, out _).Should().BeTrue();
         renderer.MaterialId.IsValid.Should().BeTrue();
         assets.Materials.TryGet(renderer.MaterialId, out _).Should().BeTrue();
 
         terrain.TryGetChunk(coord, out SceneTerrainChunkHandle handle).Should().BeTrue();
-        handle.Actor.Should().Be(actor);
+        handle.Entity.Should().Be(entity);
         handle.Physics.Should().BeNull();
 
         terrain.DecommitChunk(coord).Should().BeTrue();
         terrain.ChunkCount.Should().Be(0);
         engine.ChunkCount.Should().Be(0);
         assets.Meshes.Count.Should().Be(0);
-        world.ActiveActorCount.Should().Be(0);
+        world.ActiveEntityCount.Should().Be(0);
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public sealed class SceneTerrainIntegrationTests
         terrain.Dispose();
 
         assets.Meshes.Count.Should().Be(0);
-        world.ActiveActorCount.Should().Be(0);
+        world.ActiveEntityCount.Should().Be(0);
         engine.ChunkCount.Should().Be(0);
     }
 

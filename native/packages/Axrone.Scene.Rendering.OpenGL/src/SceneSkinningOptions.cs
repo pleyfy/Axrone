@@ -63,7 +63,7 @@ public enum SceneSkinningFailureReason
     /// <summary>The material vertex shader cannot be skinned.</summary>
     UnskinnableMaterial = 3,
 
-    /// <summary>No palette is resident for the actor.</summary>
+    /// <summary>No palette is resident for the entity.</summary>
     MissingPalette = 4,
 
     /// <summary>The resident palette is empty.</summary>

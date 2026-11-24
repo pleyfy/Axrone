@@ -127,7 +127,7 @@ public sealed class SceneGlDrawExecutor
             SceneGlShader shader = ResolvePassShader(matchedPass) ?? material.Shader;
             shader.Bind();
 
-            Mat4 model = world.GetWorldMatrix3D(item.Actor);
+            Mat4 model = world.GetWorldMatrix3D(item.Entity);
             shader.SetMatrix4(ModelUniform, in model);
             shader.SetMatrix4(ViewUniform, in view);
             shader.SetMatrix4(ProjectionUniform, in projection);

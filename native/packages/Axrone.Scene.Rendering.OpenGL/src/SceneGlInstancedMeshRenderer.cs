@@ -129,7 +129,7 @@ public sealed class SceneGlInstancedMeshRenderer : IDisposable
             }
 
             EnsureInstanceCapacity(group.Length);
-            Mat4 groupMatrix = world.GetWorldMatrix3D(item.Actor);
+            Mat4 groupMatrix = world.GetWorldMatrix3D(item.Entity);
 
             for (int instance = 0; instance < group.Length; instance++)
             {

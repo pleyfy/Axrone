@@ -1019,32 +1019,32 @@ public static class SceneGltfAdapter
                 "The glTF import result contains no prefab assets.");
         }
 
-        ImmutableArray<GltfActorSnapshot> sourceActors = prefabAsset.Definition.Actors;
-        if (sourceActors.IsDefault)
+        ImmutableArray<GltfEntitySnapshot> sourceEntities = prefabAsset.Definition.Entities;
+        if (sourceEntities.IsDefault)
         {
             throw new SceneGltfException(
                 SceneGltfErrorCodes.Invalid,
-                $"Prefab '{prefabAsset.Id}' has no actor list.");
+                $"Prefab '{prefabAsset.Id}' has no entity list.");
         }
 
-        var actors = new List<SceneActorSnapshot>(sourceActors.Length);
+        var entities = new List<SceneEntitySnapshot>(sourceEntities.Length);
 
-        for (int i = 0; i < sourceActors.Length; i++)
+        for (int i = 0; i < sourceEntities.Length; i++)
         {
-            GltfActorSnapshot actor = sourceActors[i];
-            actors.Add(new SceneActorSnapshot(
-                actor.NodeId,
-                actor.Name,
-                (ushort)Math.Clamp(actor.Layer, 0, ushort.MaxValue),
-                actor.Tag,
-                actor.Active,
-                actor.Persistent,
-                actor.Pooled,
-                ConvertComponents(actor, options, diagnostics),
-                actor.ParentNodeId));
+            GltfEntitySnapshot entity = sourceEntities[i];
+            entities.Add(new SceneEntitySnapshot(
+                entity.NodeId,
+                entity.Name,
+                (ushort)Math.Clamp(entity.Layer, 0, ushort.MaxValue),
+                entity.Tag,
+                entity.Active,
+                entity.Persistent,
+                entity.Pooled,
+                ConvertComponents(entity, options, diagnostics),
+                entity.ParentNodeId));
         }
 
-        return new ScenePrefabDefinition(prefabAsset.Id, actors);
+        return new ScenePrefabDefinition(prefabAsset.Id, entities);
     }
 
     private static GltfPrefabAsset? FindDefaultPrefab(GltfImportResult result)
@@ -1067,16 +1067,16 @@ public static class SceneGltfAdapter
     }
 
     private static List<SceneComponentSnapshot> ConvertComponents(
-        GltfActorSnapshot actor,
+        GltfEntitySnapshot entity,
         SceneGltfImportOptions options,
         List<SceneGltfDiagnostic> diagnostics)
     {
-        ImmutableArray<GltfComponentSnapshot> sourceComponents = actor.Components;
+        ImmutableArray<GltfComponentSnapshot> sourceComponents = entity.Components;
         if (sourceComponents.IsDefault)
         {
             throw new SceneGltfException(
                 SceneGltfErrorCodes.Invalid,
-                $"Node '{actor.NodeId}' has no component list.");
+                $"Node '{entity.NodeId}' has no component list.");
         }
 
         var components = new List<SceneComponentSnapshot>(sourceComponents.Length);
@@ -1167,7 +1167,7 @@ public static class SceneGltfAdapter
                     {
                         diagnostics.Add(new SceneGltfDiagnostic(
                             "scene.gltf.mesh-renderer",
-                            $"Node '{actor.NodeId}' has a mesh renderer without a mesh id."));
+                            $"Node '{entity.NodeId}' has a mesh renderer without a mesh id."));
                         break;
                     }
 
@@ -1175,14 +1175,14 @@ public static class SceneGltfAdapter
                     {
                         diagnostics.Add(new SceneGltfDiagnostic(
                             "scene.gltf.skinning",
-                            $"Node '{actor.NodeId}' references skin '{renderer.SkinId}'; the skin is converted and can be bound through SceneAnimationImporter."));
+                            $"Node '{entity.NodeId}' references skin '{renderer.SkinId}'; the skin is converted and can be bound through SceneAnimationImporter."));
                     }
 
                     if (renderer.MorphTargetCount > 0)
                     {
                         diagnostics.Add(new SceneGltfDiagnostic(
                             "scene.gltf.morph-targets",
-                            $"Node '{actor.NodeId}' has {renderer.MorphTargetCount} morph targets; delta streams are converted but runtime morph playback is not wired."));
+                            $"Node '{entity.NodeId}' has {renderer.MorphTargetCount} morph targets; delta streams are converted but runtime morph playback is not wired."));
                     }
 
                     components.Add(new SceneComponentSnapshot(
@@ -1222,7 +1222,7 @@ public static class SceneGltfAdapter
                 case GltfAnimatorComponent:
                     diagnostics.Add(new SceneGltfDiagnostic(
                         "scene.gltf.animator",
-                        $"Node '{actor.NodeId}' declares an animator; clips are converted and can be bound through SceneAnimationImporter."));
+                        $"Node '{entity.NodeId}' declares an animator; clips are converted and can be bound through SceneAnimationImporter."));
                     break;
             }
         }

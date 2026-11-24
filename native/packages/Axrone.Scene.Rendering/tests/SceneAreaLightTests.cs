@@ -26,9 +26,9 @@ public sealed class SceneAreaLightTests
     public void CollectorExposesAreaLightAndFeedsPointApproximation()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.AreaLight);
-        SceneActor actor = world.CreateActor("AreaLight");
-        world.GetTransform3D(actor).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
-        world.AddData(actor, AreaLight());
+        SceneEntity entity = world.CreateEntity("AreaLight");
+        world.GetTransform3D(entity).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
+        world.AddData(entity, AreaLight());
         world.UpdateTransforms();
 
         using var collector = new SceneLightingCollector(4);
@@ -36,7 +36,7 @@ public sealed class SceneAreaLightTests
 
         collector.AreaLightCount.Should().Be(1);
         SceneAreaLightRenderItem item = collector.AreaLights[0];
-        item.Actor.Should().Be(actor);
+        item.Entity.Should().Be(entity);
         item.Shape.Should().Be(SceneAreaLightShape.Disk);
         item.Size.Should().Be(new Vec2(2.0f, 1.0f));
         item.Position.Should().Be(new Vec3(1.0f, 2.0f, 3.0f));
@@ -59,8 +59,8 @@ public sealed class SceneAreaLightTests
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.AreaLight);
         SceneAreaLight light = AreaLight();
         light.Enabled = false;
-        SceneActor actor = world.CreateActor("AreaLight");
-        world.AddData(actor, light);
+        SceneEntity entity = world.CreateEntity("AreaLight");
+        world.AddData(entity, light);
         world.UpdateTransforms();
 
         using var collector = new SceneLightingCollector(4);
@@ -71,14 +71,14 @@ public sealed class SceneAreaLightTests
     }
 
     [Fact]
-    public void AreaLightsFollowActorOrder()
+    public void AreaLightsFollowEntityOrder()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.AreaLight);
-        SceneActor first = world.CreateActor("First");
+        SceneEntity first = world.CreateEntity("First");
         world.GetTransform3D(first).SetPosition(new Vec3(1.0f, 0.0f, 0.0f));
         world.AddData(first, AreaLight());
 
-        SceneActor second = world.CreateActor("Second");
+        SceneEntity second = world.CreateEntity("Second");
         world.GetTransform3D(second).SetPosition(new Vec3(2.0f, 0.0f, 0.0f));
         world.AddData(second, AreaLight());
         world.UpdateTransforms();
@@ -87,16 +87,16 @@ public sealed class SceneAreaLightTests
         _ = collector.Collect(world, Vec3.Zero, Vec3.Zero, Vec3.Zero, Vec3.Zero);
 
         collector.AreaLightCount.Should().Be(2);
-        collector.AreaLights[0].Actor.Should().Be(first);
-        collector.AreaLights[1].Actor.Should().Be(second);
+        collector.AreaLights[0].Entity.Should().Be(first);
+        collector.AreaLights[1].Entity.Should().Be(second);
     }
 
     [Fact]
     public void AreaLightsAreZeroAllocationAfterWarmup()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.AreaLight);
-        SceneActor actor = world.CreateActor("AreaLight");
-        world.AddData(actor, AreaLight());
+        SceneEntity entity = world.CreateEntity("AreaLight");
+        world.AddData(entity, AreaLight());
         world.UpdateTransforms();
 
         using var collector = new SceneLightingCollector(4);

@@ -60,7 +60,7 @@ internal sealed class SceneGlFixture : IDisposable
 
     public SceneMaterialDefinition Material { get; }
 
-    public SceneWorld CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor)
+    public SceneWorld CreateWorld(out SceneEntity cameraEntity, out SceneEntity rendererEntity)
     {
         var builder = new SceneProfileBuilder(
             new SceneProfileId(SceneStringId.FromName("test/gl-rendering")));
@@ -71,25 +71,25 @@ internal sealed class SceneGlFixture : IDisposable
 
         SceneWorld world = profile.CreateWorld();
 
-        cameraActor = world.CreateActor("Camera");
-        world.GetTransform3D(cameraActor).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
+        cameraEntity = world.CreateEntity("Camera");
+        world.GetTransform3D(cameraEntity).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(cameraActor, camera);
+        world.AddData(cameraEntity, camera);
 
-        rendererActor = world.CreateActor("Renderer");
+        rendererEntity = world.CreateEntity("Renderer");
         SceneMeshRenderer renderer = SceneMeshRenderer.Default;
         renderer.MeshId = Mesh.Id;
         renderer.MaterialId = Material.Id;
-        world.AddData(rendererActor, renderer);
+        world.AddData(rendererEntity, renderer);
 
         world.UpdateTransforms();
         return world;
     }
 
-    public SceneRenderItem CreateItem(SceneActor rendererActor) => new()
+    public SceneRenderItem CreateItem(SceneEntity rendererEntity) => new()
     {
-        Actor = rendererActor,
+        Entity = rendererEntity,
         MeshId = Mesh.Id,
         MaterialId = Material.Id,
         ReceiveLighting = true

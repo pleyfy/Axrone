@@ -5,7 +5,7 @@ using System.Text;
 using Axrone.Hash;
 
 /// <summary>
-/// Stable symbol for actor, tag, asset and component names. The value is a
+/// Stable symbol for entity, tag, asset and component names. The value is a
 /// 64-bit FNV-1a digest, so it is deterministic across processes and can be
 /// compared in hot paths without touching the original string.
 /// </summary>

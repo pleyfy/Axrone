@@ -56,9 +56,9 @@ public sealed class ScenePrefabCompositionJsonTests
         setProperty.Path[1].Index.Should().Be(1);
         setProperty.Value.GetInt32().Should().Be(5);
 
-        ScenePrefabSetActorFieldOperation setField = read.Overrides.OfType<ScenePrefabSetActorFieldOperation>()
+        ScenePrefabSetEntityFieldOperation setField = read.Overrides.OfType<ScenePrefabSetEntityFieldOperation>()
             .Should().ContainSingle().Subject;
-        setField.Field.Should().Be(ScenePrefabActorField.Name);
+        setField.Field.Should().Be(ScenePrefabEntityField.Name);
         setField.Value.AsString().Should().Be("Renamed");
     }
 
@@ -70,7 +70,7 @@ public sealed class ScenePrefabCompositionJsonTests
               "version": 1,
               "id": "prefab/legacy",
               "kind": "prefab",
-              "actors": [
+              "entities": [
                 {
                   "nodeId": "root",
                   "parentNodeId": null,
@@ -93,7 +93,7 @@ public sealed class ScenePrefabCompositionJsonTests
 
         read.Id.Should().Be("prefab/legacy");
         read.Kind.Should().Be(ScenePrefabKind.Prefab);
-        read.Actors.Should().ContainSingle().Which.Name.Should().Be("Root");
+        read.Entities.Should().ContainSingle().Which.Name.Should().Be("Root");
         read.Metadata!.Revision.Should().Be("1");
         read.Base.Should().BeNull();
         read.Nested.Should().BeEmpty();
@@ -107,14 +107,14 @@ public sealed class ScenePrefabCompositionJsonTests
             "prefab/base",
             "prefab/variant",
             [
-                new ScenePrefabSetActorFieldOperation(
+                new ScenePrefabSetEntityFieldOperation(
                     "root",
-                    ScenePrefabActorField.Tag,
-                    ScenePrefabActorFieldValue.FromString("Variant"))
+                    ScenePrefabEntityField.Tag,
+                    ScenePrefabEntityFieldValue.FromString("Variant"))
             ]);
 
         variant.Kind.Should().Be(ScenePrefabKind.Variant);
-        variant.Actors.Should().BeEmpty();
+        variant.Entities.Should().BeEmpty();
         variant.Base!.PrefabId.Should().Be("prefab/base");
 
         var registry = new ScenePrefabRegistry();
@@ -124,8 +124,8 @@ public sealed class ScenePrefabCompositionJsonTests
         ScenePrefabDefinition resolved = new ScenePrefabResolver(registry).Resolve("prefab/variant").Definition;
 
         resolved.Kind.Should().Be(ScenePrefabKind.Resolved);
-        resolved.Actors.Should().HaveCount(2);
-        resolved.Actors[0].Tag.Should().Be("Variant");
+        resolved.Entities.Should().HaveCount(2);
+        resolved.Entities[0].Tag.Should().Be("Variant");
         resolved.Lineage.Should().ContainInOrder("prefab/base", "prefab/variant");
     }
 
@@ -137,16 +137,16 @@ public sealed class ScenePrefabCompositionJsonTests
         ScenePrefabDefinition baked = ScenePrefabVariants.ApplyOverridesToBase(
             basePrefab,
             [
-                new ScenePrefabSetActorFieldOperation(
+                new ScenePrefabSetEntityFieldOperation(
                     "child",
-                    ScenePrefabActorField.Active,
-                    ScenePrefabActorFieldValue.FromBoolean(false))
+                    ScenePrefabEntityField.Active,
+                    ScenePrefabEntityFieldValue.FromBoolean(false))
             ]);
 
         baked.Id.Should().Be("prefab/base");
         baked.Kind.Should().Be(ScenePrefabKind.Prefab);
         baked.Base.Should().BeNull();
-        baked.Actors[1].Active.Should().BeFalse();
+        baked.Entities[1].Active.Should().BeFalse();
     }
 
     [Fact]
@@ -164,14 +164,14 @@ public sealed class ScenePrefabCompositionJsonTests
         unpacked.Nested.Should().BeEmpty();
         unpacked.Overrides.Should().BeEmpty();
         unpacked.Lineage.Should().BeEmpty();
-        unpacked.Actors.Should().HaveCount(2);
+        unpacked.Entities.Should().HaveCount(2);
     }
 
     private static ScenePrefabDefinition CreateBase() => new(
         "prefab/base",
         [
-            Actor("root", tag: "Root"),
-            Actor(
+            Entity("root", tag: "Root"),
+            Entity(
                 "child",
                 parentNodeId: "root",
                 components: Component("Transform", """{"position":[0,0,0]}"""))
@@ -202,21 +202,21 @@ public sealed class ScenePrefabCompositionJsonTests
                     namePrefix: "T-",
                     overrides:
                     [
-                        new ScenePrefabSetActorFieldOperation(
+                        new ScenePrefabSetEntityFieldOperation(
                             "child",
-                            ScenePrefabActorField.Layer,
-                            ScenePrefabActorFieldValue.FromInt32(2))
+                            ScenePrefabEntityField.Layer,
+                            ScenePrefabEntityFieldValue.FromInt32(2))
                     ])
             ],
             overrides:
             [
-                new ScenePrefabAddActorOperation(Actor("extra"), "root"),
-                new ScenePrefabRemoveActorOperation("turret::child"),
-                new ScenePrefabReparentActorOperation("child", null),
-                new ScenePrefabSetActorFieldOperation(
+                new ScenePrefabAddEntityOperation(Entity("extra"), "root"),
+                new ScenePrefabRemoveEntityOperation("turret::child"),
+                new ScenePrefabReparentEntityOperation("child", null),
+                new ScenePrefabSetEntityFieldOperation(
                     "child",
-                    ScenePrefabActorField.Name,
-                    ScenePrefabActorFieldValue.FromString("Renamed")),
+                    ScenePrefabEntityField.Name,
+                    ScenePrefabEntityFieldValue.FromString("Renamed")),
                 new ScenePrefabAddComponentOperation("child", addedComponent, 0),
                 new ScenePrefabRemoveComponentOperation(
                     "child",
@@ -242,7 +242,7 @@ public sealed class ScenePrefabCompositionJsonTests
             lineage: ["prefab/base", "prefab/variant"]);
     }
 
-    private static SceneActorSnapshot Actor(
+    private static SceneEntitySnapshot Entity(
         string nodeId,
         string? parentNodeId = null,
         string? name = null,

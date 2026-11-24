@@ -3,7 +3,7 @@
   <PropertyGroup>
     <RootNamespace>Axrone.Scene2D</RootNamespace>
     <AssemblyName>Axrone.Scene2D</AssemblyName>
-    <Description>2D scene facade, runtime profile identity and actor construction helpers for the Axrone engine.</Description>
+    <Description>2D scene facade, runtime profile identity and entity construction helpers for the Axrone engine.</Description>
   </PropertyGroup>
 
   <PropertyGroup Label="AotCompatibility">
@@ -16,7 +16,7 @@
 
   <PropertyGroup Label="SuppressedRules">
     <!-- CA1051/CA1815/CA1028: component payloads use public fields and
-         byte-backed enums to keep actor columns compact, matching the
+         byte-backed enums to keep entity columns compact, matching the
          scene-core data component convention.
          CA1724: the Scene2D facade deliberately carries the package identity. -->
     <NoWarn>$(NoWarn);CA1051;CA1815;CA1028;CA1724</NoWarn>

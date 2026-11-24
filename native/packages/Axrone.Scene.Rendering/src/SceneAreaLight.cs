@@ -64,8 +64,8 @@ public struct SceneAreaLight : ISceneDataComponent
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneAreaLightRenderItem
 {
-    /// <summary>Owning actor.</summary>
-    public SceneActor Actor;
+    /// <summary>Owning entity.</summary>
+    public SceneEntity Entity;
 
     /// <summary>Emitter shape.</summary>
     public SceneAreaLightShape Shape;

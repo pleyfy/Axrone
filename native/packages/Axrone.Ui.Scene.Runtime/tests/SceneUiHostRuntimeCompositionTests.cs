@@ -41,7 +41,7 @@ public sealed class SceneUiHostRuntimeCompositionTests
         };
 
         using SceneUiHostsRuntime hosts = runtime.AttachUiHosts(options);
-        SceneActor actor = AddHost(runtime.World);
+        SceneEntity entity = AddHost(runtime.World);
         hosts.Update();
         hosts.Render().Should().BeTrue();
 
@@ -52,7 +52,7 @@ public sealed class SceneUiHostRuntimeCompositionTests
         renderer.CoverageGlyphBatches.Should().Be(0);
         renderer.DrawCalls.Should().BeGreaterThan(0);
         renderer.LastScreenHosts.Should().Be(1);
-        hosts.Bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        hosts.Bridge.TryGetHost(entity, out SceneUiHostInstance? host).Should().BeTrue();
         UiFrame frame = host!.BuildFrame(new UiViewport(new UiSize(runtime.ViewportWidth, runtime.ViewportHeight)));
         frame.Commands.ToArray().Should().Contain(static c => c.Kind == UiRenderCommandKind.Text);
     }
@@ -438,14 +438,14 @@ public sealed class SceneUiHostRuntimeCompositionTests
     private static SceneUiHostRuntimeOptions Options(ISceneUiHostRendererFactory factory) =>
         new() { Assets = CreateTable(), RendererFactory = factory };
 
-    private static SceneActor AddHost(SceneWorld world)
+    private static SceneEntity AddHost(SceneWorld world)
     {
-        SceneActor actor = world.CreateActor("Hud");
+        SceneEntity entity = world.CreateEntity("Hud");
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(AssetId);
-        world.AddData(actor, component);
+        world.AddData(entity, component);
         world.UpdateTransforms();
-        return actor;
+        return entity;
     }
 
     private static UiHostAssetTable CreateTable()

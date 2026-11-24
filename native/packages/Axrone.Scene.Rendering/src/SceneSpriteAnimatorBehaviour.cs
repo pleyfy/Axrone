@@ -17,7 +17,7 @@ public sealed class SceneSpriteAnimatorBehaviour : ISceneBehaviour
     private int _frameIndex;
     private bool _complete;
     private SceneWorld? _world;
-    private SceneActor _actor = SceneActor.Null;
+    private SceneEntity _entity = SceneEntity.Null;
 
     /// <summary>Creates a stopped-at-frame-zero animator.</summary>
     public SceneSpriteAnimatorBehaviour()
@@ -78,7 +78,7 @@ public sealed class SceneSpriteAnimatorBehaviour : ISceneBehaviour
     {
         ArgumentNullException.ThrowIfNull(context);
         _world = context.World;
-        _actor = context.Actor;
+        _entity = context.Entity;
         context.OnEnable(ApplyCurrentFrame);
         context.OnUpdate(Advance);
         context.OnDetach(ClearAttachment);
@@ -87,7 +87,7 @@ public sealed class SceneSpriteAnimatorBehaviour : ISceneBehaviour
     private void ClearAttachment()
     {
         _world = null;
-        _actor = SceneActor.Null;
+        _entity = SceneEntity.Null;
     }
 
     /// <summary>Advances playback by <paramref name="deltaSeconds"/> outside the normal update phase.</summary>
@@ -151,8 +151,8 @@ public sealed class SceneSpriteAnimatorBehaviour : ISceneBehaviour
             return;
         }
 
-        SceneActor actor = _actor;
-        if (!world.TryGetData(actor, out SceneSpriteRenderer renderer))
+        SceneEntity entity = _entity;
+        if (!world.TryGetData(entity, out SceneSpriteRenderer renderer))
         {
             return;
         }
@@ -175,6 +175,6 @@ public sealed class SceneSpriteAnimatorBehaviour : ISceneBehaviour
             renderer.Anchor = anchor;
         }
 
-        world.GetData<SceneSpriteRenderer>(actor) = renderer;
+        world.GetData<SceneSpriteRenderer>(entity) = renderer;
     }
 }

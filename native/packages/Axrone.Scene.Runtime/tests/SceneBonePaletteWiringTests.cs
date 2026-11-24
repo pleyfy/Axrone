@@ -19,13 +19,13 @@ public sealed class SceneBonePaletteWiringTests
         runtime.HasAnimators.Should().BeTrue();
         runtime.HasSkinnedMeshes.Should().BeTrue();
 
-        SceneActor actor = CreateAnimatedActor(runtime);
+        SceneEntity entity = CreateAnimatedEntity(runtime);
         AnimationController controller = CreateController();
-        runtime.Animators!.Bind(actor, controller).Should().BeTrue();
+        runtime.Animators!.Bind(entity, controller).Should().BeTrue();
 
         runtime.Animators.Step(0.5f, runtime.BonePaletteSink);
 
-        runtime.BonePalettes.TryGetBonePalette(actor, out ReadOnlySpan<Mat4> palette).Should().BeTrue();
+        runtime.BonePalettes.TryGetBonePalette(entity, out ReadOnlySpan<Mat4> palette).Should().BeTrue();
         palette.Length.Should().Be(1);
         palette[0].M14.Should().BeApproximately(0.5f, 0.001f);
         runtime.BonePalettes.Revision.Should().Be(1);
@@ -44,27 +44,27 @@ public sealed class SceneBonePaletteWiringTests
         });
         runtime.HasSkinnedMeshes.Should().BeFalse();
 
-        SceneActor actor = CreateAnimatedActor(runtime);
+        SceneEntity entity = CreateAnimatedEntity(runtime);
         AnimationController controller = CreateController();
-        runtime.Animators!.Bind(actor, controller).Should().BeTrue();
+        runtime.Animators!.Bind(entity, controller).Should().BeTrue();
 
         runtime.Animators.Step(0.5f, null);
 
         runtime.BonePalettes.Count.Should().Be(0);
-        runtime.BonePalettes.TryGetBonePalette(actor, out _).Should().BeFalse();
+        runtime.BonePalettes.TryGetBonePalette(entity, out _).Should().BeFalse();
     }
 
     [Fact]
     public void PausedAnimatorDoesNotRewritePalette()
     {
         using SceneRuntime runtime = new(new SceneRuntimeOptions { Profile = CreateSkinnedProfile() });
-        SceneActor actor = CreateAnimatedActor(runtime);
-        runtime.Animators!.Bind(actor, CreateController()).Should().BeTrue();
+        SceneEntity entity = CreateAnimatedEntity(runtime);
+        runtime.Animators!.Bind(entity, CreateController()).Should().BeTrue();
 
         runtime.Animators.Step(0.25f, runtime.BonePaletteSink);
         long revision = runtime.BonePalettes.Revision;
 
-        ref SceneAnimator animator = ref runtime.World.GetData<SceneAnimator>(actor);
+        ref SceneAnimator animator = ref runtime.World.GetData<SceneAnimator>(entity);
         animator.Paused = true;
         runtime.Animators.Step(0.5f, runtime.BonePaletteSink);
 
@@ -75,8 +75,8 @@ public sealed class SceneBonePaletteWiringTests
     public void PalettePublishingIsZeroAllocationAfterWarmup()
     {
         using SceneRuntime runtime = new(new SceneRuntimeOptions { Profile = CreateSkinnedProfile() });
-        SceneActor actor = CreateAnimatedActor(runtime);
-        runtime.Animators!.Bind(actor, CreateController()).Should().BeTrue();
+        SceneEntity entity = CreateAnimatedEntity(runtime);
+        runtime.Animators!.Bind(entity, CreateController()).Should().BeTrue();
 
         for (int i = 0; i < 4; i++)
         {
@@ -100,16 +100,16 @@ public sealed class SceneBonePaletteWiringTests
         var store = new SceneBonePaletteStore();
         var sink = new SceneBonePalettePoseSink(store);
         using SceneWorld world = CreateSkinnedProfile().CreateWorld();
-        SceneActor actor = world.CreateActor("Animated");
+        SceneEntity entity = world.CreateEntity("Animated");
         LocalTransform[] localPose = [new LocalTransform(new Vec3(9, 9, 9), Quat.Identity, Vec3.One)];
         Mat4[] palette = [Mat4.CreateTranslation(3, 0, 0)];
 
-        sink.ApplyPose(actor, localPose, palette);
+        sink.ApplyPose(entity, localPose, palette);
 
-        store.TryGetBonePalette(actor, out ReadOnlySpan<Mat4> stored).Should().BeTrue();
+        store.TryGetBonePalette(entity, out ReadOnlySpan<Mat4> stored).Should().BeTrue();
         stored[0].M41.Should().Be(3.0f);
 
-        sink.ApplyPose(SceneActor.Null, localPose, palette);
+        sink.ApplyPose(SceneEntity.Null, localPose, palette);
         store.Count.Should().Be(1);
     }
 
@@ -120,11 +120,11 @@ public sealed class SceneBonePaletteWiringTests
             .AddSceneRenderables(SceneRenderableFeatures.SkinnedMesh)
             .Build();
 
-    private static SceneActor CreateAnimatedActor(SceneRuntime runtime)
+    private static SceneEntity CreateAnimatedEntity(SceneRuntime runtime)
     {
-        SceneActor actor = runtime.World.CreateActor("Animated");
-        runtime.World.AddData(actor, SceneAnimator.Default);
-        return actor;
+        SceneEntity entity = runtime.World.CreateEntity("Animated");
+        runtime.World.AddData(entity, SceneAnimator.Default);
+        return entity;
     }
 
     private static AnimationController CreateController()

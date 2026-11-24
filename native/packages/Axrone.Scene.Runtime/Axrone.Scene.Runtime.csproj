@@ -19,7 +19,7 @@
          positionally. -->
     <NoWarn>$(NoWarn);CA1815</NoWarn>
     <!-- CA1031: animator/path fault isolation must catch every controller and
-         pose-sink failure so one actor cannot stop the rest of the frame. -->
+         pose-sink failure so one entity cannot stop the rest of the frame. -->
     <NoWarn>$(NoWarn);CA1031</NoWarn>
   </PropertyGroup>
 

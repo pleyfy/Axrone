@@ -175,7 +175,7 @@ public sealed class FullscreenCommandTests : IDisposable
     [Fact]
     public void GLContextInvoker_BlendDisable_IssuesFuncAndDisableBeforeDraw_AndUpdatesCache()
     {
-        // A preceding geometry pass left blending on with alpha factors.
+        // A preceding geometry pass left blending on with alpha fentities.
         _context.State.SetBlendFuncSeparate(GLConst.SrcAlpha, GLConst.OneMinusSrcAlpha,
             GLConst.SrcAlpha, GLConst.OneMinusSrcAlpha);
         _context.State.SetBlend(true);
@@ -198,7 +198,7 @@ public sealed class FullscreenCommandTests : IDisposable
     }
 
     [Fact]
-    public void GLContextInvoker_BlendReEnable_AfterFullscreenPass_ReprogramsFactorsOnce()
+    public void GLContextInvoker_BlendReEnable_AfterFullscreenPass_ReprogramsFentitiesOnce()
     {
         // A valid (non-invalidated) cache is what a real frame sees after Reset().
         _context.State.Reset();
@@ -208,7 +208,7 @@ public sealed class FullscreenCommandTests : IDisposable
         var fullscreen = new FullscreenTriangleCommand<GLContextInvoker>(1u);
         FullscreenDispatcher.Dispatch(ref invoker, ref fullscreen);
 
-        // A later blended pass re-enables with the same factors the fullscreen pass
+        // A later blended pass re-enables with the same fentities the fullscreen pass
         // left behind: the cache dedupes, so the driver sees exactly one factor change.
         _mock.ClearCallLog();
         var blended = new FullscreenTriangleCommand<GLContextInvoker>(1u);

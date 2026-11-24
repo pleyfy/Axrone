@@ -132,7 +132,7 @@ public sealed class UiRenderingContractTests
     {
         UiOverlayAttachment attachment = new(
             new UiDocumentId(1),
-            Axrone.Scene.SceneActor.Null,
+            Axrone.Scene.SceneEntity.Null,
             UiOverlaySpace.World,
             ZOrder: 4,
             PixelsPerUnit: 100.0f);

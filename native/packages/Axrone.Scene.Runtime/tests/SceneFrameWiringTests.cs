@@ -13,21 +13,21 @@ public sealed class SceneFrameWiringTests
     [Fact]
     public void LodSelectionSwitchesWithCameraDistance()
     {
-        using SceneRuntime runtime = CreateRuntime(out SceneActor cameraActor, out SceneActor lodActor);
+        using SceneRuntime runtime = CreateRuntime(out SceneEntity cameraEntity, out SceneEntity lodEntity);
 
         runtime.Frame.Plan(0).Should().BeTrue();
         runtime.Frame.CollectLodItems(SceneRenderPassIds.Main).Should().Be(1);
         runtime.Frame.LodItems[0].Level.Should().Be(1);
         runtime.Frame.LodItems[0].MeshId.Should().Be(SceneAssetId<MeshAssetTag>.FromName("mesh/far"));
 
-        runtime.World.GetTransform3D(cameraActor).SetPosition(new Vec3(0, 0, 1));
+        runtime.World.GetTransform3D(cameraEntity).SetPosition(new Vec3(0, 0, 1));
         runtime.World.UpdateTransforms();
 
         runtime.Frame.Plan(1).Should().BeTrue();
         runtime.Frame.CollectLodItems(SceneRenderPassIds.Main).Should().Be(1);
         runtime.Frame.LodItems[0].Level.Should().Be(0);
         runtime.Frame.LodItems[0].MeshId.Should().Be(SceneAssetId<MeshAssetTag>.FromName("mesh/near"));
-        _ = lodActor;
+        _ = lodEntity;
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public sealed class SceneFrameWiringTests
                 .Build()
         });
 
-        SceneActor camera = RenderingCamera(runtime.World, new Vec3(0, 0, 10));
+        SceneEntity camera = RenderingCamera(runtime.World, new Vec3(0, 0, 10));
         runtime.World.UpdateTransforms();
         runtime.Frame.Plan(0).Should().BeTrue();
 
@@ -89,7 +89,7 @@ public sealed class SceneFrameWiringTests
         _ = camera;
     }
 
-    private static SceneRuntime CreateRuntime(out SceneActor cameraActor, out SceneActor lodActor)
+    private static SceneRuntime CreateRuntime(out SceneEntity cameraEntity, out SceneEntity lodEntity)
     {
         SceneProfile profile = new SceneProfileBuilder(
             new SceneProfileId(SceneStringId.FromName("test/lod-wiring")))
@@ -99,9 +99,9 @@ public sealed class SceneFrameWiringTests
             .Build();
         SceneRuntime runtime = new(new SceneRuntimeOptions { Profile = profile });
 
-        cameraActor = RenderingCamera(runtime.World, new Vec3(0, 0, 10));
+        cameraEntity = RenderingCamera(runtime.World, new Vec3(0, 0, 10));
 
-        lodActor = runtime.World.CreateActor("Lod");
+        lodEntity = runtime.World.CreateEntity("Lod");
         SceneLodGroup group = SceneLodGroup.Default;
         group.Hysteresis = 0.0f;
         group.SetLevel(0, new SceneLodLevel(
@@ -112,18 +112,18 @@ public sealed class SceneFrameWiringTests
             SceneAssetId<MeshAssetTag>.FromName("mesh/far"),
             SceneAssetId<MaterialAssetTag>.FromName("material/lod"),
             50.0f));
-        runtime.World.AddData(lodActor, group);
+        runtime.World.AddData(lodEntity, group);
         runtime.World.UpdateTransforms();
         return runtime;
     }
 
-    private static SceneActor RenderingCamera(SceneWorld world, Vec3 position)
+    private static SceneEntity RenderingCamera(SceneWorld world, Vec3 position)
     {
-        SceneActor actor = world.CreateActor("Camera");
-        world.GetTransform3D(actor).SetPosition(position);
+        SceneEntity entity = world.CreateEntity("Camera");
+        world.GetTransform3D(entity).SetPosition(position);
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(actor, camera);
-        return actor;
+        world.AddData(entity, camera);
+        return entity;
     }
 }

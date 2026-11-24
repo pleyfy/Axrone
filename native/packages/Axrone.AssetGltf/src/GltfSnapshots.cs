@@ -16,7 +16,7 @@ public sealed class GltfAnimationControllerMetadata
     public string? RootMotionNodeId { get; init; }
 }
 
-/// <summary>Actor component snapshot base.</summary>
+/// <summary>Entity component snapshot base.</summary>
 public abstract record GltfComponentSnapshot;
 
 /// <summary>Transform component snapshot.</summary>
@@ -77,8 +77,8 @@ public sealed record GltfAnimatorComponent(
     bool Loop,
     float Speed) : GltfComponentSnapshot;
 
-/// <summary>Actor snapshot.</summary>
-public sealed class GltfActorSnapshot
+/// <summary>Entity snapshot.</summary>
+public sealed class GltfEntitySnapshot
 {
     /// <summary>Node id.</summary>
     public required string NodeId { get; init; }
@@ -86,7 +86,7 @@ public sealed class GltfActorSnapshot
     /// <summary>Parent node id.</summary>
     public string? ParentNodeId { get; init; }
 
-    /// <summary>Actor name.</summary>
+    /// <summary>Entity name.</summary>
     public required string Name { get; init; }
 
     /// <summary>Layer index.</summary>
@@ -108,9 +108,9 @@ public sealed class GltfActorSnapshot
     public required ImmutableArray<GltfComponentSnapshot> Components { get; init; }
 }
 
-/// <summary>Prefab definition: actor list.</summary>
+/// <summary>Prefab definition: entity list.</summary>
 public sealed class GltfPrefabDefinition
 {
-    /// <summary>Actors.</summary>
-    public required ImmutableArray<GltfActorSnapshot> Actors { get; init; }
+    /// <summary>Entities.</summary>
+    public required ImmutableArray<GltfEntitySnapshot> Entities { get; init; }
 }

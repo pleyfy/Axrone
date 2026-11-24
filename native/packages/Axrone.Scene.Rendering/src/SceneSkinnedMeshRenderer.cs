@@ -54,8 +54,8 @@ public struct SceneSkinnedMeshRenderer : ISceneDataComponent
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneSkinnedMeshRenderItem
 {
-    /// <summary>Owning actor; the renderer fetches its world matrix and palette.</summary>
-    public SceneActor Actor;
+    /// <summary>Owning entity; the renderer fetches its world matrix and palette.</summary>
+    public SceneEntity Entity;
 
     /// <summary>Skinned mesh asset id.</summary>
     public SceneAssetId<MeshAssetTag> MeshId;
@@ -145,15 +145,15 @@ public sealed class SceneSkinnedMeshItemCollector
             }
         }
 
-        EnsureCapacity(Math.Max(world.ActorCount, 8));
+        EnsureCapacity(Math.Max(world.EntityCount, 8));
 
         CameraFrustum frustum = cameraFrame.Frustum;
         Vec3 cameraPosition = cameraFrame.Position;
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            if (!world.IsActiveInHierarchy(actor) ||
-                !world.TryGetData(actor, out SceneSkinnedMeshRenderer renderer) ||
+            if (!world.IsActiveInHierarchy(entity) ||
+                !world.TryGetData(entity, out SceneSkinnedMeshRenderer renderer) ||
                 !renderer.Visible ||
                 !renderer.MeshId.IsValid ||
                 !renderer.MaterialId.IsValid ||
@@ -182,7 +182,7 @@ public sealed class SceneSkinnedMeshItemCollector
 
             if (hasLocalBounds)
             {
-                Mat4 worldMatrix = world.GetWorldMatrix3D(actor);
+                Mat4 worldMatrix = world.GetWorldMatrix3D(entity);
                 worldBounds = SceneBounds.TransformSphere(in worldMatrix, in localBounds);
                 hasWorldBounds = true;
             }
@@ -193,7 +193,7 @@ public sealed class SceneSkinnedMeshItemCollector
                 continue;
             }
 
-            Vec3 position = world.GetWorldPosition3D(actor);
+            Vec3 position = world.GetWorldPosition3D(entity);
             float dx = position.X - cameraPosition.X;
             float dy = position.Y - cameraPosition.Y;
             float dz = position.Z - cameraPosition.Z;
@@ -204,7 +204,7 @@ public sealed class SceneSkinnedMeshItemCollector
             }
 
             ref SceneSkinnedMeshRenderItem item = ref _items[_count];
-            item.Actor = actor;
+            item.Entity = entity;
             item.MeshId = renderer.MeshId;
             item.MaterialId = renderer.MaterialId;
             item.RenderOrder = renderer.RenderOrder;
@@ -293,7 +293,7 @@ public sealed class SceneSkinnedMeshItemCollector
             }
 
             int mesh = left.MeshId.CompareTo(right.MeshId);
-            return mesh != 0 ? mesh : left.Actor.CompareTo(right.Actor);
+            return mesh != 0 ? mesh : left.Entity.CompareTo(right.Entity);
         }
     }
 }

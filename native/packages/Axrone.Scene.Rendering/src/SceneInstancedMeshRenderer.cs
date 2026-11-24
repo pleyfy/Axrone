@@ -76,7 +76,7 @@ public sealed class SceneInstanceRegistry
 }
 
 /// <summary>
-/// Instanced mesh renderer component. The owning actor supplies the group
+/// Instanced mesh renderer component. The owning entity supplies the group
 /// transform; the registry supplies local instance transforms and colors shared
 /// by every mesh in the group.
 /// </summary>
@@ -129,8 +129,8 @@ public struct SceneInstancedMeshRenderer : ISceneDataComponent
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneInstancedMeshItem
 {
-    /// <summary>Owning actor whose world matrix transforms the group.</summary>
-    public SceneActor Actor;
+    /// <summary>Owning entity whose world matrix transforms the group.</summary>
+    public SceneEntity Entity;
 
     /// <summary>Mesh asset id.</summary>
     public SceneAssetId<MeshAssetTag> MeshId;
@@ -210,15 +210,15 @@ public sealed class SceneInstancedMeshItemCollector
 
         _count = 0;
         CulledCount = 0;
-        EnsureCapacity(Math.Max(world.ActorCount, 8));
+        EnsureCapacity(Math.Max(world.EntityCount, 8));
 
         CameraFrustum frustum = cameraFrame.Frustum;
         Vec3 cameraPosition = cameraFrame.Position;
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            if (!world.IsActiveInHierarchy(actor) ||
-                !world.TryGetData(actor, out SceneInstancedMeshRenderer renderer) ||
+            if (!world.IsActiveInHierarchy(entity) ||
+                !world.TryGetData(entity, out SceneInstancedMeshRenderer renderer) ||
                 !renderer.Visible ||
                 !renderer.MeshId.IsValid ||
                 !renderer.MaterialId.IsValid ||
@@ -229,7 +229,7 @@ public sealed class SceneInstancedMeshItemCollector
                 continue;
             }
 
-            Mat4 matrix = world.GetWorldMatrix3D(actor);
+            Mat4 matrix = world.GetWorldMatrix3D(entity);
             BoundingSphere3 worldBounds = renderer.Bounds is { } localBounds
                 ? SceneBounds.TransformSphere(in matrix, in localBounds)
                 : ComputeWorldBounds(in matrix, group);
@@ -240,7 +240,7 @@ public sealed class SceneInstancedMeshItemCollector
                 continue;
             }
 
-            Vec3 position = world.GetWorldPosition3D(actor);
+            Vec3 position = world.GetWorldPosition3D(entity);
             float dx = position.X - cameraPosition.X;
             float dy = position.Y - cameraPosition.Y;
             float dz = position.Z - cameraPosition.Z;
@@ -251,7 +251,7 @@ public sealed class SceneInstancedMeshItemCollector
             }
 
             ref SceneInstancedMeshItem item = ref _items[_count];
-            item.Actor = actor;
+            item.Entity = entity;
             item.MeshId = renderer.MeshId;
             item.MaterialId = renderer.MaterialId;
             item.InstanceGroupId = renderer.InstanceGroupId;
@@ -362,7 +362,7 @@ public sealed class SceneInstancedMeshItemCollector
             }
 
             int mesh = left.MeshId.CompareTo(right.MeshId);
-            return mesh != 0 ? mesh : left.Actor.CompareTo(right.Actor);
+            return mesh != 0 ? mesh : left.Entity.CompareTo(right.Entity);
         }
     }
 }

@@ -2,7 +2,7 @@ namespace Axrone.Render.Effects;
 
 /// <summary>
 /// Payload for the colour grading pass, owning the pass's setup, validate and
-/// execute phases. Grading factors are multiplicative and centred on 1.0 (neutral).
+/// execute phases. Grading fentities are multiplicative and centred on 1.0 (neutral).
 /// </summary>
 public sealed class ColorGradingPassData
     : IPassSetup<ColorGradingPassData>, IPassValidate<ColorGradingPassData>, IPassExecute<ColorGradingPassData>

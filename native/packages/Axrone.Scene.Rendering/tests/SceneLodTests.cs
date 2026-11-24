@@ -32,8 +32,8 @@ public sealed class SceneLodTests
     private static (SceneWorld World, SceneCameraFrame Frame) CreateScene(Vec3 cameraPosition)
     {
         SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.LodGroup);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, cameraPosition, primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, cameraPosition, primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
         return (world, frame);
     }
 
@@ -92,8 +92,8 @@ public sealed class SceneLodTests
         using SceneWorld scope = world;
         SceneLodGroup group = Group(SceneLodMetric.Distance, 0.0f, 5.0f, 50.0f);
         group.RenderOrder = 3;
-        SceneActor actor = world.CreateActor("Lod");
-        world.AddData(actor, group);
+        SceneEntity entity = world.CreateEntity("Lod");
+        world.AddData(entity, group);
         world.UpdateTransforms();
 
         var evaluator = new SceneLodEvaluator();
@@ -108,10 +108,10 @@ public sealed class SceneLodTests
         collector.MeshItems.Length.Should().Be(1);
         collector.MeshItems[0].MeshId.Should().Be(item.MeshId);
         collector.MeshItems[0].RenderOrder.Should().Be(3);
-        evaluator.GetLevel(actor).Should().Be(1);
+        evaluator.GetLevel(entity).Should().Be(1);
 
         evaluator.Reset();
-        evaluator.GetLevel(actor).Should().Be(-1);
+        evaluator.GetLevel(entity).Should().Be(-1);
     }
 
     [Fact]
@@ -120,9 +120,9 @@ public sealed class SceneLodTests
         (SceneWorld world, SceneCameraFrame frame) = CreateScene(new Vec3(0, 0, 10));
         using SceneWorld scope = world;
         SceneLodGroup group = Group(SceneLodMetric.Distance, 0.0f, 100.0f);
-        SceneActor actor = world.CreateActor("Behind");
-        world.GetTransform3D(actor).SetPosition(new Vec3(0, 0, 20));
-        world.AddData(actor, group);
+        SceneEntity entity = world.CreateEntity("Behind");
+        world.GetTransform3D(entity).SetPosition(new Vec3(0, 0, 20));
+        world.AddData(entity, group);
         world.UpdateTransforms();
 
         var collector = new SceneLodItemCollector();
@@ -138,8 +138,8 @@ public sealed class SceneLodTests
         (SceneWorld world, SceneCameraFrame frame) = CreateScene(new Vec3(0, 0, 10));
         using SceneWorld scope = world;
         SceneLodGroup invalid = SceneLodGroup.Default;
-        SceneActor actor = world.CreateActor("Invalid");
-        world.AddData(actor, invalid);
+        SceneEntity entity = world.CreateEntity("Invalid");
+        world.AddData(entity, invalid);
         world.UpdateTransforms();
 
         var collector = new SceneLodItemCollector();
@@ -155,9 +155,9 @@ public sealed class SceneLodTests
 
         for (int i = 0; i < 8; i++)
         {
-            SceneActor actor = world.CreateActor($"Lod{i}");
-            world.GetTransform3D(actor).SetPosition(new Vec3(i, 0, 0));
-            world.AddData(actor, group);
+            SceneEntity entity = world.CreateEntity($"Lod{i}");
+            world.GetTransform3D(entity).SetPosition(new Vec3(i, 0, 0));
+            world.AddData(entity, group);
         }
 
         world.UpdateTransforms();

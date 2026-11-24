@@ -217,11 +217,11 @@ public sealed class SceneFramePipeline :
     /// </summary>
     /// <param name="frameIndex">Frame index used by the render-state accumulator.</param>
     /// <param name="cameraOverride">
-    /// Explicit camera actor for preview rendering; the primary camera is used
-    /// when this is <see cref="SceneActor.Null"/>.
+    /// Explicit camera entity for preview rendering; the primary camera is used
+    /// when this is <see cref="SceneEntity.Null"/>.
     /// </param>
     /// <returns>False when the scene has no enabled camera.</returns>
-    public bool Plan(int frameIndex, SceneActor cameraOverride = default)
+    public bool Plan(int frameIndex, SceneEntity cameraOverride = default)
     {
         ThrowIfDisposed();
 

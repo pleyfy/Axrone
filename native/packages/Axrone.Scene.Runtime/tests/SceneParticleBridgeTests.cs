@@ -15,10 +15,10 @@ public sealed class SceneParticleBridgeTests
         using SceneWorld world = CreateWorld();
         using var bridge = new SceneParticleBridge3D(world);
 
-        SceneActor actor = world.CreateActor("Emitter");
-        world.GetTransform3D(actor).SetPosition(new Vec3(0.0f, 1.0f, 0.0f));
+        SceneEntity entity = world.CreateEntity("Emitter");
+        world.GetTransform3D(entity).SetPosition(new Vec3(0.0f, 1.0f, 0.0f));
         SceneParticleSystem system = SceneParticleSystem.Default;
-        world.AddData(actor, system);
+        world.AddData(entity, system);
         world.UpdateTransforms();
 
         bridge.SyncSystems();
@@ -38,16 +38,16 @@ public sealed class SceneParticleBridgeTests
         using SceneWorld world = CreateWorld();
         using var bridge = new SceneParticleBridge3D(world);
 
-        SceneActor actor = world.CreateActor("Emitter");
-        world.GetTransform3D(actor).SetPosition(Vec3.Zero);
+        SceneEntity entity = world.CreateEntity("Emitter");
+        world.GetTransform3D(entity).SetPosition(Vec3.Zero);
         SceneParticleSystem system = SceneParticleSystem.Default;
-        world.AddData(actor, system);
+        world.AddData(entity, system);
         world.UpdateTransforms();
 
         bridge.SyncSystems();
         bridge.SystemCount.Should().Be(1);
 
-        world.RemoveData<SceneParticleSystem>(actor);
+        world.RemoveData<SceneParticleSystem>(entity);
         bridge.SyncSystems();
         bridge.SystemCount.Should().Be(0);
     }
@@ -58,10 +58,10 @@ public sealed class SceneParticleBridgeTests
         using SceneWorld world = CreateWorld();
         using var bridge = new SceneParticleBridge3D(world);
 
-        SceneActor actor = world.CreateActor("Emitter");
-        world.GetTransform3D(actor).SetPosition(Vec3.Zero);
+        SceneEntity entity = world.CreateEntity("Emitter");
+        world.GetTransform3D(entity).SetPosition(Vec3.Zero);
         SceneParticleSystem system = SceneParticleSystem.Default;
-        world.AddData(actor, system);
+        world.AddData(entity, system);
         world.UpdateTransforms();
 
         bridge.SyncSystems();
@@ -70,7 +70,7 @@ public sealed class SceneParticleBridgeTests
 
         SceneParticleSystem bigger = system;
         bigger.MaxParticles = system.MaxParticles * 2;
-        world.GetData<SceneParticleSystem>(actor) = bigger;
+        world.GetData<SceneParticleSystem>(entity) = bigger;
         bridge.SyncSystems();
 
         bridge.SystemCount.Should().Be(1);

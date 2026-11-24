@@ -158,10 +158,10 @@ public sealed class SceneUiHostAutoSizePaintTests : IDisposable
     {
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(assetId);
-        SceneActor actor = UiHostTestAssets.AddHost(world, in component);
+        SceneEntity entity = UiHostTestAssets.AddHost(world, in component);
         bridge.Sync();
         bridge.Update(in Viewport);
-        bridge.TryGetHost(actor, out SceneUiHostInstance? host).Should().BeTrue();
+        bridge.TryGetHost(entity, out SceneUiHostInstance? host).Should().BeTrue();
         return host!;
     }
 

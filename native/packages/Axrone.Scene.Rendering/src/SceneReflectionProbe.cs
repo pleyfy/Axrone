@@ -46,8 +46,8 @@ public struct SceneReflectionProbe : ISceneDataComponent
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneReflectionProbeRenderItem
 {
-    /// <summary>Owning actor.</summary>
-    public SceneActor Actor;
+    /// <summary>Owning entity.</summary>
+    public SceneEntity Entity;
 
     /// <summary>Cubemap texture asset id.</summary>
     public SceneAssetId<TextureAssetTag> CubemapId;
@@ -72,7 +72,7 @@ public struct SceneReflectionProbeRenderItem
 }
 
 /// <summary>
-/// Collects reflection probes, orders them by priority, distance and actor, and
+/// Collects reflection probes, orders them by priority, distance and entity, and
 /// exposes the highest-priority probe containing the camera. The item array is
 /// reused, so a warmed frame allocates nothing.
 /// </summary>
@@ -113,12 +113,12 @@ public sealed class SceneReflectionProbeCollector
 
         _count = 0;
         _selectedIndex = -1;
-        EnsureCapacity(Math.Max(world.ActorCount, 8));
+        EnsureCapacity(Math.Max(world.EntityCount, 8));
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            if (!world.IsActiveInHierarchy(actor) ||
-                !world.TryGetData(actor, out SceneReflectionProbe probe) ||
+            if (!world.IsActiveInHierarchy(entity) ||
+                !world.TryGetData(entity, out SceneReflectionProbe probe) ||
                 !probe.Enabled ||
                 !probe.CubemapId.IsValid ||
                 probe.Extents.X <= 0.0f ||
@@ -128,7 +128,7 @@ public sealed class SceneReflectionProbeCollector
                 continue;
             }
 
-            Mat4 matrix = world.GetWorldMatrix3D(actor);
+            Mat4 matrix = world.GetWorldMatrix3D(entity);
             Vec4 localCenter = new(probe.LocalCenter.X, probe.LocalCenter.Y, probe.LocalCenter.Z, 1.0f);
             Vec4 center = matrix * localCenter;
             Vec3 worldCenter = new(center.X, center.Y, center.Z);
@@ -149,7 +149,7 @@ public sealed class SceneReflectionProbeCollector
             float dz = worldCenter.Z - cameraPosition.Z;
 
             ref SceneReflectionProbeRenderItem item = ref _items[_count];
-            item.Actor = actor;
+            item.Entity = entity;
             item.CubemapId = probe.CubemapId;
             item.WorldCenter = worldCenter;
             item.WorldExtents = worldExtents;
@@ -255,7 +255,7 @@ public sealed class SceneReflectionProbeCollector
             float leftDistance = left.CameraDistanceSquared;
             float rightDistance = right.CameraDistanceSquared;
             int distance = leftDistance.CompareTo(rightDistance);
-            return distance != 0 ? distance : left.Actor.CompareTo(right.Actor);
+            return distance != 0 ? distance : left.Entity.CompareTo(right.Entity);
         }
     }
 }

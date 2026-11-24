@@ -26,36 +26,36 @@ public sealed class SceneChangeJournalTests
     }
 
     [Fact]
-    public void ActorAndComponentMutations_AreJournaledInOrder()
+    public void EntityAndComponentMutations_AreJournaledInOrder()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor actor = world.CreateActor("Player");
+        SceneEntity entity = world.CreateEntity("Player");
 
-        world.AddData(actor, new Probe { Value = 1 });
-        world.SetData(actor, new Probe { Value = 2 });
-        world.MarkChanged<Probe>(actor);
-        world.RemoveData<Probe>(actor);
-        world.DestroyActor(actor);
+        world.AddData(entity, new Probe { Value = 1 });
+        world.SetData(entity, new Probe { Value = 2 });
+        world.MarkChanged<Probe>(entity);
+        world.RemoveData<Probe>(entity);
+        world.DestroyEntity(entity);
 
         var buffer = new SceneChange[16];
         int count = world.Changes.Drain(buffer);
         buffer.AsSpan(0, count).ToArray()
             .Select(change => change.Kind)
             .Should().ContainInOrder(
-                SceneChangeKind.ActorCreated,
+                SceneChangeKind.EntityCreated,
                 SceneChangeKind.ComponentAdded,
                 SceneChangeKind.ComponentChanged,
                 SceneChangeKind.ComponentChanged,
                 SceneChangeKind.ComponentRemoved,
-                SceneChangeKind.ActorDestroyed);
+                SceneChangeKind.EntityDestroyed);
     }
 
     [Fact]
     public void BehaviourMutations_AreJournaledAndSubscriptionsAreDisposed()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor actor = world.CreateActor();
-        TrackingBehaviour behaviour = world.AddBehaviour<TrackingBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity();
+        TrackingBehaviour behaviour = world.AddBehaviour<TrackingBehaviour>(entity);
         var tracker = new Tracker();
         behaviour.Context!.Track(tracker);
 
@@ -69,7 +69,7 @@ public sealed class SceneChangeJournalTests
         buffer.AsSpan(0, count).ToArray()
             .Select(change => change.Kind)
             .Should().ContainInOrder(
-                SceneChangeKind.ActorCreated,
+                SceneChangeKind.EntityCreated,
                 SceneChangeKind.BehaviourAdded,
                 SceneChangeKind.BehaviourRemoved);
     }
@@ -78,8 +78,8 @@ public sealed class SceneChangeJournalTests
     public void HierarchyMutations_AreJournaled()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor parent = world.CreateActor();
-        SceneActor child = world.CreateActor();
+        SceneEntity parent = world.CreateEntity();
+        SceneEntity child = world.CreateEntity();
         world.Changes.Clear();
 
         world.Hierarchy.SetParent(child, parent);
@@ -98,19 +98,19 @@ public sealed class SceneChangeJournalTests
     public void BehaviourEnableAndDisable_AreJournaled()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor actor = world.CreateActor();
-        TrackingBehaviour behaviour = world.AddBehaviour<TrackingBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity();
+        TrackingBehaviour behaviour = world.AddBehaviour<TrackingBehaviour>(entity);
         world.Start();
 
-        world.SetBehaviourEnabled<TrackingBehaviour>(actor, false);
-        world.SetBehaviourEnabled<TrackingBehaviour>(actor, true);
+        world.SetBehaviourEnabled<TrackingBehaviour>(entity, false);
+        world.SetBehaviourEnabled<TrackingBehaviour>(entity, true);
 
         var buffer = new SceneChange[16];
         int count = world.Changes.Drain(buffer);
         buffer.AsSpan(0, count).ToArray()
             .Select(change => change.Kind)
             .Should().ContainInOrder(
-                SceneChangeKind.ActorCreated,
+                SceneChangeKind.EntityCreated,
                 SceneChangeKind.BehaviourAdded,
                 SceneChangeKind.BehaviourEnabled,
                 SceneChangeKind.BehaviourDisabled,
@@ -121,19 +121,19 @@ public sealed class SceneChangeJournalTests
     public void Journal_DropsOldestWhenFull()
     {
         var journal = new SceneChangeJournal(capacity: 2);
-        SceneActor actor = SceneActor.Null;
+        SceneEntity entity = SceneEntity.Null;
 
-        journal.Write(SceneChange.ActorCreated(actor));
-        journal.Write(SceneChange.ActorDestroyed(actor));
-        journal.Write(SceneChange.ActorCreated(actor));
+        journal.Write(SceneChange.EntityCreated(entity));
+        journal.Write(SceneChange.EntityDestroyed(entity));
+        journal.Write(SceneChange.EntityCreated(entity));
 
         journal.DroppedCount.Should().Be(1);
         journal.Count.Should().Be(2);
 
         var buffer = new SceneChange[2];
         journal.Drain(buffer).Should().Be(2);
-        buffer[0].Kind.Should().Be(SceneChangeKind.ActorDestroyed);
-        buffer[1].Kind.Should().Be(SceneChangeKind.ActorCreated);
+        buffer[0].Kind.Should().Be(SceneChangeKind.EntityDestroyed);
+        buffer[1].Kind.Should().Be(SceneChangeKind.EntityCreated);
     }
 
     private static SceneWorld CreateWorld()

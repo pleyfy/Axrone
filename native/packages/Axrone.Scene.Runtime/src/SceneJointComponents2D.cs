@@ -37,47 +37,47 @@ public enum SceneJointKind2D
 }
 
 /// <summary>
-/// Serialised actor reference for joint payloads. Carries a slot and a
+/// Serialised entity reference for joint payloads. Carries a slot and a
 /// generation fence; a recycled slot resolves as stale instead of aliasing
 /// the new occupant. Runtime body identities are never stored here.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
-public readonly record struct SceneJointActorRef(int Slot, uint Generation)
+public readonly record struct SceneJointEntityRef(int Slot, uint Generation)
 {
     /// <summary>No-reference sentinel; a joint with this target never resolves.</summary>
-    public static SceneJointActorRef Invalid => new(-1, 0u);
+    public static SceneJointEntityRef Invalid => new(-1, 0u);
 
-    /// <summary>Whether this reference names a possible live actor.</summary>
+    /// <summary>Whether this reference names a possible live entity.</summary>
     public bool IsValid
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => Slot >= 0 && Generation != 0u;
     }
 
-    /// <summary>Captures a live actor handle as a serialisable reference.</summary>
+    /// <summary>Captures a live entity handle as a serialisable reference.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static SceneJointActorRef FromActor(SceneActor actor) =>
-        new(actor.Slot, actor.Generation.Value);
+    public static SceneJointEntityRef FromEntity(SceneEntity entity) =>
+        new(entity.Slot, entity.Generation.Value);
 
     /// <summary>Resolves the reference against a world, rejecting stale generations.</summary>
-    public bool TryResolve(SceneWorld world, out SceneActor actor)
+    public bool TryResolve(SceneWorld world, out SceneEntity entity)
     {
         ArgumentNullException.ThrowIfNull(world);
 
-        actor = default;
+        entity = default;
         if (!IsValid)
         {
             return false;
         }
 
-        SceneActor candidate = SceneActor.FromSlot(Slot, new Axrone.Utility.Slots.Generation(Generation));
-        return world.TryGetActor(candidate, out actor);
+        SceneEntity candidate = SceneEntity.FromSlot(Slot, new Axrone.Utility.Slots.Generation(Generation));
+        return world.TryGetEntity(candidate, out entity);
     }
 }
 
 /// <summary>
-/// Serialised joint reference for gear payloads: an actor reference plus the
-/// joint kind hosted on that actor.
+/// Serialised joint reference for gear payloads: an entity reference plus the
+/// joint kind hosted on that entity.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct SceneJointRef2D(int Slot, uint Generation, SceneJointKind2D Kind)
@@ -92,9 +92,9 @@ public readonly record struct SceneJointRef2D(int Slot, uint Generation, SceneJo
         get => Slot >= 0 && Generation != 0u;
     }
 
-    /// <summary>Resolves the actor half of the reference against a world.</summary>
-    public bool TryResolveActor(SceneWorld world, out SceneActor actor) =>
-        new SceneJointActorRef(Slot, Generation).TryResolve(world, out actor);
+    /// <summary>Resolves the entity half of the reference against a world.</summary>
+    public bool TryResolveEntity(SceneWorld world, out SceneEntity entity) =>
+        new SceneJointEntityRef(Slot, Generation).TryResolve(world, out entity);
 }
 
 /// <summary>Outcome of one joint build attempt during bridge reconciliation.</summary>
@@ -122,7 +122,7 @@ internal interface ISceneJoint2D<TSelf> : ISceneDataComponent
 
     static abstract SceneJointBuildResult2D Create(in TSelf value, SceneJointBuildContext2D context, out JointId jointId);
 
-    SceneJointActorRef TargetBodyRef { get; }
+    SceneJointEntityRef TargetBodyRef { get; }
 
     bool IsJointEnabled { get; }
 }
@@ -146,7 +146,7 @@ internal static class SceneJointHash2D
 
     internal static ulong Mix(ulong hash, int value) => Mix(hash, unchecked((uint)value));
 
-    internal static ulong Mix(ulong hash, in SceneJointActorRef value) =>
+    internal static ulong Mix(ulong hash, in SceneJointEntityRef value) =>
         Mix(Mix(hash, value.Slot), value.Generation);
 
     internal static ulong Mix(ulong hash, in SceneJointRef2D value) =>
@@ -161,8 +161,8 @@ internal static class SceneJointHash2D
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneDistanceJoint2D : ISceneJoint2D<SceneDistanceJoint2D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Target separation in metres.</summary>
     public float Distance;
@@ -206,7 +206,7 @@ public struct SceneDistanceJoint2D : ISceneJoint2D<SceneDistanceJoint2D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             Distance = 1.0f,
             MinDistance = 0.0f,
             MaxDistance = float.PositiveInfinity,
@@ -222,7 +222,7 @@ public struct SceneDistanceJoint2D : ISceneJoint2D<SceneDistanceJoint2D>
 
     static SceneJointKind2D ISceneJoint2D<SceneDistanceJoint2D>.JointKind => SceneJointKind2D.Distance;
 
-    SceneJointActorRef ISceneJoint2D<SceneDistanceJoint2D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint2D<SceneDistanceJoint2D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint2D<SceneDistanceJoint2D>.IsJointEnabled => Enabled;
 
@@ -257,8 +257,8 @@ public struct SceneDistanceJoint2D : ISceneJoint2D<SceneDistanceJoint2D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneHingeJoint2D : ISceneJoint2D<SceneHingeJoint2D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Local anchor on body A.</summary>
     public Vec2 Anchor;
@@ -299,7 +299,7 @@ public struct SceneHingeJoint2D : ISceneJoint2D<SceneHingeJoint2D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             UseMotor = false,
             MotorSpeed = 0.0f,
             MaxMotorTorque = 10000.0f,
@@ -315,7 +315,7 @@ public struct SceneHingeJoint2D : ISceneJoint2D<SceneHingeJoint2D>
 
     static SceneJointKind2D ISceneJoint2D<SceneHingeJoint2D>.JointKind => SceneJointKind2D.Hinge;
 
-    SceneJointActorRef ISceneJoint2D<SceneHingeJoint2D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint2D<SceneHingeJoint2D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint2D<SceneHingeJoint2D>.IsJointEnabled => Enabled;
 
@@ -351,8 +351,8 @@ public struct SceneHingeJoint2D : ISceneJoint2D<SceneHingeJoint2D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneFixedJoint2D : ISceneJoint2D<SceneFixedJoint2D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Local anchor on body A.</summary>
     public Vec2 Anchor;
@@ -381,7 +381,7 @@ public struct SceneFixedJoint2D : ISceneJoint2D<SceneFixedJoint2D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             DampingRatio = 0.7f,
             Frequency = 0.0f,
             EnableCollision = false,
@@ -393,7 +393,7 @@ public struct SceneFixedJoint2D : ISceneJoint2D<SceneFixedJoint2D>
 
     static SceneJointKind2D ISceneJoint2D<SceneFixedJoint2D>.JointKind => SceneJointKind2D.Fixed;
 
-    SceneJointActorRef ISceneJoint2D<SceneFixedJoint2D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint2D<SceneFixedJoint2D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint2D<SceneFixedJoint2D>.IsJointEnabled => Enabled;
 
@@ -423,8 +423,8 @@ public struct SceneFixedJoint2D : ISceneJoint2D<SceneFixedJoint2D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneSliderJoint2D : ISceneJoint2D<SceneSliderJoint2D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Local anchor on body A.</summary>
     public Vec2 Anchor;
@@ -468,7 +468,7 @@ public struct SceneSliderJoint2D : ISceneJoint2D<SceneSliderJoint2D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             Axis = new Vec2(1.0f, 0.0f),
             UseMotor = false,
             MotorSpeed = 0.0f,
@@ -485,7 +485,7 @@ public struct SceneSliderJoint2D : ISceneJoint2D<SceneSliderJoint2D>
 
     static SceneJointKind2D ISceneJoint2D<SceneSliderJoint2D>.JointKind => SceneJointKind2D.Slider;
 
-    SceneJointActorRef ISceneJoint2D<SceneSliderJoint2D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint2D<SceneSliderJoint2D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint2D<SceneSliderJoint2D>.IsJointEnabled => Enabled;
 
@@ -521,8 +521,8 @@ public struct SceneSliderJoint2D : ISceneJoint2D<SceneSliderJoint2D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneSpringJoint2D : ISceneJoint2D<SceneSpringJoint2D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Rest length in metres.</summary>
     public float Distance;
@@ -560,7 +560,7 @@ public struct SceneSpringJoint2D : ISceneJoint2D<SceneSpringJoint2D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             Distance = 1.0f,
             Stiffness = 10.0f,
             Damping = 0.5f,
@@ -574,7 +574,7 @@ public struct SceneSpringJoint2D : ISceneJoint2D<SceneSpringJoint2D>
 
     static SceneJointKind2D ISceneJoint2D<SceneSpringJoint2D>.JointKind => SceneJointKind2D.Spring;
 
-    SceneJointActorRef ISceneJoint2D<SceneSpringJoint2D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint2D<SceneSpringJoint2D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint2D<SceneSpringJoint2D>.IsJointEnabled => Enabled;
 
@@ -607,8 +607,8 @@ public struct SceneSpringJoint2D : ISceneJoint2D<SceneSpringJoint2D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneMotorJoint2D : ISceneJoint2D<SceneMotorJoint2D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Target linear offset in the frame of body A.</summary>
     public Vec2 LinearOffset;
@@ -643,7 +643,7 @@ public struct SceneMotorJoint2D : ISceneJoint2D<SceneMotorJoint2D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             AngularOffset = 0.0f,
             MaxForce = 1.0f,
             MaxTorque = 1.0f,
@@ -657,7 +657,7 @@ public struct SceneMotorJoint2D : ISceneJoint2D<SceneMotorJoint2D>
 
     static SceneJointKind2D ISceneJoint2D<SceneMotorJoint2D>.JointKind => SceneJointKind2D.Motor;
 
-    SceneJointActorRef ISceneJoint2D<SceneMotorJoint2D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint2D<SceneMotorJoint2D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint2D<SceneMotorJoint2D>.IsJointEnabled => Enabled;
 
@@ -690,8 +690,8 @@ public struct SceneMotorJoint2D : ISceneJoint2D<SceneMotorJoint2D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneWheelJoint2D : ISceneJoint2D<SceneWheelJoint2D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Local anchor on body A.</summary>
     public Vec2 AnchorA;
@@ -744,7 +744,7 @@ public struct SceneWheelJoint2D : ISceneJoint2D<SceneWheelJoint2D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             Axis = new Vec2(0.0f, 1.0f),
             EnableLimit = false,
             LowerTranslation = 0.0f,
@@ -763,7 +763,7 @@ public struct SceneWheelJoint2D : ISceneJoint2D<SceneWheelJoint2D>
 
     static SceneJointKind2D ISceneJoint2D<SceneWheelJoint2D>.JointKind => SceneJointKind2D.Wheel;
 
-    SceneJointActorRef ISceneJoint2D<SceneWheelJoint2D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint2D<SceneWheelJoint2D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint2D<SceneWheelJoint2D>.IsJointEnabled => Enabled;
 
@@ -801,8 +801,8 @@ public struct SceneWheelJoint2D : ISceneJoint2D<SceneWheelJoint2D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneRopeJoint2D : ISceneJoint2D<SceneRopeJoint2D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>Local anchor on body A.</summary>
     public Vec2 AnchorA;
@@ -831,7 +831,7 @@ public struct SceneRopeJoint2D : ISceneJoint2D<SceneRopeJoint2D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             MaxLength = 1.0f,
             EnableCollision = false,
             BreakForce = float.PositiveInfinity,
@@ -842,7 +842,7 @@ public struct SceneRopeJoint2D : ISceneJoint2D<SceneRopeJoint2D>
 
     static SceneJointKind2D ISceneJoint2D<SceneRopeJoint2D>.JointKind => SceneJointKind2D.Rope;
 
-    SceneJointActorRef ISceneJoint2D<SceneRopeJoint2D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint2D<SceneRopeJoint2D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint2D<SceneRopeJoint2D>.IsJointEnabled => Enabled;
 
@@ -872,8 +872,8 @@ public struct SceneRopeJoint2D : ISceneJoint2D<SceneRopeJoint2D>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneMouseJoint2D : ISceneJoint2D<SceneMouseJoint2D>
 {
-    /// <summary>Body B reference; body A is the rigid body on this actor.</summary>
-    public SceneJointActorRef ConnectedBody;
+    /// <summary>Body B reference; body A is the rigid body on this entity.</summary>
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>World-space drag target.</summary>
     public Vec2 Target;
@@ -905,7 +905,7 @@ public struct SceneMouseJoint2D : ISceneJoint2D<SceneMouseJoint2D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             MaxForce = 1000.0f,
             Stiffness = 5.0f,
             Damping = 0.7f,
@@ -918,7 +918,7 @@ public struct SceneMouseJoint2D : ISceneJoint2D<SceneMouseJoint2D>
 
     static SceneJointKind2D ISceneJoint2D<SceneMouseJoint2D>.JointKind => SceneJointKind2D.Mouse;
 
-    SceneJointActorRef ISceneJoint2D<SceneMouseJoint2D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint2D<SceneMouseJoint2D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint2D<SceneMouseJoint2D>.IsJointEnabled => Enabled;
 
@@ -951,7 +951,7 @@ public struct SceneMouseJoint2D : ISceneJoint2D<SceneMouseJoint2D>
 public struct SceneGearJoint2D : ISceneJoint2D<SceneGearJoint2D>
 {
     /// <summary>Body B reference; carried for TypeScript parity.</summary>
-    public SceneJointActorRef ConnectedBody;
+    public SceneJointEntityRef ConnectedBody;
 
     /// <summary>First coupled joint reference.</summary>
     public SceneJointRef2D JointA;
@@ -980,7 +980,7 @@ public struct SceneGearJoint2D : ISceneJoint2D<SceneGearJoint2D>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new()
         {
-            ConnectedBody = SceneJointActorRef.Invalid,
+            ConnectedBody = SceneJointEntityRef.Invalid,
             JointA = SceneJointRef2D.Invalid,
             JointB = SceneJointRef2D.Invalid,
             Ratio = 1.0f,
@@ -993,7 +993,7 @@ public struct SceneGearJoint2D : ISceneJoint2D<SceneGearJoint2D>
 
     static SceneJointKind2D ISceneJoint2D<SceneGearJoint2D>.JointKind => SceneJointKind2D.Gear;
 
-    SceneJointActorRef ISceneJoint2D<SceneGearJoint2D>.TargetBodyRef => ConnectedBody;
+    SceneJointEntityRef ISceneJoint2D<SceneGearJoint2D>.TargetBodyRef => ConnectedBody;
 
     bool ISceneJoint2D<SceneGearJoint2D>.IsJointEnabled => Enabled;
 

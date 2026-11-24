@@ -18,8 +18,8 @@ public sealed class SceneGlParticleTests
     {
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
-        using SceneWorld world = CreateWorld(out SceneActor cameraActor);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 320, 180)!;
+        using SceneWorld world = CreateWorld(out SceneEntity cameraEntity);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 320, 180)!;
 
         using var renderer = new SceneGlParticleBatchRenderer(context);
         var frameState = new SceneRenderFrameState();
@@ -39,8 +39,8 @@ public sealed class SceneGlParticleTests
     {
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
-        using SceneWorld world = CreateWorld(out SceneActor cameraActor);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 320, 180)!;
+        using SceneWorld world = CreateWorld(out SceneEntity cameraEntity);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 320, 180)!;
 
         using var renderer = new SceneGlParticleBatchRenderer(context);
         var frameState = new SceneRenderFrameState();
@@ -57,8 +57,8 @@ public sealed class SceneGlParticleTests
     {
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
-        using SceneWorld world = CreateWorld(out SceneActor cameraActor);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 320, 180)!;
+        using SceneWorld world = CreateWorld(out SceneEntity cameraEntity);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 320, 180)!;
 
         using var renderer = new SceneGlParticleBatchRenderer(context);
         var frameState = new SceneRenderFrameState();
@@ -74,8 +74,8 @@ public sealed class SceneGlParticleTests
     {
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
-        using SceneWorld world = CreateWorld(out SceneActor cameraActor);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 320, 180)!;
+        using SceneWorld world = CreateWorld(out SceneEntity cameraEntity);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 320, 180)!;
         var assets = new SceneAssetRegistry();
         var source = new FakeParticleSource(CreateSnapshot(count: 5));
 
@@ -102,8 +102,8 @@ public sealed class SceneGlParticleTests
     {
         var api = new MockGLApi { EnableCallLogging = true };
         using var context = new GLContext(api);
-        using SceneWorld world = CreateWorld(out SceneActor cameraActor);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 320, 180)!;
+        using SceneWorld world = CreateWorld(out SceneEntity cameraEntity);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 320, 180)!;
         var assets = new SceneAssetRegistry();
         var source = new FakeParticleSource(CreateSnapshot(count: 5));
 
@@ -159,7 +159,7 @@ public sealed class SceneGlParticleTests
         return new SceneRenderPassDefinition(id, depthTest: true, blend: blend);
     }
 
-    private static SceneWorld CreateWorld(out SceneActor cameraActor)
+    private static SceneWorld CreateWorld(out SceneEntity cameraEntity)
     {
         var builder = new SceneProfileBuilder(
                 new SceneProfileId(SceneStringId.FromName("test/gl-particles")))
@@ -167,11 +167,11 @@ public sealed class SceneGlParticleTests
             .AddRendering3D();
 
         SceneWorld world = builder.Build().CreateWorld();
-        cameraActor = world.CreateActor("Camera3D");
-        world.GetTransform3D(cameraActor).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
+        cameraEntity = world.CreateEntity("Camera3D");
+        world.GetTransform3D(cameraEntity).SetPosition(new Vec3(0.0f, 0.0f, 10.0f));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(cameraActor, camera);
+        world.AddData(cameraEntity, camera);
         world.UpdateTransforms();
         return world;
     }

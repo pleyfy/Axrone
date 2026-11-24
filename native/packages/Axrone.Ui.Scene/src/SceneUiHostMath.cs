@@ -9,19 +9,19 @@ public static class SceneUiHostMath
     /// </summary>
     public static bool TryBuildWorldModel(
         SceneWorld world,
-        SceneActor actor,
+        SceneEntity entity,
         in SceneUiHost component,
         in Vec3 cameraPosition,
         out Mat4 model)
     {
         ArgumentNullException.ThrowIfNull(world);
         model = default;
-        if (!world.HasData<SceneTransform3D>(actor))
+        if (!world.HasData<SceneTransform3D>(entity))
         {
             return false;
         }
 
-        Mat4 worldMatrix = world.GetWorldMatrix3D(actor);
+        Mat4 worldMatrix = world.GetWorldMatrix3D(entity);
         float width = SceneUiHostLimits.ClampWorldSize(component.WorldWidth);
         float height = SceneUiHostLimits.ClampWorldSize(component.WorldHeight);
 

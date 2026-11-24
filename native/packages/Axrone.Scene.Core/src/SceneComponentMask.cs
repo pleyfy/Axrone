@@ -3,7 +3,7 @@ namespace Axrone.Scene;
 /// <summary>
 /// 128-bit presence mask over data component types. Two words are enough for
 /// the built-in scene profile plus a large user extension budget, and keep the
-/// mask register-sized for actor-table scans.
+/// mask register-sized for entity-table scans.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 8)]
 public readonly record struct SceneComponentMask(ulong Low, ulong High) :

@@ -6,9 +6,9 @@ using Xunit;
 
 public sealed class StrongIdTests
 {
-    private readonly struct ActorTag : IIdentifierTag<ActorTag>
+    private readonly struct EntityTag : IIdentifierTag<EntityTag>
     {
-        public static string TagName => "Actor";
+        public static string TagName => "Entity";
         public static string Prefix => "a";
         public static bool IsOneBased => true;
     }
@@ -23,7 +23,7 @@ public sealed class StrongIdTests
     [Fact]
     public void OneBased_RoundTripsIndex()
     {
-        var id = StrongId<ActorTag, uint>.FromIndex(4);
+        var id = StrongId<EntityTag, uint>.FromIndex(4);
 
         id.RawValue.Should().Be(5u);
         id.IsValid.Should().BeTrue();
@@ -43,8 +43,8 @@ public sealed class StrongIdTests
     [Fact]
     public void Invalid_IsDistinguishablePerBase()
     {
-        StrongId<ActorTag, uint>.Invalid.IsValid.Should().BeFalse();
-        StrongId<ActorTag, uint>.Invalid.ToIndex().Should().Be(-1);
+        StrongId<EntityTag, uint>.Invalid.IsValid.Should().BeFalse();
+        StrongId<EntityTag, uint>.Invalid.ToIndex().Should().Be(-1);
 
         StrongId<SlotTag, int>.Invalid.IsValid.Should().BeFalse();
         StrongId<SlotTag, int>.Invalid.RawValue.Should().Be(-1);
@@ -53,7 +53,7 @@ public sealed class StrongIdTests
     [Fact]
     public void FromIndex_RejectsNegative()
     {
-        Action act = () => _ = StrongId<ActorTag, uint>.FromIndex(-1);
+        Action act = () => _ = StrongId<EntityTag, uint>.FromIndex(-1);
 
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
@@ -61,8 +61,8 @@ public sealed class StrongIdTests
     [Fact]
     public void Ordering_FollowsRawValue()
     {
-        var first = StrongId<ActorTag, uint>.FromRaw(2u);
-        var second = StrongId<ActorTag, uint>.FromRaw(9u);
+        var first = StrongId<EntityTag, uint>.FromRaw(2u);
+        var second = StrongId<EntityTag, uint>.FromRaw(9u);
 
         (first < second).Should().BeTrue();
         (second > first).Should().BeTrue();
@@ -72,7 +72,7 @@ public sealed class StrongIdTests
     [Fact]
     public void SpanFormatting_WritesPrefixedValue()
     {
-        var id = StrongId<ActorTag, uint>.FromRaw(12u);
+        var id = StrongId<EntityTag, uint>.FromRaw(12u);
 
         Span<char> buffer = stackalloc char[32];
         id.TryFormat(buffer, out int written).Should().BeTrue();
@@ -87,7 +87,7 @@ public sealed class StrongIdTests
     [Fact]
     public void SpanFormatting_RejectsShortDestination()
     {
-        var id = StrongId<ActorTag, uint>.FromRaw(12u);
+        var id = StrongId<EntityTag, uint>.FromRaw(12u);
 
         Span<char> tiny = stackalloc char[2];
         id.TryFormat(tiny, out int written).Should().BeFalse();

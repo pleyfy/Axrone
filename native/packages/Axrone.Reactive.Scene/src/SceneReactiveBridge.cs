@@ -23,8 +23,8 @@ public sealed class SceneReactiveBridge : IDisposable
     private readonly Dictionary<Type, IComponentChangeSink> _componentsByType = new();
     private readonly Dictionary<SceneComponentTypeId, IComponentChangeSink> _componentsByTypeId = new();
 
-    private readonly Subject<SceneActor> _actorCreated = new();
-    private readonly Subject<SceneActor> _actorDestroyed = new();
+    private readonly Subject<SceneEntity> _entityCreated = new();
+    private readonly Subject<SceneEntity> _entityDestroyed = new();
     private readonly Subject<BehaviourChange> _behaviourChanges = new();
     private readonly Subject<HierarchyChange> _hierarchyChanges = new();
     private readonly Subject<SceneCollisionEvent> _collisions = new();
@@ -44,11 +44,11 @@ public sealed class SceneReactiveBridge : IDisposable
     /// <summary>Scene world observed by this bridge.</summary>
     public SceneWorld World => _world;
 
-    /// <summary>Actors created since the last pump.</summary>
-    public IObservable<SceneActor> ActorCreated => _actorCreated;
+    /// <summary>Entities created since the last pump.</summary>
+    public IObservable<SceneEntity> EntityCreated => _entityCreated;
 
-    /// <summary>Actors destroyed since the last pump.</summary>
-    public IObservable<SceneActor> ActorDestroyed => _actorDestroyed;
+    /// <summary>Entities destroyed since the last pump.</summary>
+    public IObservable<SceneEntity> EntityDestroyed => _entityDestroyed;
 
     /// <summary>Behaviour add/remove/enable/disable transitions.</summary>
     public IObservable<BehaviourChange> BehaviourChanges => _behaviourChanges;
@@ -144,18 +144,18 @@ public sealed class SceneReactiveBridge : IDisposable
     {
         switch (change.Kind)
         {
-            case SceneChangeKind.ActorCreated:
-                if (_actorCreated.SubscriberCount > 0)
+            case SceneChangeKind.EntityCreated:
+                if (_entityCreated.SubscriberCount > 0)
                 {
-                    _actorCreated.OnNext(change.Actor);
+                    _entityCreated.OnNext(change.Entity);
                 }
 
                 break;
 
-            case SceneChangeKind.ActorDestroyed:
-                if (_actorDestroyed.SubscriberCount > 0)
+            case SceneChangeKind.EntityDestroyed:
+                if (_entityDestroyed.SubscriberCount > 0)
                 {
-                    _actorDestroyed.OnNext(change.Actor);
+                    _entityDestroyed.OnNext(change.Entity);
                 }
 
                 break;
@@ -163,7 +163,7 @@ public sealed class SceneReactiveBridge : IDisposable
             case SceneChangeKind.ComponentAdded:
                 if (_componentsByTypeId.TryGetValue(change.ComponentType, out IComponentChangeSink? added))
                 {
-                    added.OnAdded(change.Actor);
+                    added.OnAdded(change.Entity);
                 }
 
                 break;
@@ -171,7 +171,7 @@ public sealed class SceneReactiveBridge : IDisposable
             case SceneChangeKind.ComponentRemoved:
                 if (_componentsByTypeId.TryGetValue(change.ComponentType, out IComponentChangeSink? removed))
                 {
-                    removed.OnRemoved(change.Actor);
+                    removed.OnRemoved(change.Entity);
                 }
 
                 break;
@@ -179,7 +179,7 @@ public sealed class SceneReactiveBridge : IDisposable
             case SceneChangeKind.ComponentChanged:
                 if (_componentsByTypeId.TryGetValue(change.ComponentType, out IComponentChangeSink? changed))
                 {
-                    changed.OnChanged(change.Actor);
+                    changed.OnChanged(change.Entity);
                 }
 
                 break;
@@ -190,7 +190,7 @@ public sealed class SceneReactiveBridge : IDisposable
             case SceneChangeKind.BehaviourDisabled:
                 if (_behaviourChanges.SubscriberCount > 0)
                 {
-                    _behaviourChanges.OnNext(new BehaviourChange(change.Actor, change.BehaviourType, change.Kind));
+                    _behaviourChanges.OnNext(new BehaviourChange(change.Entity, change.BehaviourType, change.Kind));
                 }
 
                 break;
@@ -199,7 +199,7 @@ public sealed class SceneReactiveBridge : IDisposable
             case SceneChangeKind.ActiveInHierarchyChanged:
                 if (_hierarchyChanges.SubscriberCount > 0)
                 {
-                    _hierarchyChanges.OnNext(new HierarchyChange(change.Actor, change.Kind));
+                    _hierarchyChanges.OnNext(new HierarchyChange(change.Entity, change.Kind));
                 }
 
                 break;
@@ -238,9 +238,9 @@ public sealed class SceneReactiveBridge : IDisposable
             {
                 ContactEvent contact = _physics.GetContactEvent(i);
                 _collisions.OnNext(new SceneCollisionEvent(
-                    _physics.GetActor(contact.BodyA),
+                    _physics.GetEntity(contact.BodyA),
                     contact.BodyA,
-                    _physics.GetActor(contact.BodyB),
+                    _physics.GetEntity(contact.BodyB),
                     contact.BodyB,
                     contact.Type));
             }
@@ -253,9 +253,9 @@ public sealed class SceneReactiveBridge : IDisposable
             {
                 SensorEvent sensor = _physics.GetSensorEvent(i);
                 _sensors.OnNext(new SceneSensorEvent(
-                    _physics.GetActor(sensor.BodyA),
+                    _physics.GetEntity(sensor.BodyA),
                     sensor.BodyA,
-                    _physics.GetActor(sensor.BodyB),
+                    _physics.GetEntity(sensor.BodyB),
                     sensor.BodyB,
                     sensor.Type));
             }
@@ -286,8 +286,8 @@ public sealed class SceneReactiveBridge : IDisposable
         }
 
         DetachLoop();
-        _actorCreated.Dispose();
-        _actorDestroyed.Dispose();
+        _entityCreated.Dispose();
+        _entityDestroyed.Dispose();
         _behaviourChanges.Dispose();
         _hierarchyChanges.Dispose();
         _collisions.Dispose();
@@ -304,11 +304,11 @@ public sealed class SceneReactiveBridge : IDisposable
 
     private interface IComponentChangeSink : IDisposable
     {
-        void OnAdded(SceneActor actor);
+        void OnAdded(SceneEntity entity);
 
-        void OnRemoved(SceneActor actor);
+        void OnRemoved(SceneEntity entity);
 
-        void OnChanged(SceneActor actor);
+        void OnChanged(SceneEntity entity);
     }
 
     private sealed class ComponentStream<T> : IComponentChangeSink
@@ -324,27 +324,27 @@ public sealed class SceneReactiveBridge : IDisposable
 
         public IObservable<ComponentChanged<T>> Changed => _changed;
 
-        public void OnAdded(SceneActor actor)
+        public void OnAdded(SceneEntity entity)
         {
             if (_added.SubscriberCount > 0)
             {
-                _added.OnNext(new ComponentAdded<T>(actor));
+                _added.OnNext(new ComponentAdded<T>(entity));
             }
         }
 
-        public void OnRemoved(SceneActor actor)
+        public void OnRemoved(SceneEntity entity)
         {
             if (_removed.SubscriberCount > 0)
             {
-                _removed.OnNext(new ComponentRemoved<T>(actor));
+                _removed.OnNext(new ComponentRemoved<T>(entity));
             }
         }
 
-        public void OnChanged(SceneActor actor)
+        public void OnChanged(SceneEntity entity)
         {
             if (_changed.SubscriberCount > 0)
             {
-                _changed.OnNext(new ComponentChanged<T>(actor));
+                _changed.OnNext(new ComponentChanged<T>(entity));
             }
         }
 

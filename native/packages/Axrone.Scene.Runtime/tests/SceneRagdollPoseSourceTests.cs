@@ -10,12 +10,12 @@ using Xunit;
 public sealed class SceneRagdollPoseSourceTests
 {
     [Fact]
-    public void ApplyBlendsBoneActorWorldTransforms()
+    public void ApplyBlendsBoneEntityWorldTransforms()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor animated = world.CreateActor("Character");
-        SceneActor rootBone = world.CreateActor("Hips");
-        SceneActor childBone = world.CreateActor("Spine");
+        SceneEntity animated = world.CreateEntity("Character");
+        SceneEntity rootBone = world.CreateEntity("Hips");
+        SceneEntity childBone = world.CreateEntity("Spine");
         world.GetTransform3D(rootBone).SetPosition(new Vec3(1.0f, 0.0f, 0.0f));
         world.GetTransform3D(childBone).SetPosition(new Vec3(1.0f, 2.0f, 0.0f));
         world.UpdateTransforms();
@@ -38,8 +38,8 @@ public sealed class SceneRagdollPoseSourceTests
     public void ApplyRejectsMismatchedBindings()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor animated = world.CreateActor("Character");
-        SceneActor only = world.CreateActor("Hips");
+        SceneEntity animated = world.CreateEntity("Character");
+        SceneEntity only = world.CreateEntity("Hips");
         world.UpdateTransforms();
 
         var source = new SceneRagdollPoseSource(world);

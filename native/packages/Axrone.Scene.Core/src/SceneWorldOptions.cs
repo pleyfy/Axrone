@@ -13,13 +13,13 @@ public enum SceneWorldErrorPolicy : byte
 /// <summary>Construction settings for a scene world.</summary>
 public readonly record struct SceneWorldOptions
 {
-    /// <summary>Initial actor slot capacity.</summary>
+    /// <summary>Initial entity slot capacity.</summary>
     public int InitialCapacity { get; init; }
 
     /// <summary>Fault policy for managed behaviours.</summary>
     public SceneWorldErrorPolicy ErrorPolicy { get; init; }
 
-    /// <summary>Creates default options: 64 actor slots and isolated behaviour faults.</summary>
+    /// <summary>Creates default options: 64 entity slots and isolated behaviour faults.</summary>
     public SceneWorldOptions()
     {
         InitialCapacity = 64;
@@ -41,29 +41,29 @@ public readonly record struct SceneWorldOptions
     }
 }
 
-/// <summary>Creation settings for one scene actor.</summary>
-public readonly record struct SceneActorConfig
+/// <summary>Creation settings for one scene entity.</summary>
+public readonly record struct SceneEntityConfig
 {
-    /// <summary>Optional actor name; the default name is used when null.</summary>
+    /// <summary>Optional entity name; the default name is used when null.</summary>
     public string? Name { get; init; }
 
-    /// <summary>Optional actor tag; the default tag is used when null.</summary>
+    /// <summary>Optional entity tag; the default tag is used when null.</summary>
     public string? Tag { get; init; }
 
-    /// <summary>Actor layer.</summary>
+    /// <summary>Entity layer.</summary>
     public ushort Layer { get; init; }
 
-    /// <summary>Whether the actor starts active locally.</summary>
+    /// <summary>Whether the entity starts active locally.</summary>
     public bool Active { get; init; }
 
-    /// <summary>Whether the actor survives scene changes.</summary>
+    /// <summary>Whether the entity survives scene changes.</summary>
     public bool Persistent { get; init; }
 
-    /// <summary>Whether the actor participates in pooling.</summary>
+    /// <summary>Whether the entity participates in pooling.</summary>
     public bool Pooled { get; init; }
 
     /// <summary>Creates default settings: active, layer zero, no persistence.</summary>
-    public SceneActorConfig()
+    public SceneEntityConfig()
     {
         Name = null;
         Tag = null;
@@ -74,7 +74,7 @@ public readonly record struct SceneActorConfig
     }
 
     /// <summary>Creates explicit settings.</summary>
-    public SceneActorConfig(
+    public SceneEntityConfig(
         string? name,
         string? tag = null,
         ushort layer = 0,

@@ -153,13 +153,13 @@ public readonly struct ScenePrefabIdPath : IEquatable<ScenePrefabIdPath>
     }
 }
 
-/// <summary>Stable origin of one prefab actor in a composed prefab hierarchy.</summary>
+/// <summary>Stable origin of one prefab entity in a composed prefab hierarchy.</summary>
 public readonly record struct ScenePrefabNodeSource
 {
     /// <summary>Prefab that owns the original node.</summary>
     public string PrefabId { get; }
 
-    /// <summary>Unscoped node id of the original actor.</summary>
+    /// <summary>Unscoped node id of the original entity.</summary>
     public string NodeId { get; }
 
     /// <summary>Nested instance ids from the owning instance to the outermost host.</summary>

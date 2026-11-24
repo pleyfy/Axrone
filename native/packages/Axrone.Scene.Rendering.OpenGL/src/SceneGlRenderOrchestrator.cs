@@ -36,7 +36,7 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     private bool _disposed;
 
     /// <summary>Frame arguments a dispatched pass executes against.</summary>
-    /// <param name="World">World whose actors are submitted.</param>
+    /// <param name="World">World whose entities are submitted.</param>
     /// <param name="Camera">Active camera frame.</param>
     /// <param name="Items">Planned frame items.</param>
     /// <param name="FrameState">Frame counter accumulator.</param>
@@ -51,7 +51,7 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     /// <summary>Creates an orchestrator over an uploaded GPU asset cache.</summary>
     /// <param name="context">Render-thread GL context.</param>
     /// <param name="assets">Uploaded GPU asset cache.</param>
-    /// <param name="world">World whose actors are submitted.</param>
+    /// <param name="world">World whose entities are submitted.</param>
     /// <param name="particles">
     /// Optional particle source; when supplied, particle point draws are
     /// interleaved into every blending pass.
@@ -67,7 +67,7 @@ public sealed class SceneGlRenderOrchestrator : IDisposable
     /// after LOD meshes.
     /// </param>
     /// <param name="morphWeights">
-    /// Optional morphology weight source; when supplied, skinned actors with
+    /// Optional morphology weight source; when supplied, skinned entities with
     /// weights draw their private deformed mesh variant.
     /// </param>
     /// <param name="skinningOptions">Optional skinning configuration; defaults to 256 bones on unit 15.</param>

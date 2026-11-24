@@ -23,17 +23,17 @@ public sealed class SceneBillboardTests
     public void CollectorOrdersByLayerAndCullsBehindCamera()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Billboard);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
 
-        SceneActor back = world.CreateActor("Back");
+        SceneEntity back = world.CreateEntity("Back");
         world.AddData(back, Billboard("texture/back", layer: 1));
 
-        SceneActor front = world.CreateActor("Front");
+        SceneEntity front = world.CreateEntity("Front");
         world.GetTransform3D(front).SetPosition(new Vec3(2.0f, 0.0f, 0.0f));
         world.AddData(front, Billboard("texture/front", layer: 0));
 
-        SceneActor behind = world.CreateActor("Behind");
+        SceneEntity behind = world.CreateEntity("Behind");
         world.GetTransform3D(behind).SetPosition(new Vec3(0.0f, 0.0f, 20.0f));
         world.AddData(behind, Billboard("texture/behind"));
         world.UpdateTransforms();
@@ -44,8 +44,8 @@ public sealed class SceneBillboardTests
 
         count.Should().Be(2);
         collector.CulledCount.Should().Be(1);
-        collector.Items[0].Actor.Should().Be(front);
-        collector.Items[1].Actor.Should().Be(back);
+        collector.Items[0].Entity.Should().Be(front);
+        collector.Items[1].Entity.Should().Be(back);
         collector.Items[0].Sequence.Should().Be(1);
     }
 
@@ -53,23 +53,23 @@ public sealed class SceneBillboardTests
     public void CollectorSkipsDisabledAndForeignPasses()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Billboard);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 800, 600)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 800, 600)!;
 
         SceneBillboardRenderer disabled = Billboard("texture/disabled");
         disabled.Enabled = false;
-        SceneActor disabledActor = world.CreateActor("Disabled");
-        world.AddData(disabledActor, disabled);
+        SceneEntity disabledEntity = world.CreateEntity("Disabled");
+        world.AddData(disabledEntity, disabled);
 
         SceneBillboardRenderer foreign = Billboard("texture/foreign");
         foreign.PassId = SceneAssetId<RenderPassAssetTag>.FromName("pass/ui");
-        SceneActor foreignActor = world.CreateActor("Foreign");
-        world.AddData(foreignActor, foreign);
+        SceneEntity foreignEntity = world.CreateEntity("Foreign");
+        world.AddData(foreignEntity, foreign);
 
         SceneBillboardRenderer invisible = Billboard("texture/invisible");
         invisible.Visible = false;
-        SceneActor invisibleActor = world.CreateActor("Invisible");
-        world.AddData(invisibleActor, invisible);
+        SceneEntity invisibleEntity = world.CreateEntity("Invisible");
+        world.AddData(invisibleEntity, invisible);
 
         var collector = new SceneBillboardItemCollector();
 
@@ -80,14 +80,14 @@ public sealed class SceneBillboardTests
     public void CollectorIsZeroAllocationAfterWarmup()
     {
         using SceneWorld world = RenderingFixture.CreateRenderableWorld(SceneRenderableFeatures.Billboard);
-        SceneActor cameraActor = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 1280, 720)!;
+        SceneEntity cameraEntity = RenderingFixture.CreateCamera(world, new Vec3(0.0f, 0.0f, 10.0f), primary: true);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 1280, 720)!;
 
         for (int i = 0; i < 8; i++)
         {
-            SceneActor actor = world.CreateActor($"Billboard{i}");
-            world.GetTransform3D(actor).SetPosition(new Vec3(i * 0.25f, 0.0f, 0.0f));
-            world.AddData(actor, Billboard($"texture/{i}", layer: i & 1));
+            SceneEntity entity = world.CreateEntity($"Billboard{i}");
+            world.GetTransform3D(entity).SetPosition(new Vec3(i * 0.25f, 0.0f, 0.0f));
+            world.AddData(entity, Billboard($"texture/{i}", layer: i & 1));
         }
 
         world.UpdateTransforms();

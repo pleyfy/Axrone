@@ -106,7 +106,7 @@ internal static class SceneGltfTestFactory
             }
         };
 
-    public static GltfActorSnapshot Actor(
+    public static GltfEntitySnapshot Entity(
         string nodeId = "node_0_Root",
         string name = "Root",
         string meshId = "mesh0",
@@ -133,21 +133,21 @@ internal static class SceneGltfTestFactory
     public static GltfPrefabAsset Prefab(
         string id = "gltf/scene/0",
         int sceneIndex = 0,
-        IReadOnlyList<GltfActorSnapshot>? actors = null)
+        IReadOnlyList<GltfEntitySnapshot>? entities = null)
     {
-        IReadOnlyList<GltfActorSnapshot> actorList = actors is { Count: > 0 } ? actors : [Actor()];
-        var nodeIds = new List<string>(actorList.Count);
-        for (int i = 0; i < actorList.Count; i++)
+        IReadOnlyList<GltfEntitySnapshot> entityList = entities is { Count: > 0 } ? entities : [Entity()];
+        var nodeIds = new List<string>(entityList.Count);
+        for (int i = 0; i < entityList.Count; i++)
         {
-            nodeIds.Add(actorList[i].NodeId);
+            nodeIds.Add(entityList[i].NodeId);
         }
 
         return new GltfPrefabAsset
         {
             Id = id,
             SceneIndex = sceneIndex,
-            Definition = new GltfPrefabDefinition { Actors = [.. actorList] },
-            RootNodeIds = [actorList[0].NodeId],
+            Definition = new GltfPrefabDefinition { Entities = [.. entityList] },
+            RootNodeIds = [entityList[0].NodeId],
             NodeIds = [.. nodeIds],
             MeshKeys = [],
             SkinKeys = [],

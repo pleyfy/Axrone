@@ -14,7 +14,7 @@ public sealed class ScenePathAgentBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using ScenePathAgentBridge bridge = new(world);
-        SceneActor actor = CreateAgent(world, bridge, speed: 5.0f, loop: true, waypoints: new[]
+        SceneEntity entity = CreateAgent(world, bridge, speed: 5.0f, loop: true, waypoints: new[]
         {
             new Vec3(5.0f, 0.0f, 0.0f),
             new Vec3(5.0f, 0.0f, 5.0f),
@@ -22,8 +22,8 @@ public sealed class ScenePathAgentBridgeTests
 
         bridge.Step(0.2f);
 
-        world.GetData<SceneTransform3D>(actor).Position.X.Should().BeApproximately(1.0f, 0.001f);
-        bridge.TryGetState(actor, out ScenePathAgentState state).Should().BeTrue();
+        world.GetData<SceneTransform3D>(entity).Position.X.Should().BeApproximately(1.0f, 0.001f);
+        bridge.TryGetState(entity, out ScenePathAgentState state).Should().BeTrue();
         state.Status.Should().Be(ScenePathAgentStatus.Moving);
         state.WaypointIndex.Should().Be(0);
         state.WaypointCount.Should().Be(2);
@@ -34,17 +34,17 @@ public sealed class ScenePathAgentBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using ScenePathAgentBridge bridge = new(world);
-        SceneActor actor = CreateAgent(world, bridge, speed: 10.0f, loop: true, waypoints: new[]
+        SceneEntity entity = CreateAgent(world, bridge, speed: 10.0f, loop: true, waypoints: new[]
         {
             new Vec3(1.0f, 0.0f, 0.0f),
             new Vec3(2.0f, 0.0f, 0.0f),
         });
 
         bridge.Step(0.2f);
-        world.GetData<SceneTransform3D>(actor).Position.X.Should().BeApproximately(1.0f, 0.001f);
+        world.GetData<SceneTransform3D>(entity).Position.X.Should().BeApproximately(1.0f, 0.001f);
 
         bridge.Step(0.01f);
-        bridge.TryGetState(actor, out ScenePathAgentState state).Should().BeTrue();
+        bridge.TryGetState(entity, out ScenePathAgentState state).Should().BeTrue();
         state.WaypointIndex.Should().Be(1);
         state.Status.Should().Be(ScenePathAgentStatus.Moving);
     }
@@ -54,7 +54,7 @@ public sealed class ScenePathAgentBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using ScenePathAgentBridge bridge = new(world);
-        SceneActor actor = CreateAgent(world, bridge, speed: 10.0f, loop: false, waypoints: new[]
+        SceneEntity entity = CreateAgent(world, bridge, speed: 10.0f, loop: false, waypoints: new[]
         {
             new Vec3(2.0f, 0.0f, 0.0f),
         });
@@ -62,13 +62,13 @@ public sealed class ScenePathAgentBridgeTests
         bridge.Step(0.2f);
         bridge.Step(0.01f);
 
-        bridge.TryGetState(actor, out ScenePathAgentState state).Should().BeTrue();
+        bridge.TryGetState(entity, out ScenePathAgentState state).Should().BeTrue();
         state.Status.Should().Be(ScenePathAgentStatus.Completed);
         state.WaypointIndex.Should().Be(1);
 
-        Vec3 completed = world.GetData<SceneTransform3D>(actor).Position;
+        Vec3 completed = world.GetData<SceneTransform3D>(entity).Position;
         bridge.Step(0.5f);
-        world.GetData<SceneTransform3D>(actor).Position.Should().Be(completed);
+        world.GetData<SceneTransform3D>(entity).Position.Should().Be(completed);
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public sealed class ScenePathAgentBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using ScenePathAgentBridge bridge = new(world);
-        SceneActor actor = CreateAgent(world, bridge, speed: 10.0f, loop: true, waypoints: new[]
+        SceneEntity entity = CreateAgent(world, bridge, speed: 10.0f, loop: true, waypoints: new[]
         {
             new Vec3(1.0f, 0.0f, 0.0f),
             new Vec3(1.0f, 0.0f, 1.0f),
@@ -87,7 +87,7 @@ public sealed class ScenePathAgentBridgeTests
         bridge.Step(0.1f);
         bridge.Step(0.01f);
 
-        bridge.TryGetState(actor, out ScenePathAgentState state).Should().BeTrue();
+        bridge.TryGetState(entity, out ScenePathAgentState state).Should().BeTrue();
         state.Status.Should().Be(ScenePathAgentStatus.Moving);
         state.WaypointIndex.Should().Be(0);
     }
@@ -97,21 +97,21 @@ public sealed class ScenePathAgentBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using ScenePathAgentBridge bridge = new(world);
-        SceneActor actor = CreateAgent(world, bridge, speed: 2.0f, loop: true, waypoints: new[]
+        SceneEntity entity = CreateAgent(world, bridge, speed: 2.0f, loop: true, waypoints: new[]
         {
             new Vec3(10.0f, 0.0f, 0.0f),
         });
 
-        ref ScenePathAgent component = ref world.GetData<ScenePathAgent>(actor);
+        ref ScenePathAgent component = ref world.GetData<ScenePathAgent>(entity);
         component.AvoidanceRadius = 3.0f;
         bridge.AddObstacle(Aabb3D.FromCenterExtents(new Vec3(5.0f, 0.0f, 0.0f), new Vec3(1.0f, 1.0f, 1.0f)));
 
         bridge.Step(0.5f);
         bridge.Step(0.5f);
 
-        Vec3 position = world.GetData<SceneTransform3D>(actor).Position;
+        Vec3 position = world.GetData<SceneTransform3D>(entity).Position;
         position.Z.Should().BeGreaterThan(0.1f);
-        bridge.TryGetState(actor, out ScenePathAgentState state).Should().BeTrue();
+        bridge.TryGetState(entity, out ScenePathAgentState state).Should().BeTrue();
         state.Status.Should().Be(ScenePathAgentStatus.Moving);
     }
 
@@ -124,13 +124,13 @@ public sealed class ScenePathAgentBridgeTests
         using SceneWorld world = profile.CreateWorld();
         using ScenePathAgentBridge bridge = new(world);
 
-        SceneActor actor = world.CreateActor("NoTransform");
-        world.AddData(actor, ScenePathAgent.Default);
-        bridge.SetPath(actor, new[] { new Vec3(1.0f, 0.0f, 0.0f) }).Should().BeTrue();
+        SceneEntity entity = world.CreateEntity("NoTransform");
+        world.AddData(entity, ScenePathAgent.Default);
+        bridge.SetPath(entity, new[] { new Vec3(1.0f, 0.0f, 0.0f) }).Should().BeTrue();
 
         bridge.Step(0.5f);
 
-        bridge.TryGetState(actor, out ScenePathAgentState state).Should().BeTrue();
+        bridge.TryGetState(entity, out ScenePathAgentState state).Should().BeTrue();
         state.Status.Should().Be(ScenePathAgentStatus.Idle);
     }
 
@@ -139,11 +139,11 @@ public sealed class ScenePathAgentBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using ScenePathAgentBridge bridge = new(world);
-        SceneActor actor = world.CreateActor("Agent");
-        world.AddData(actor, ScenePathAgent.Default);
+        SceneEntity entity = world.CreateEntity("Agent");
+        world.AddData(entity, ScenePathAgent.Default);
 
         bridge.RegisterPath(ReadOnlySpan<Vec3>.Empty).IsValid.Should().BeFalse();
-        bridge.SetPath(actor, ReadOnlySpan<Vec3>.Empty).Should().BeFalse();
+        bridge.SetPath(entity, ReadOnlySpan<Vec3>.Empty).Should().BeFalse();
         bridge.PathCount.Should().Be(0);
     }
 
@@ -152,15 +152,15 @@ public sealed class ScenePathAgentBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using ScenePathAgentBridge bridge = new(world);
-        SceneActor actor = world.CreateActor("Agent");
-        world.AddData(actor, ScenePathAgent.Default);
+        SceneEntity entity = world.CreateEntity("Agent");
+        world.AddData(entity, ScenePathAgent.Default);
 
         ScenePathHandle path = bridge.RegisterPath(new[] { new Vec3(1.0f, 0.0f, 0.0f) });
         path.IsValid.Should().BeTrue();
         bridge.ReleasePath(path).Should().BeTrue();
         bridge.ReleasePath(path).Should().BeFalse();
 
-        bridge.TrySetPath(actor, path).Should().BeFalse();
+        bridge.TrySetPath(entity, path).Should().BeFalse();
         bridge.PathCount.Should().Be(0);
     }
 
@@ -169,17 +169,17 @@ public sealed class ScenePathAgentBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using ScenePathAgentBridge bridge = new(world);
-        SceneActor actor = CreateAgent(world, bridge, speed: 5.0f, loop: true, waypoints: new[]
+        SceneEntity entity = CreateAgent(world, bridge, speed: 5.0f, loop: true, waypoints: new[]
         {
             new Vec3(5.0f, 0.0f, 0.0f),
         });
 
-        bridge.ClearPath(actor).Should().BeTrue();
+        bridge.ClearPath(entity).Should().BeTrue();
         bridge.Step(0.2f);
 
-        bridge.TryGetState(actor, out ScenePathAgentState state).Should().BeTrue();
+        bridge.TryGetState(entity, out ScenePathAgentState state).Should().BeTrue();
         state.Status.Should().Be(ScenePathAgentStatus.Idle);
-        world.GetData<SceneTransform3D>(actor).Position.Should().Be(Vec3.Zero);
+        world.GetData<SceneTransform3D>(entity).Position.Should().Be(Vec3.Zero);
     }
 
     [Fact]
@@ -187,17 +187,17 @@ public sealed class ScenePathAgentBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using ScenePathAgentBridge bridge = new(world);
-        SceneActor actor = CreateAgent(world, bridge, speed: 5.0f, loop: true, waypoints: new[]
+        SceneEntity entity = CreateAgent(world, bridge, speed: 5.0f, loop: true, waypoints: new[]
         {
             new Vec3(5.0f, 0.0f, 0.0f),
         });
         bridge.AgentCount.Should().Be(1);
 
-        world.RemoveData<ScenePathAgent>(actor);
+        world.RemoveData<ScenePathAgent>(entity);
         bridge.Sync();
 
         bridge.AgentCount.Should().Be(0);
-        bridge.TryGetState(actor, out _).Should().BeFalse();
+        bridge.TryGetState(entity, out _).Should().BeFalse();
     }
 
     [Fact]
@@ -207,12 +207,12 @@ public sealed class ScenePathAgentBridgeTests
         using SceneWorld secondWorld = CreateWorld();
         using ScenePathAgentBridge firstBridge = new(firstWorld);
         using ScenePathAgentBridge secondBridge = new(secondWorld);
-        SceneActor firstActor = CreateAgent(firstWorld, firstBridge, speed: 2.0f, loop: true, waypoints: new[]
+        SceneEntity firstEntity = CreateAgent(firstWorld, firstBridge, speed: 2.0f, loop: true, waypoints: new[]
         {
             new Vec3(4.0f, 0.0f, 0.0f),
             new Vec3(4.0f, 0.0f, 4.0f),
         });
-        SceneActor secondActor = CreateAgent(secondWorld, secondBridge, speed: 2.0f, loop: true, waypoints: new[]
+        SceneEntity secondEntity = CreateAgent(secondWorld, secondBridge, speed: 2.0f, loop: true, waypoints: new[]
         {
             new Vec3(4.0f, 0.0f, 0.0f),
             new Vec3(4.0f, 0.0f, 4.0f),
@@ -228,7 +228,7 @@ public sealed class ScenePathAgentBridgeTests
             secondBridge.Step(0.1f);
         }
 
-        firstWorld.GetData<SceneTransform3D>(firstActor).Should().Be(secondWorld.GetData<SceneTransform3D>(secondActor));
+        firstWorld.GetData<SceneTransform3D>(firstEntity).Should().Be(secondWorld.GetData<SceneTransform3D>(secondEntity));
     }
 
     [Fact]
@@ -236,12 +236,12 @@ public sealed class ScenePathAgentBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using ScenePathAgentBridge bridge = new(world);
-        SceneActor actor = CreateAgent(world, bridge, speed: 2.0f, loop: true, waypoints: new[]
+        SceneEntity entity = CreateAgent(world, bridge, speed: 2.0f, loop: true, waypoints: new[]
         {
             new Vec3(4.0f, 0.0f, 0.0f),
             new Vec3(4.0f, 0.0f, 4.0f),
         });
-        _ = actor;
+        _ = entity;
 
         for (int i = 0; i < 4; i++)
         {
@@ -265,21 +265,21 @@ public sealed class ScenePathAgentBridgeTests
             .Build()
             .CreateWorld();
 
-    private static SceneActor CreateAgent(
+    private static SceneEntity CreateAgent(
         SceneWorld world,
         ScenePathAgentBridge bridge,
         float speed,
         bool loop,
         ReadOnlySpan<Vec3> waypoints)
     {
-        SceneActor actor = world.CreateActor("Agent");
-        world.GetTransform3D(actor).SetPosition(Vec3.Zero);
+        SceneEntity entity = world.CreateEntity("Agent");
+        world.GetTransform3D(entity).SetPosition(Vec3.Zero);
 
         ScenePathAgent component = ScenePathAgent.Default;
         component.Speed = speed;
         component.Loop = loop;
-        world.AddData(actor, component);
-        bridge.SetPath(actor, waypoints).Should().BeTrue();
-        return actor;
+        world.AddData(entity, component);
+        bridge.SetPath(entity, waypoints).Should().BeTrue();
+        return entity;
     }
 }

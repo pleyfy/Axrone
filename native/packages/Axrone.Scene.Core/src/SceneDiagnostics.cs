@@ -9,7 +9,7 @@ public enum SceneDiagnosticSeverity : byte
     /// <summary>Recoverable condition that may indicate a content or tuning issue.</summary>
     Warning = 1,
 
-    /// <summary>Operation failed for one actor, asset or pass.</summary>
+    /// <summary>Operation failed for one entity, asset or pass.</summary>
     Error = 2,
 
     /// <summary>Runtime-level fault that may terminate the frame.</summary>
@@ -24,28 +24,28 @@ public enum SceneDiagnosticSeverity : byte
 public readonly record struct SceneDiagnostic(
     SceneDiagnosticSeverity Severity,
     SceneStringId Code,
-    SceneActor Actor,
+    SceneEntity Entity,
     SceneStringId Subject,
     int Numeric)
 {
-    /// <summary>Creates a diagnostic without an actor or numeric payload.</summary>
+    /// <summary>Creates a diagnostic without an entity or numeric payload.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static SceneDiagnostic Create(
         SceneDiagnosticSeverity severity,
         SceneStringId code,
         SceneStringId subject = default,
         int numeric = 0) =>
-        new(severity, code, SceneActor.Null, subject, numeric);
+        new(severity, code, SceneEntity.Null, subject, numeric);
 
-    /// <summary>Creates a diagnostic attributed to an actor.</summary>
+    /// <summary>Creates a diagnostic attributed to an entity.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static SceneDiagnostic ForActor(
+    public static SceneDiagnostic ForEntity(
         SceneDiagnosticSeverity severity,
         SceneStringId code,
-        in SceneActor actor,
+        in SceneEntity entity,
         SceneStringId subject = default,
         int numeric = 0) =>
-        new(severity, code, actor, subject, numeric);
+        new(severity, code, entity, subject, numeric);
 }
 
 /// <summary>

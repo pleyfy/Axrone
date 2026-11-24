@@ -3,7 +3,7 @@
   <PropertyGroup>
     <RootNamespace>Axrone.Scene.Prefab</RootNamespace>
     <AssemblyName>Axrone.Scene.Prefab</AssemblyName>
-    <Description>Prefab definitions, actor snapshots, component codecs and instantiation for the Axrone scene runtime.</Description>
+    <Description>Prefab definitions, entity snapshots, component codecs and instantiation for the Axrone scene runtime.</Description>
   </PropertyGroup>
 
   <PropertyGroup Label="AotCompatibility">
@@ -25,7 +25,7 @@
          and optional node ids. -->
     <NoWarn>$(NoWarn);CA1032</NoWarn>
     <!-- CA1031: Instantiation rollback must catch any failure to destroy
-         partially created actors before rethrowing a coded prefab error. -->
+         partially created entities before rethrowing a coded prefab error. -->
     <NoWarn>$(NoWarn);CA1031</NoWarn>
   </PropertyGroup>
 

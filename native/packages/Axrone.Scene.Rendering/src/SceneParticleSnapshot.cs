@@ -5,7 +5,7 @@ public readonly ref struct SceneParticleSnapshot
 {
     /// <summary>Creates a snapshot over dense storage streams.</summary>
     public SceneParticleSnapshot(
-        SceneActor actor,
+        SceneEntity entity,
         int count,
         ReadOnlySpan<float> posX,
         ReadOnlySpan<float> posY,
@@ -16,7 +16,7 @@ public readonly ref struct SceneParticleSnapshot
         ReadOnlySpan<float> colA,
         ReadOnlySpan<float> size)
     {
-        Actor = actor;
+        Entity = entity;
         Count = count;
         PosX = posX;
         PosY = posY;
@@ -28,8 +28,8 @@ public readonly ref struct SceneParticleSnapshot
         Size = size;
     }
 
-    /// <summary>Owning actor.</summary>
-    public SceneActor Actor { get; }
+    /// <summary>Owning entity.</summary>
+    public SceneEntity Entity { get; }
 
     /// <summary>Live particle count.</summary>
     public int Count { get; }

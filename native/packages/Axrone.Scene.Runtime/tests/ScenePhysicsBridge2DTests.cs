@@ -15,20 +15,20 @@ public sealed class ScenePhysicsBridge2DTests
         using SceneWorld world = CreatePhysicsWorld();
         using var bridge = new ScenePhysicsBridge2D(world);
 
-        SceneActor actor = world.CreateActor("Falling");
-        world.GetTransform2D(actor).SetPosition(new Vec2(0.0f, 20.0f));
-        world.AddData(actor, SceneRigidbody2D.Default);
-        world.AddData(actor, SceneCollider2D.Default);
+        SceneEntity entity = world.CreateEntity("Falling");
+        world.GetTransform2D(entity).SetPosition(new Vec2(0.0f, 20.0f));
+        world.AddData(entity, SceneRigidbody2D.Default);
+        world.AddData(entity, SceneCollider2D.Default);
         world.UpdateTransforms();
 
         bridge.SyncBodies();
         bridge.BodyCount.Should().Be(1);
 
-        Vec2 before = world.GetWorldPosition2D(actor);
+        Vec2 before = world.GetWorldPosition2D(entity);
         bridge.Step(0.1f);
         bridge.SyncTransformsFromPhysics();
 
-        world.GetWorldPosition2D(actor).Y.Should().BeLessThan(before.Y);
+        world.GetWorldPosition2D(entity).Y.Should().BeLessThan(before.Y);
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public sealed class ScenePhysicsBridge2DTests
         using SceneWorld world = CreatePhysicsWorld();
         using var bridge = new ScenePhysicsBridge2D(world);
 
-        SceneActor floor = world.CreateActor("Floor");
+        SceneEntity floor = world.CreateEntity("Floor");
         world.GetTransform2D(floor).SetPosition(Vec2.Zero);
         world.AddData(floor, SceneRigidbody2D.Static);
         world.AddData(floor, SceneCollider2D.Box(5.0f, 0.5f));
@@ -58,17 +58,17 @@ public sealed class ScenePhysicsBridge2DTests
         using SceneWorld world = CreatePhysicsWorld();
         using var bridge = new ScenePhysicsBridge2D(world);
 
-        SceneActor actor = world.CreateActor("Heavy");
-        world.GetTransform2D(actor).SetPosition(new Vec2(0.0f, 5.0f));
+        SceneEntity entity = world.CreateEntity("Heavy");
+        world.GetTransform2D(entity).SetPosition(new Vec2(0.0f, 5.0f));
         SceneRigidbody2D body = SceneRigidbody2D.Default;
         body.Mass = 7.5f;
-        world.AddData(actor, body);
-        world.AddData(actor, SceneCollider2D.Default);
+        world.AddData(entity, body);
+        world.AddData(entity, SceneCollider2D.Default);
         world.UpdateTransforms();
 
         bridge.SyncBodies();
 
-        bridge.TryGetBody(actor, out BodyId bodyId).Should().BeTrue();
+        bridge.TryGetBody(entity, out BodyId bodyId).Should().BeTrue();
         bridge.PhysicsWorld.Bodies.GetMass(bodyId).Should().Be(7.5f);
     }
 
@@ -78,18 +78,18 @@ public sealed class ScenePhysicsBridge2DTests
         using SceneWorld world = CreatePhysicsWorld();
         using var bridge = new ScenePhysicsBridge2D(world);
 
-        SceneActor actor = world.CreateActor("Toggle");
-        world.GetTransform2D(actor).SetPosition(Vec2.Zero);
+        SceneEntity entity = world.CreateEntity("Toggle");
+        world.GetTransform2D(entity).SetPosition(Vec2.Zero);
         SceneRigidbody2D body = SceneRigidbody2D.Default;
-        world.AddData(actor, body);
-        world.AddData(actor, SceneCollider2D.Default);
+        world.AddData(entity, body);
+        world.AddData(entity, SceneCollider2D.Default);
         world.UpdateTransforms();
 
         bridge.SyncBodies();
         bridge.BodyCount.Should().Be(1);
 
         body.Enabled = false;
-        world.GetData<SceneRigidbody2D>(actor) = body;
+        world.GetData<SceneRigidbody2D>(entity) = body;
         bridge.SyncBodies();
 
         bridge.BodyCount.Should().Be(0);

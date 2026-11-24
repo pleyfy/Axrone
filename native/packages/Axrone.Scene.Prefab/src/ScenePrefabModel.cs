@@ -8,7 +8,7 @@ public static class ScenePrefabErrorCodes
     /// <summary>Definition or snapshot validation failed.</summary>
     public const string Invalid = "scene.prefab.invalid";
 
-    /// <summary>Two actors share a node id.</summary>
+    /// <summary>Two entities share a node id.</summary>
     public const string DuplicateNode = "scene.prefab.duplicate-node";
 
     /// <summary>A parent node id does not resolve.</summary>
@@ -29,7 +29,7 @@ public static class ScenePrefabErrorCodes
     /// <summary>A component property path cannot be resolved.</summary>
     public const string InvalidPath = "scene.prefab.invalid-path";
 
-    /// <summary>An actor already carries the component type or id.</summary>
+    /// <summary>An entity already carries the component type or id.</summary>
     public const string DuplicateComponent = "scene.prefab.duplicate-component";
 
     /// <summary>A registry reference cannot be resolved, is stale or cycles.</summary>
@@ -38,7 +38,7 @@ public static class ScenePrefabErrorCodes
     /// <summary>Instantiation failed and was rolled back.</summary>
     public const string InstantiationFailed = "scene.prefab.instantiation-failed";
 
-    /// <summary>An actor has no stable node id in its owning prefab context.</summary>
+    /// <summary>An entity has no stable node id in its owning prefab context.</summary>
     public const string MissingStableNodeId = "scene.prefab.missing-stable-node-id";
 
     /// <summary>Provenance metadata is malformed or exceeds a fixed capacity.</summary>
@@ -130,11 +130,11 @@ public sealed class SceneComponentSnapshot
     public string? Id { get; }
 }
 
-/// <summary>Serialized actor and its component list.</summary>
-public sealed class SceneActorSnapshot
+/// <summary>Serialized entity and its component list.</summary>
+public sealed class SceneEntitySnapshot
 {
-    /// <summary>Creates an actor snapshot.</summary>
-    public SceneActorSnapshot(
+    /// <summary>Creates an entity snapshot.</summary>
+    public SceneEntitySnapshot(
         string nodeId,
         string name,
         ushort layer,
@@ -150,14 +150,14 @@ public sealed class SceneActorSnapshot
         {
             throw new ScenePrefabException(
                 ScenePrefabErrorCodes.Invalid,
-                "Actor snapshots require a non-empty node id.");
+                "Entity snapshots require a non-empty node id.");
         }
 
         if (string.IsNullOrWhiteSpace(name))
         {
             throw new ScenePrefabException(
                 ScenePrefabErrorCodes.Invalid,
-                $"Actor '{nodeId}' requires a non-empty name.",
+                $"Entity '{nodeId}' requires a non-empty name.",
                 nodeId);
         }
 
@@ -165,7 +165,7 @@ public sealed class SceneActorSnapshot
         {
             throw new ScenePrefabException(
                 ScenePrefabErrorCodes.Invalid,
-                $"Actor '{nodeId}' requires a non-empty tag.",
+                $"Entity '{nodeId}' requires a non-empty tag.",
                 nodeId);
         }
 
@@ -189,22 +189,22 @@ public sealed class SceneActorSnapshot
     /// <summary>Parent node id, or null for a root.</summary>
     public string? ParentNodeId { get; }
 
-    /// <summary>Actor name.</summary>
+    /// <summary>Entity name.</summary>
     public string Name { get; }
 
-    /// <summary>Actor layer.</summary>
+    /// <summary>Entity layer.</summary>
     public ushort Layer { get; }
 
-    /// <summary>Actor tag.</summary>
+    /// <summary>Entity tag.</summary>
     public string Tag { get; }
 
-    /// <summary>Whether the actor starts active.</summary>
+    /// <summary>Whether the entity starts active.</summary>
     public bool Active { get; }
 
-    /// <summary>Whether the actor is persistent.</summary>
+    /// <summary>Whether the entity is persistent.</summary>
     public bool Persistent { get; }
 
-    /// <summary>Whether the actor is pooled.</summary>
+    /// <summary>Whether the entity is pooled.</summary>
     public bool Pooled { get; }
 
     /// <summary>Component snapshots in declaration order.</summary>
@@ -213,10 +213,10 @@ public sealed class SceneActorSnapshot
     /// <summary>Stable prefab origin, or null for an authored snapshot without composition provenance.</summary>
     public ScenePrefabNodeSource? Source { get; }
 
-    /// <summary>Returns the same actor snapshot with composition provenance removed.</summary>
-    public SceneActorSnapshot WithoutSource() => Source is null
+    /// <summary>Returns the same entity snapshot with composition provenance removed.</summary>
+    public SceneEntitySnapshot WithoutSource() => Source is null
         ? this
-        : new SceneActorSnapshot(
+        : new SceneEntitySnapshot(
             NodeId,
             Name,
             Layer,
@@ -228,7 +228,7 @@ public sealed class SceneActorSnapshot
             ParentNodeId);
 
     /// <summary>Returns a copy carrying composition provenance.</summary>
-    public SceneActorSnapshot WithSource(ScenePrefabNodeSource source) => new(
+    public SceneEntitySnapshot WithSource(ScenePrefabNodeSource source) => new(
         NodeId,
         Name,
         Layer,
@@ -247,7 +247,7 @@ public sealed class ScenePrefabDefinition
     /// <summary>Creates a prefab definition and validates its composition layers.</summary>
     public ScenePrefabDefinition(
         string id,
-        IReadOnlyList<SceneActorSnapshot> actors,
+        IReadOnlyList<SceneEntitySnapshot> entities,
         ScenePrefabKind kind = ScenePrefabKind.Prefab,
         ScenePrefabMetadata? metadata = null,
         ScenePrefabReference? basePrefab = null,
@@ -262,7 +262,7 @@ public sealed class ScenePrefabDefinition
                 "Prefab definitions require a non-empty id.");
         }
 
-        ArgumentNullException.ThrowIfNull(actors);
+        ArgumentNullException.ThrowIfNull(entities);
 
         ScenePrefabNestedInstance[] nestedArray = nested is null ? [] : [.. nested];
         ScenePrefabOverrideOperation[] overrideArray = overrides is null ? [] : [.. overrides];
@@ -284,16 +284,16 @@ public sealed class ScenePrefabDefinition
 
         ValidateNestedInstances(id, nestedArray);
 
-        SceneActorSnapshot[] actorArray = [.. actors];
-        // Layered definitions may reference actors inherited from a base or a
+        SceneEntitySnapshot[] entityArray = [.. entities];
+        // Layered definitions may reference entities inherited from a base or a
         // nested instance, so links are only validated once resolution flattens
         // them into a standalone definition.
         bool selfContained = basePrefab is null && nestedArray.Length == 0;
-        ValidateHierarchy(id, actorArray, validateLinks: selfContained);
+        ValidateHierarchy(id, entityArray, validateLinks: selfContained);
 
         Id = id;
         Kind = kind;
-        Actors = actorArray;
+        Entities = entityArray;
         Metadata = metadata;
         Base = basePrefab;
         Nested = nestedArray;
@@ -307,8 +307,8 @@ public sealed class ScenePrefabDefinition
     /// <summary>Definition kind.</summary>
     public ScenePrefabKind Kind { get; }
 
-    /// <summary>Actors in declaration order.</summary>
-    public IReadOnlyList<SceneActorSnapshot> Actors { get; }
+    /// <summary>Entities in declaration order.</summary>
+    public IReadOnlyList<SceneEntitySnapshot> Entities { get; }
 
     /// <summary>Optional metadata.</summary>
     public ScenePrefabMetadata? Metadata { get; }
@@ -319,7 +319,7 @@ public sealed class ScenePrefabDefinition
     /// <summary>Nested prefab instances merged into this definition.</summary>
     public IReadOnlyList<ScenePrefabNestedInstance> Nested { get; }
 
-    /// <summary>Override operations applied after base, nested and own actors.</summary>
+    /// <summary>Override operations applied after base, nested and own entities.</summary>
     public IReadOnlyList<ScenePrefabOverrideOperation> Overrides { get; }
 
     /// <summary>Resolution lineage from the root prefab to this definition.</summary>
@@ -350,44 +350,44 @@ public sealed class ScenePrefabDefinition
 
     private static void ValidateHierarchy(
         string prefabId,
-        SceneActorSnapshot[] actors,
+        SceneEntitySnapshot[] entities,
         bool validateLinks)
     {
-        Dictionary<string, SceneActorSnapshot> byNode = new(StringComparer.Ordinal);
-        for (int i = 0; i < actors.Length; i++)
+        Dictionary<string, SceneEntitySnapshot> byNode = new(StringComparer.Ordinal);
+        for (int i = 0; i < entities.Length; i++)
         {
-            SceneActorSnapshot actor = actors[i];
-            if (!byNode.TryAdd(actor.NodeId, actor))
+            SceneEntitySnapshot entity = entities[i];
+            if (!byNode.TryAdd(entity.NodeId, entity))
             {
                 throw new ScenePrefabException(
                     ScenePrefabErrorCodes.DuplicateNode,
-                    $"Prefab '{prefabId}' declares node id '{actor.NodeId}' more than once.",
-                    actor.NodeId);
+                    $"Prefab '{prefabId}' declares node id '{entity.NodeId}' more than once.",
+                    entity.NodeId);
             }
         }
 
-        foreach (SceneActorSnapshot actor in actors)
+        foreach (SceneEntitySnapshot entity in entities)
         {
             HashSet<string> componentTypes = new(StringComparer.Ordinal);
             HashSet<string> componentIds = new(StringComparer.Ordinal);
 
-            for (int i = 0; i < actor.Components.Count; i++)
+            for (int i = 0; i < entity.Components.Count; i++)
             {
-                SceneComponentSnapshot component = actor.Components[i];
+                SceneComponentSnapshot component = entity.Components[i];
                 if (!componentTypes.Add(component.Type))
                 {
                     throw new ScenePrefabException(
                         ScenePrefabErrorCodes.DuplicateComponent,
-                        $"Actor '{actor.NodeId}' declares component type '{component.Type}' more than once.",
-                        actor.NodeId);
+                        $"Entity '{entity.NodeId}' declares component type '{component.Type}' more than once.",
+                        entity.NodeId);
                 }
 
                 if (component.Id is { } componentId && !componentIds.Add(componentId))
                 {
                     throw new ScenePrefabException(
                         ScenePrefabErrorCodes.DuplicateComponent,
-                        $"Actor '{actor.NodeId}' declares component id '{componentId}' more than once.",
-                        actor.NodeId);
+                        $"Entity '{entity.NodeId}' declares component id '{componentId}' more than once.",
+                        entity.NodeId);
                 }
             }
         }
@@ -397,9 +397,9 @@ public sealed class ScenePrefabDefinition
             return;
         }
 
-        foreach (SceneActorSnapshot actor in actors)
+        foreach (SceneEntitySnapshot entity in entities)
         {
-            if (actor.ParentNodeId is not { } parentId)
+            if (entity.ParentNodeId is not { } parentId)
             {
                 continue;
             }
@@ -409,14 +409,14 @@ public sealed class ScenePrefabDefinition
                 throw new ScenePrefabException(
                     ScenePrefabErrorCodes.MissingParent,
                     $"Parent node '{parentId}' does not exist.",
-                    actor.NodeId);
+                    entity.NodeId);
             }
         }
 
-        foreach (SceneActorSnapshot actor in actors)
+        foreach (SceneEntitySnapshot entity in entities)
         {
             HashSet<string> seen = new(StringComparer.Ordinal);
-            string? current = actor.NodeId;
+            string? current = entity.NodeId;
             while (current is not null)
             {
                 if (!seen.Add(current))
@@ -436,7 +436,7 @@ public sealed class ScenePrefabDefinition
 /// <summary>Instantiation settings.</summary>
 public record ScenePrefabInstantiateOptions
 {
-    /// <summary>Optional prefix applied to every actor name.</summary>
+    /// <summary>Optional prefix applied to every entity name.</summary>
     public string? NamePrefix { get; init; }
 
     /// <summary>
@@ -450,29 +450,29 @@ public record ScenePrefabInstantiateOptions
     public IReadOnlyList<ScenePrefabOverrideOperation>? LiveOverrides { get; init; }
 }
 
-/// <summary>Actors created by one instantiation, keyed by prefab node id.</summary>
+/// <summary>Entities created by one instantiation, keyed by prefab node id.</summary>
 public sealed class ScenePrefabInstantiationResult
 {
     /// <summary>Creates an instantiation result.</summary>
     public ScenePrefabInstantiationResult(
-        IReadOnlyList<SceneActor> actors,
-        IReadOnlyDictionary<string, SceneActor> nodeMap,
+        IReadOnlyList<SceneEntity> entities,
+        IReadOnlyDictionary<string, SceneEntity> nodeMap,
         IReadOnlyList<ScenePrefabNodeSource>? sources = null)
     {
-        ArgumentNullException.ThrowIfNull(actors);
+        ArgumentNullException.ThrowIfNull(entities);
         ArgumentNullException.ThrowIfNull(nodeMap);
 
-        Actors = [.. actors];
+        Entities = [.. entities];
         NodeMap = nodeMap.ToFrozenDictionary(StringComparer.Ordinal);
         Sources = sources is null ? [] : [.. sources];
     }
 
-    /// <summary>Created actors in prefab declaration order.</summary>
-    public IReadOnlyList<SceneActor> Actors { get; }
+    /// <summary>Created entities in prefab declaration order.</summary>
+    public IReadOnlyList<SceneEntity> Entities { get; }
 
-    /// <summary>Created actors keyed by node id.</summary>
-    public IReadOnlyDictionary<string, SceneActor> NodeMap { get; }
+    /// <summary>Created entities keyed by node id.</summary>
+    public IReadOnlyDictionary<string, SceneEntity> NodeMap { get; }
 
-    /// <summary>Provenance for each actor in <see cref="Actors"/> declaration order.</summary>
+    /// <summary>Provenance for each entity in <see cref="Entities"/> declaration order.</summary>
     public IReadOnlyList<ScenePrefabNodeSource> Sources { get; }
 }

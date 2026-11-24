@@ -128,7 +128,7 @@ public sealed class SceneGlShadowRenderer : ISceneGlShadowSource, IDisposable
     /// Renders every caster once per cascade. The default framebuffer is restored
     /// before returning, so the pass cannot leak the shadow FBO into opaque draws.
     /// </summary>
-    /// <param name="world">Actor world used for model matrices.</param>
+    /// <param name="world">Entity world used for model matrices.</param>
     /// <param name="camera">Primary camera frame.</param>
     /// <param name="lighting">Resolved directional selection.</param>
     /// <param name="casters">Shadow-casting meshes.</param>
@@ -147,7 +147,7 @@ public sealed class SceneGlShadowRenderer : ISceneGlShadowSource, IDisposable
             null);
 
     /// <summary>Rasterizes static and skinned casters into the shared depth atlas.</summary>
-    /// <param name="world">Scene world providing actor transforms.</param>
+    /// <param name="world">Scene world providing entity transforms.</param>
     /// <param name="camera">Camera frame used for cascade fitting.</param>
     /// <param name="lighting">Resolved directional selection.</param>
     /// <param name="casters">Shadow-casting static meshes.</param>
@@ -247,7 +247,7 @@ public sealed class SceneGlShadowRenderer : ISceneGlShadowSource, IDisposable
                     {
                         unsafe
                         {
-                            Mat4 model = world.GetWorldMatrix3D(item.Actor);
+                            Mat4 model = world.GetWorldMatrix3D(item.Entity);
                             _context.GL.UniformMatrix4(modelLocation, 1, false, &model.M11);
                         }
                     }
@@ -410,7 +410,7 @@ public sealed class SceneGlShadowRenderer : ISceneGlShadowSource, IDisposable
                 !_assets.TryGetMesh(item.MeshId, out GLMesh? mesh) ||
                 mesh is null ||
                 !SceneGlSkinnedMeshRenderer.HasSkinAttributes(mesh) ||
-                !bonePalettes.TryGetBonePalette(item.Actor, out ReadOnlySpan<Mat4> palette) ||
+                !bonePalettes.TryGetBonePalette(item.Entity, out ReadOnlySpan<Mat4> palette) ||
                 palette.IsEmpty ||
                 palette.Length > SceneSkinningOptions.Default.MaxBones)
             {
@@ -433,7 +433,7 @@ public sealed class SceneGlShadowRenderer : ISceneGlShadowSource, IDisposable
             {
                 unsafe
                 {
-                    Mat4 model = world.GetWorldMatrix3D(item.Actor);
+                    Mat4 model = world.GetWorldMatrix3D(item.Entity);
                     _context.GL.UniformMatrix4(modelLocation, 1, false, &model.M11);
                 }
             }

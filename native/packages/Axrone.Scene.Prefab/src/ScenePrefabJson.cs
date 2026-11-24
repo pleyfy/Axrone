@@ -22,10 +22,10 @@ public static class ScenePrefabJson
         writer.WriteString("id", prefab.Id);
         writer.WriteString("kind", KindToString(prefab.Kind));
 
-        writer.WriteStartArray("actors");
-        for (int i = 0; i < prefab.Actors.Count; i++)
+        writer.WriteStartArray("entities");
+        for (int i = 0; i < prefab.Entities.Count; i++)
         {
-            WriteActor(writer, prefab.Actors[i]);
+            WriteEntity(writer, prefab.Entities[i]);
         }
 
         writer.WriteEndArray();
@@ -103,19 +103,19 @@ public static class ScenePrefabJson
             ? ParseKind(GetString(kindElement, "kind"))
             : ScenePrefabKind.Prefab;
 
-        if (!root.TryGetProperty("actors", out JsonElement actorsElement) ||
-            actorsElement.ValueKind != JsonValueKind.Array)
+        if (!root.TryGetProperty("entities", out JsonElement entitiesElement) ||
+            entitiesElement.ValueKind != JsonValueKind.Array)
         {
             throw new ScenePrefabException(
                 ScenePrefabErrorCodes.Invalid,
-                $"Prefab '{id}' requires an actors array.");
+                $"Prefab '{id}' requires an entities array.");
         }
 
-        var actors = new List<SceneActorSnapshot>(actorsElement.GetArrayLength());
-        int actorIndex = 0;
-        foreach (JsonElement actorElement in actorsElement.EnumerateArray())
+        var entities = new List<SceneEntitySnapshot>(entitiesElement.GetArrayLength());
+        int entityIndex = 0;
+        foreach (JsonElement entityElement in entitiesElement.EnumerateArray())
         {
-            actors.Add(ReadActor(actorElement, id, actorIndex++));
+            entities.Add(ReadEntity(entityElement, id, entityIndex++));
         }
 
         ScenePrefabMetadata? metadata = null;
@@ -171,7 +171,7 @@ public static class ScenePrefabJson
 
         return new ScenePrefabDefinition(
             id,
-            actors,
+            entities,
             kind,
             metadata,
             basePrefab,
@@ -208,12 +208,12 @@ public static class ScenePrefabJson
         return Read(document.RootElement);
     }
 
-    private static void WriteActor(Utf8JsonWriter writer, SceneActorSnapshot actor)
+    private static void WriteEntity(Utf8JsonWriter writer, SceneEntitySnapshot entity)
     {
         writer.WriteStartObject();
-        writer.WriteString("nodeId", actor.NodeId);
+        writer.WriteString("nodeId", entity.NodeId);
 
-        if (actor.ParentNodeId is { } parentNodeId)
+        if (entity.ParentNodeId is { } parentNodeId)
         {
             writer.WriteString("parentNodeId", parentNodeId);
         }
@@ -222,23 +222,23 @@ public static class ScenePrefabJson
             writer.WriteNull("parentNodeId");
         }
 
-        writer.WriteString("name", actor.Name);
-        writer.WriteNumber("layer", actor.Layer);
-        writer.WriteString("tag", actor.Tag);
-        writer.WriteBoolean("active", actor.Active);
-        writer.WriteBoolean("persistent", actor.Persistent);
-        writer.WriteBoolean("pooled", actor.Pooled);
+        writer.WriteString("name", entity.Name);
+        writer.WriteNumber("layer", entity.Layer);
+        writer.WriteString("tag", entity.Tag);
+        writer.WriteBoolean("active", entity.Active);
+        writer.WriteBoolean("persistent", entity.Persistent);
+        writer.WriteBoolean("pooled", entity.Pooled);
 
-        if (actor.Source is { } source)
+        if (entity.Source is { } source)
         {
             writer.WritePropertyName("source");
             WriteSource(writer, source);
         }
 
         writer.WriteStartArray("components");
-        for (int i = 0; i < actor.Components.Count; i++)
+        for (int i = 0; i < entity.Components.Count; i++)
         {
-            WriteComponent(writer, actor.Components[i]);
+            WriteComponent(writer, entity.Components[i]);
         }
 
         writer.WriteEndArray();
@@ -298,13 +298,13 @@ public static class ScenePrefabJson
         writer.WriteEndObject();
     }
 
-    private static SceneActorSnapshot ReadActor(JsonElement element, string prefabId, int index)
+    private static SceneEntitySnapshot ReadEntity(JsonElement element, string prefabId, int index)
     {
         if (element.ValueKind != JsonValueKind.Object)
         {
             throw new ScenePrefabException(
                 ScenePrefabErrorCodes.Invalid,
-                "Actor snapshots must be JSON objects.");
+                "Entity snapshots must be JSON objects.");
         }
 
         string nodeId = ReadStableNodeId(element, prefabId, index);
@@ -323,7 +323,7 @@ public static class ScenePrefabJson
         {
             throw new ScenePrefabException(
                 ScenePrefabErrorCodes.Invalid,
-                $"Actor '{nodeId}' requires a components array.",
+                $"Entity '{nodeId}' requires a components array.",
                 nodeId);
         }
 
@@ -335,7 +335,7 @@ public static class ScenePrefabJson
 
         ScenePrefabNodeSource? source = ReadSource(element);
 
-        return new SceneActorSnapshot(
+        return new SceneEntitySnapshot(
             nodeId,
             name,
             layer,
@@ -675,24 +675,24 @@ public static class ScenePrefabJson
 
         switch (operation)
         {
-            case ScenePrefabAddActorOperation add:
-                writer.WriteString("kind", "add-actor");
+            case ScenePrefabAddEntityOperation add:
+                writer.WriteString("kind", "add-entity");
                 if (add.AfterNodeId is { } afterNodeId)
                 {
                     writer.WriteString("afterNodeId", afterNodeId);
                 }
 
-                writer.WritePropertyName("actor");
-                WriteActor(writer, add.Actor);
+                writer.WritePropertyName("entity");
+                WriteEntity(writer, add.Entity);
                 break;
 
-            case ScenePrefabRemoveActorOperation remove:
-                writer.WriteString("kind", "remove-actor");
+            case ScenePrefabRemoveEntityOperation remove:
+                writer.WriteString("kind", "remove-entity");
                 writer.WriteString("nodeId", remove.NodeId);
                 break;
 
-            case ScenePrefabReparentActorOperation reparent:
-                writer.WriteString("kind", "reparent-actor");
+            case ScenePrefabReparentEntityOperation reparent:
+                writer.WriteString("kind", "reparent-entity");
                 writer.WriteString("nodeId", reparent.NodeId);
                 if (reparent.ParentNodeId is { } parentNodeId)
                 {
@@ -705,8 +705,8 @@ public static class ScenePrefabJson
 
                 break;
 
-            case ScenePrefabSetActorFieldOperation setField:
-                writer.WriteString("kind", "set-actor-field");
+            case ScenePrefabSetEntityFieldOperation setField:
+                writer.WriteString("kind", "set-entity-field");
                 writer.WriteString("nodeId", setField.NodeId);
                 writer.WriteString("field", FieldToString(setField.Field));
                 writer.WritePropertyName("value");
@@ -786,15 +786,15 @@ public static class ScenePrefabJson
 
         return kind switch
         {
-            "add-actor" => new ScenePrefabAddActorOperation(
-                ReadActor(RequireProperty(element, "actor"), prefabId, operationIndex),
+            "add-entity" => new ScenePrefabAddEntityOperation(
+                ReadEntity(RequireProperty(element, "entity"), prefabId, operationIndex),
                 GetOptionalString(element, "afterNodeId")),
-            "remove-actor" => new ScenePrefabRemoveActorOperation(
+            "remove-entity" => new ScenePrefabRemoveEntityOperation(
                 GetRequiredString(element, "nodeId")),
-            "reparent-actor" => new ScenePrefabReparentActorOperation(
+            "reparent-entity" => new ScenePrefabReparentEntityOperation(
                 GetRequiredString(element, "nodeId"),
                 GetOptionalString(element, "parentNodeId")),
-            "set-actor-field" => new ScenePrefabSetActorFieldOperation(
+            "set-entity-field" => new ScenePrefabSetEntityFieldOperation(
                 GetRequiredString(element, "nodeId"),
                 ParseField(GetRequiredString(element, "field")),
                 ReadFieldValue(element)),
@@ -923,37 +923,37 @@ public static class ScenePrefabJson
         return new ScenePrefabPropertyPath(segments);
     }
 
-    private static void WriteFieldValue(Utf8JsonWriter writer, in ScenePrefabActorFieldValue value)
+    private static void WriteFieldValue(Utf8JsonWriter writer, in ScenePrefabEntityFieldValue value)
     {
         switch (value.Kind)
         {
-            case ScenePrefabActorFieldValueKind.Text:
+            case ScenePrefabEntityFieldValueKind.Text:
                 writer.WriteStringValue(value.AsString());
                 break;
-            case ScenePrefabActorFieldValueKind.Number:
+            case ScenePrefabEntityFieldValueKind.Number:
                 writer.WriteNumberValue(value.AsInt32());
                 break;
-            case ScenePrefabActorFieldValueKind.Flag:
+            case ScenePrefabEntityFieldValueKind.Flag:
                 writer.WriteBooleanValue(value.AsBoolean());
                 break;
             default:
                 throw new ScenePrefabException(
                     ScenePrefabErrorCodes.InvalidOverride,
-                    "Actor field values must be strings, integers or booleans.");
+                    "Entity field values must be strings, integers or booleans.");
         }
     }
 
-    private static ScenePrefabActorFieldValue ReadFieldValue(JsonElement element)
+    private static ScenePrefabEntityFieldValue ReadFieldValue(JsonElement element)
     {
         JsonElement value = RequireProperty(element, "value");
         return value.ValueKind switch
         {
-            JsonValueKind.String => ScenePrefabActorFieldValue.FromString(value.GetString() ?? string.Empty),
-            JsonValueKind.Number => ScenePrefabActorFieldValue.FromInt32(value.GetInt32()),
-            JsonValueKind.True or JsonValueKind.False => ScenePrefabActorFieldValue.FromBoolean(value.GetBoolean()),
+            JsonValueKind.String => ScenePrefabEntityFieldValue.FromString(value.GetString() ?? string.Empty),
+            JsonValueKind.Number => ScenePrefabEntityFieldValue.FromInt32(value.GetInt32()),
+            JsonValueKind.True or JsonValueKind.False => ScenePrefabEntityFieldValue.FromBoolean(value.GetBoolean()),
             _ => throw new ScenePrefabException(
                 ScenePrefabErrorCodes.InvalidOverride,
-                "Actor field values must be strings, integers or booleans.")
+                "Entity field values must be strings, integers or booleans.")
         };
     }
 
@@ -969,28 +969,28 @@ public static class ScenePrefabJson
         return value;
     }
 
-    private static string FieldToString(ScenePrefabActorField field) => field switch
+    private static string FieldToString(ScenePrefabEntityField field) => field switch
     {
-        ScenePrefabActorField.Name => "name",
-        ScenePrefabActorField.Layer => "layer",
-        ScenePrefabActorField.Tag => "tag",
-        ScenePrefabActorField.Active => "active",
-        ScenePrefabActorField.Persistent => "persistent",
-        ScenePrefabActorField.Pooled => "pooled",
+        ScenePrefabEntityField.Name => "name",
+        ScenePrefabEntityField.Layer => "layer",
+        ScenePrefabEntityField.Tag => "tag",
+        ScenePrefabEntityField.Active => "active",
+        ScenePrefabEntityField.Persistent => "persistent",
+        ScenePrefabEntityField.Pooled => "pooled",
         _ => field.ToString()
     };
 
-    private static ScenePrefabActorField ParseField(string value) => value switch
+    private static ScenePrefabEntityField ParseField(string value) => value switch
     {
-        "name" => ScenePrefabActorField.Name,
-        "layer" => ScenePrefabActorField.Layer,
-        "tag" => ScenePrefabActorField.Tag,
-        "active" => ScenePrefabActorField.Active,
-        "persistent" => ScenePrefabActorField.Persistent,
-        "pooled" => ScenePrefabActorField.Pooled,
+        "name" => ScenePrefabEntityField.Name,
+        "layer" => ScenePrefabEntityField.Layer,
+        "tag" => ScenePrefabEntityField.Tag,
+        "active" => ScenePrefabEntityField.Active,
+        "persistent" => ScenePrefabEntityField.Persistent,
+        "pooled" => ScenePrefabEntityField.Pooled,
         _ => throw new ScenePrefabException(
             ScenePrefabErrorCodes.InvalidOverride,
-            $"Unknown actor field '{value}'.")
+            $"Unknown entity field '{value}'.")
     };
 
     private static string GetRequiredString(JsonElement element, string name)

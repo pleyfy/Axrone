@@ -21,7 +21,7 @@ using Axrone.Scene.Assets;
 public static class SceneAnimationImporter
 {
     /// <summary>
-    /// Creates the runtime animation objects for one skinned actor. Returns false with a
+    /// Creates the runtime animation objects for one skinned entity. Returns false with a
     /// human-readable reason when the skin, clips or node map are insufficient.
     /// </summary>
     [SuppressMessage(
@@ -32,7 +32,7 @@ public static class SceneAnimationImporter
         SceneWorld world,
         SceneSkinDefinition skin,
         IReadOnlyList<SceneAnimationClipDefinition> clips,
-        IReadOnlyDictionary<string, SceneActor> nodeMap,
+        IReadOnlyDictionary<string, SceneEntity> nodeMap,
         IReadOnlyDictionary<string, string?> parentByNodeId,
         [NotNullWhen(true)] out SceneAnimationImportResult? result,
         out string reason)
@@ -58,9 +58,9 @@ public static class SceneAnimationImporter
             return false;
         }
 
-        if (FindSkinnedActor(world, nodeMap) is not { } meshActor)
+        if (FindSkinnedEntity(world, nodeMap) is not { } meshEntity)
         {
-            reason = "node map contains no live actor";
+            reason = "node map contains no live entity";
             return false;
         }
 
@@ -68,7 +68,7 @@ public static class SceneAnimationImporter
 
         int jointCount = skin.JointNodeIds.Count;
         var jointIndex = new Dictionary<string, int>(StringComparer.Ordinal);
-        var jointActors = new SceneActor[jointCount];
+        var jointEntities = new SceneEntity[jointCount];
         var bones = new BoneInfo[jointCount];
 
         for (int i = 0; i < jointCount; i++)
@@ -76,14 +76,14 @@ public static class SceneAnimationImporter
             string nodeId = skin.JointNodeIds[i];
             jointIndex[nodeId] = i;
 
-            if (!nodeMap.TryGetValue(nodeId, out SceneActor actor) || !world.TryGetActor(actor, out _))
+            if (!nodeMap.TryGetValue(nodeId, out SceneEntity entity) || !world.TryGetEntity(entity, out _))
             {
                 reason = $"joint '{nodeId}' is missing from the instantiated hierarchy";
                 return false;
             }
 
-            jointActors[i] = actor;
-            (Vec3 translation, Quat rotation, Vec3 scale) = ReadLocalTransform(world, actor);
+            jointEntities[i] = entity;
+            (Vec3 translation, Quat rotation, Vec3 scale) = ReadLocalTransform(world, entity);
 
             bones[i] = new BoneInfo
             {
@@ -163,21 +163,21 @@ public static class SceneAnimationImporter
         };
         if (world.Registry.TryGetDataByType(typeof(SceneAnimationBinding), out _))
         {
-            if (world.HasData<SceneAnimationBinding>(meshActor))
+            if (world.HasData<SceneAnimationBinding>(meshEntity))
             {
-                world.SetData(meshActor, binding);
+                world.SetData(meshEntity, binding);
             }
             else
             {
-                world.AddData(meshActor, binding);
+                world.AddData(meshEntity, binding);
             }
         }
 
         if (world.Registry.TryGetDataByType(typeof(SceneAnimator), out _))
         {
-            if (world.HasData<SceneAnimator>(meshActor))
+            if (world.HasData<SceneAnimator>(meshEntity))
             {
-                ref SceneAnimator live = ref world.GetData<SceneAnimator>(meshActor);
+                ref SceneAnimator live = ref world.GetData<SceneAnimator>(meshEntity);
                 live.MorphCurveOffset = morphCurveOffset;
                 live.MorphCurveCount = morphCurveCount;
             }
@@ -186,17 +186,17 @@ public static class SceneAnimationImporter
                 SceneAnimator animator = SceneAnimator.Default;
                 animator.MorphCurveOffset = morphCurveOffset;
                 animator.MorphCurveCount = morphCurveCount;
-                world.AddData(meshActor, animator);
+                world.AddData(meshEntity, animator);
             }
         }
 
         result = new SceneAnimationImportResult(
-            meshActor,
+            meshEntity,
             rig,
             runtimeClips,
             controller,
             inverseBind,
-            jointActors,
+            jointEntities,
             baseLayer,
             curveLayout);
         return true;
@@ -350,23 +350,23 @@ public static class SceneAnimationImporter
         }
     }
 
-    private static SceneActor? FindSkinnedActor(
+    private static SceneEntity? FindSkinnedEntity(
         SceneWorld world,
-        IReadOnlyDictionary<string, SceneActor> nodeMap)
+        IReadOnlyDictionary<string, SceneEntity> nodeMap)
     {
-        SceneActor? fallback = null;
+        SceneEntity? fallback = null;
 
-        foreach (SceneActor actor in nodeMap.Values)
+        foreach (SceneEntity entity in nodeMap.Values)
         {
-            if (!world.TryGetActor(actor, out _))
+            if (!world.TryGetEntity(entity, out _))
             {
                 continue;
             }
 
-            fallback ??= actor;
-            if (world.HasData<global::Axrone.Scene.Rendering.SceneSkinnedMeshRenderer>(actor))
+            fallback ??= entity;
+            if (world.HasData<global::Axrone.Scene.Rendering.SceneSkinnedMeshRenderer>(entity))
             {
-                return actor;
+                return entity;
             }
         }
 
@@ -375,9 +375,9 @@ public static class SceneAnimationImporter
 
     private static (Vec3 Translation, Quat Rotation, Vec3 Scale) ReadLocalTransform(
         SceneWorld world,
-        SceneActor actor)
+        SceneEntity entity)
     {
-        if (!world.TryGetData(actor, out SceneTransform3D transform))
+        if (!world.TryGetData(entity, out SceneTransform3D transform))
         {
             return (Vec3.Zero, Quat.Identity, Vec3.One);
         }
@@ -423,12 +423,12 @@ public static class SceneAnimationImporter
 
 /// <summary>Runtime animation objects produced from one converted scene skin.</summary>
 public sealed record SceneAnimationImportResult(
-    SceneActor MeshActor,
+    SceneEntity MeshEntity,
     Rig Rig,
     IReadOnlyList<AnimationClip> Clips,
     AnimationController Controller,
     IReadOnlyList<Mat4> InverseBind,
-    IReadOnlyList<SceneActor> JointActors,
+    IReadOnlyList<SceneEntity> JointEntities,
     AnimationLayer BaseLayer,
     CurveLayout CurveLayout) : IDisposable
 {

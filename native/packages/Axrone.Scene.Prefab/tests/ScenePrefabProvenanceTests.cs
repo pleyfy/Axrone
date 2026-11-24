@@ -14,18 +14,18 @@ public sealed class ScenePrefabProvenanceTests
     [Fact]
     public void NestedResolutionWritesInstancePathInConstructionOrder()
     {
-        ScenePrefabDefinition inner = Composed("prefab/inner", [Actor("root")]);
+        ScenePrefabDefinition inner = Composed("prefab/inner", [Entity("root")]);
         ScenePrefabDefinition middle = Composed(
             "prefab/middle",
-            [Actor("host")],
+            [Entity("host")],
             nested: [new ScenePrefabNestedInstance("mid", ScenePrefabReference.FromInline(inner))]);
         ScenePrefabDefinition host = Composed(
             "prefab/host",
-            [Actor("outer")],
+            [Entity("outer")],
             nested: [new ScenePrefabNestedInstance("outer", ScenePrefabReference.FromInline(middle))]);
 
         ScenePrefabDefinition resolved = new ScenePrefabResolver().Resolve(host).Definition;
-        SceneActorSnapshot scoped = Find(resolved, "outer::mid::root");
+        SceneEntitySnapshot scoped = Find(resolved, "outer::mid::root");
 
         scoped.Source.Should().NotBeNull();
         scoped.Source!.Value.PrefabId.Should().Be("prefab/inner");
@@ -38,10 +38,10 @@ public sealed class ScenePrefabProvenanceTests
     [Fact]
     public void ProvenanceRoundTripsJsonDeterministically()
     {
-        ScenePrefabDefinition inner = Composed("prefab/inner", [Actor("root")]);
+        ScenePrefabDefinition inner = Composed("prefab/inner", [Entity("root")]);
         ScenePrefabDefinition definition = Composed(
             "prefab/host",
-            [Actor("outer")],
+            [Entity("outer")],
             nested: [new ScenePrefabNestedInstance("outer", ScenePrefabReference.FromInline(inner))]);
         ScenePrefabDefinition resolved = new ScenePrefabResolver().Resolve(definition).Definition;
 
@@ -54,14 +54,14 @@ public sealed class ScenePrefabProvenanceTests
     }
 
     [Fact]
-    public void OldActorsWithoutSourceRemainCompatible()
+    public void OldEntitiesWithoutSourceRemainCompatible()
     {
         const string payload = """
             {
               "version": 2,
               "id": "prefab/legacy",
               "kind": "prefab",
-              "actors": [
+              "entities": [
                 {
                   "nodeId": "root",
                   "parentNodeId": null,
@@ -79,7 +79,7 @@ public sealed class ScenePrefabProvenanceTests
 
         ScenePrefabDefinition read = ScenePrefabJson.Deserialize(Encoding.UTF8.GetBytes(payload));
 
-        read.Actors.Should().ContainSingle().Which.Source.Should().BeNull();
+        read.Entities.Should().ContainSingle().Which.Source.Should().BeNull();
     }
 
     [Theory]
@@ -92,7 +92,7 @@ public sealed class ScenePrefabProvenanceTests
               "version": 2,
               "id": "prefab/source",
               "kind": "prefab",
-              "actors": [
+              "entities": [
                 {
                   "nodeId": "root",
                   "parentNodeId": null,
@@ -119,7 +119,7 @@ public sealed class ScenePrefabProvenanceTests
     {
         ScenePrefabDefinition tagged = Composed(
             "prefab/tags",
-            [Actor("root")],
+            [Entity("root")],
             metadata: new ScenePrefabMetadata { Tags = ["combat"] });
 
         byte[] wrongTags = Replace(ScenePrefabJson.Serialize(tagged), """["combat"]""", "42");
@@ -140,7 +140,7 @@ public sealed class ScenePrefabProvenanceTests
               "version": 2,
               "id": "prefab/bad",
               "kind": "prefab",
-              "actors": [
+              "entities": [
                 {
                   "nodeId": "root",
                   "parentNodeId": null,
@@ -180,30 +180,30 @@ public sealed class ScenePrefabProvenanceTests
     public void SourceOnlyChangeIsPreservedByVariantDiff()
     {
         ScenePrefabNodeSource source = new("prefab/base", "root");
-        ScenePrefabDefinition basePrefab = Composed("prefab/base", [Actor("root")]);
-        ScenePrefabDefinition target = Composed("prefab/target", [Actor("root", source: source)]);
+        ScenePrefabDefinition basePrefab = Composed("prefab/base", [Entity("root")]);
+        ScenePrefabDefinition target = Composed("prefab/target", [Entity("root", source: source)]);
 
         ScenePrefabDiffResult diff = ScenePrefabDiff.Compute(basePrefab, target);
         ScenePrefabDefinition applied = ScenePrefabOverrides.Apply(basePrefab, diff.Overrides);
 
-        diff.Overrides.Should().Contain(operation => operation is ScenePrefabAddActorOperation);
-        applied.Actors.Should().ContainSingle().Which.Source.Should().Be(source);
+        diff.Overrides.Should().Contain(operation => operation is ScenePrefabAddEntityOperation);
+        applied.Entities.Should().ContainSingle().Which.Source.Should().Be(source);
     }
 
     [Fact]
     public void ProvenanceSurvivesNestedMergeRevertToBase()
     {
-        ScenePrefabDefinition inner = Composed("prefab/inner", [Actor("root", name: "Base")]);
+        ScenePrefabDefinition inner = Composed("prefab/inner", [Entity("root", name: "Base")]);
         ScenePrefabDefinition basePrefab = Composed(
             "prefab/base",
-            [Actor("outer")],
+            [Entity("outer")],
             nested: [new ScenePrefabNestedInstance("instance", ScenePrefabReference.FromInline(inner))]);
         ScenePrefabDefinition resolvedBase = new ScenePrefabResolver().Resolve(basePrefab).Definition;
-        SceneActorSnapshot scoped = Find(resolvedBase, "instance::root");
+        SceneEntitySnapshot scoped = Find(resolvedBase, "instance::root");
         ScenePrefabNodeSource expectedSource = scoped.Source!.Value;
 
-        ScenePrefabDefinition local = WithRenamedScopedActor(resolvedBase, scoped, "Local");
-        ScenePrefabDefinition incoming = WithRenamedScopedActor(resolvedBase, scoped, "Incoming");
+        ScenePrefabDefinition local = WithRenamedScopedEntity(resolvedBase, scoped, "Local");
+        ScenePrefabDefinition incoming = WithRenamedScopedEntity(resolvedBase, scoped, "Incoming");
 
         ScenePrefabMergeResult merged = ScenePrefabMerge.Merge(
             resolvedBase,
@@ -212,53 +212,53 @@ public sealed class ScenePrefabProvenanceTests
             new ScenePrefabMergeOptions { ConflictPolicy = ScenePrefabConflictPolicy.PreferBase });
 
         merged.Resolved.Should().BeTrue();
-        SceneActorSnapshot reverted = Find(merged.Definition, scoped.NodeId);
+        SceneEntitySnapshot reverted = Find(merged.Definition, scoped.NodeId);
         reverted.Name.Should().Be("Base");
         reverted.Source.Should().Be(expectedSource);
     }
 
     [Fact]
-    public void InstantiateRecordsProvenanceForEachCreatedActor()
+    public void InstantiateRecordsProvenanceForEachCreatedEntity()
     {
         SceneProfile profile = SceneProfiles.CreateCore3D();
         SceneCodecRegistry codecs = new(profile.Registry);
         using SceneWorld world = profile.CreateWorld();
-        ScenePrefabDefinition inner = Composed("prefab/inner", [Actor("root")]);
+        ScenePrefabDefinition inner = Composed("prefab/inner", [Entity("root")]);
         ScenePrefabDefinition host = Composed(
             "prefab/host",
-            [Actor("outer")],
+            [Entity("outer")],
             nested: [new ScenePrefabNestedInstance("outer", ScenePrefabReference.FromInline(inner))]);
         ScenePrefabDefinition resolved = new ScenePrefabResolver().Resolve(host).Definition;
 
         ScenePrefabInstantiationResult result = ScenePrefabInstantiator.Instantiate(world, codecs, resolved);
 
-        result.Sources.Should().HaveCount(resolved.Actors.Count);
-        for (int i = 0; i < resolved.Actors.Count; i++)
+        result.Sources.Should().HaveCount(resolved.Entities.Count);
+        for (int i = 0; i < resolved.Entities.Count; i++)
         {
-            result.Sources[i].Should().Be(resolved.Actors[i].Source);
+            result.Sources[i].Should().Be(resolved.Entities[i].Source);
         }
 
-        int scopedIndex = resolved.Actors.ToList().FindIndex(actor => actor.NodeId == "outer::root");
+        int scopedIndex = resolved.Entities.ToList().FindIndex(entity => entity.NodeId == "outer::root");
         scopedIndex.Should().BePositive();
         result.Sources[scopedIndex].InstancePath.Count.Should().Be(1);
         result.Sources[scopedIndex].InstancePath[0].Should().Be("outer");
-        result.NodeMap["outer::root"].Should().Be(result.Actors[scopedIndex]);
+        result.NodeMap["outer::root"].Should().Be(result.Entities[scopedIndex]);
     }
 
     [Fact]
     public void UnpackStripsProvenance()
     {
-        ScenePrefabDefinition inner = Composed("prefab/inner", [Actor("root")]);
+        ScenePrefabDefinition inner = Composed("prefab/inner", [Entity("root")]);
         ScenePrefabDefinition host = Composed(
             "prefab/host",
-            [Actor("outer")],
+            [Entity("outer")],
             nested: [new ScenePrefabNestedInstance("outer", ScenePrefabReference.FromInline(inner))]);
         ScenePrefabDefinition resolved = new ScenePrefabResolver().Resolve(host).Definition;
-        resolved.Actors.Should().OnlyContain(actor => actor.Source.HasValue);
+        resolved.Entities.Should().OnlyContain(entity => entity.Source.HasValue);
 
         ScenePrefabDefinition unpacked = ScenePrefabVariants.Unpack(resolved);
 
-        unpacked.Actors.Should().OnlyContain(actor => actor.Source == null);
+        unpacked.Entities.Should().OnlyContain(entity => entity.Source == null);
     }
 
     [Fact]
@@ -315,12 +315,12 @@ public sealed class ScenePrefabProvenanceTests
 
     private static ScenePrefabDefinition Composed(
         string id,
-        IReadOnlyList<SceneActorSnapshot> actors,
+        IReadOnlyList<SceneEntitySnapshot> entities,
         ScenePrefabMetadata? metadata = null,
         IReadOnlyList<ScenePrefabNestedInstance>? nested = null) =>
-        new(id, actors, metadata: metadata, nested: nested);
+        new(id, entities, metadata: metadata, nested: nested);
 
-    private static SceneActorSnapshot Actor(
+    private static SceneEntitySnapshot Entity(
         string nodeId,
         string? name = null,
         ScenePrefabNodeSource? source = null) =>
@@ -336,35 +336,35 @@ public sealed class ScenePrefabProvenanceTests
             null,
             source);
 
-    private static ScenePrefabDefinition WithRenamedScopedActor(
+    private static ScenePrefabDefinition WithRenamedScopedEntity(
         ScenePrefabDefinition definition,
-        SceneActorSnapshot scoped,
+        SceneEntitySnapshot scoped,
         string name)
     {
-        SceneActorSnapshot[] actors = new SceneActorSnapshot[definition.Actors.Count];
-        for (int i = 0; i < definition.Actors.Count; i++)
+        SceneEntitySnapshot[] entities = new SceneEntitySnapshot[definition.Entities.Count];
+        for (int i = 0; i < definition.Entities.Count; i++)
         {
-            SceneActorSnapshot actor = definition.Actors[i];
-            actors[i] = actor.NodeId == scoped.NodeId
-                ? new SceneActorSnapshot(
-                    actor.NodeId,
+            SceneEntitySnapshot entity = definition.Entities[i];
+            entities[i] = entity.NodeId == scoped.NodeId
+                ? new SceneEntitySnapshot(
+                    entity.NodeId,
                     name,
-                    actor.Layer,
-                    actor.Tag,
-                    actor.Active,
-                    actor.Persistent,
-                    actor.Pooled,
-                    actor.Components,
-                    actor.ParentNodeId,
-                    actor.Source)
-                : actor;
+                    entity.Layer,
+                    entity.Tag,
+                    entity.Active,
+                    entity.Persistent,
+                    entity.Pooled,
+                    entity.Components,
+                    entity.ParentNodeId,
+                    entity.Source)
+                : entity;
         }
 
-        return new ScenePrefabDefinition(definition.Id, actors);
+        return new ScenePrefabDefinition(definition.Id, entities);
     }
 
-    private static SceneActorSnapshot Find(ScenePrefabDefinition definition, string nodeId) =>
-        definition.Actors.Single(actor => string.Equals(actor.NodeId, nodeId, StringComparison.Ordinal));
+    private static SceneEntitySnapshot Find(ScenePrefabDefinition definition, string nodeId) =>
+        definition.Entities.Single(entity => string.Equals(entity.NodeId, nodeId, StringComparison.Ordinal));
 
     private static byte[] Replace(byte[] payload, string oldValue, string newValue)
     {

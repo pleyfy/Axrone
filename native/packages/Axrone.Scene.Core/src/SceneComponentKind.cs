@@ -6,7 +6,7 @@ namespace Axrone.Scene;
 /// </summary>
 public enum SceneComponentKind : byte
 {
-    /// <summary>Unmanaged payload stored in a dense per-actor column.</summary>
+    /// <summary>Unmanaged payload stored in a dense per-entity column.</summary>
     Data = 0,
 
     /// <summary>Managed lifecycle object stored in the behaviour table.</summary>

@@ -21,17 +21,17 @@ public sealed class ScenePrefabNestingTests
             basePrefab: ScenePrefabReference.FromInline(basePrefab),
             overrides:
             [
-                new ScenePrefabSetActorFieldOperation(
+                new ScenePrefabSetEntityFieldOperation(
                     "child",
-                    ScenePrefabActorField.Name,
-                    ScenePrefabActorFieldValue.FromString("VariantChild"))
+                    ScenePrefabEntityField.Name,
+                    ScenePrefabEntityFieldValue.FromString("VariantChild"))
             ]);
 
         ScenePrefabResolutionResult result = new ScenePrefabResolver().Resolve(variant);
 
         result.Definition.Kind.Should().Be(ScenePrefabKind.Resolved);
-        result.Definition.Actors.Should().HaveCount(2);
-        result.Definition.Actors[1].Name.Should().Be("VariantChild");
+        result.Definition.Entities.Should().HaveCount(2);
+        result.Definition.Entities[1].Name.Should().Be("VariantChild");
         result.Lineage.Should().ContainInOrder("prefab/base", "prefab/variant");
     }
 
@@ -41,7 +41,7 @@ public sealed class ScenePrefabNestingTests
         ScenePrefabDefinition basePrefab = CreateBasePrefab();
         var host = new ScenePrefabDefinition(
             "prefab/host",
-            [Actor("host-root")],
+            [Entity("host-root")],
             nested:
             [
                 new ScenePrefabNestedInstance(
@@ -53,11 +53,11 @@ public sealed class ScenePrefabNestingTests
 
         ScenePrefabDefinition resolved = new ScenePrefabResolver().Resolve(host).Definition;
 
-        resolved.Actors.Select(actor => actor.NodeId)
+        resolved.Entities.Select(entity => entity.NodeId)
             .Should().ContainInOrder("host-root", "turret::root", "turret::child");
-        resolved.Actors[1].Name.Should().Be("T-root");
-        resolved.Actors[1].ParentNodeId.Should().Be("host-root");
-        resolved.Actors[2].ParentNodeId.Should().Be("turret::root");
+        resolved.Entities[1].Name.Should().Be("T-root");
+        resolved.Entities[1].ParentNodeId.Should().Be("host-root");
+        resolved.Entities[2].ParentNodeId.Should().Be("turret::root");
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public sealed class ScenePrefabNestingTests
         ScenePrefabDefinition basePrefab = CreateBasePrefab();
         var host = new ScenePrefabDefinition(
             "prefab/host",
-            [Actor("host-root")],
+            [Entity("host-root")],
             nested:
             [
                 new ScenePrefabNestedInstance(
@@ -75,10 +75,10 @@ public sealed class ScenePrefabNestingTests
                     parentNodeId: "host-root",
                     overrides:
                     [
-                        new ScenePrefabSetActorFieldOperation(
+                        new ScenePrefabSetEntityFieldOperation(
                             "child",
-                            ScenePrefabActorField.Name,
-                            ScenePrefabActorFieldValue.FromString("Gun")),
+                            ScenePrefabEntityField.Name,
+                            ScenePrefabEntityFieldValue.FromString("Gun")),
                         new ScenePrefabSetComponentPropertyOperation(
                             "child",
                             ScenePrefabComponentSelector.FromType("Transform"),
@@ -90,7 +90,7 @@ public sealed class ScenePrefabNestingTests
 
         ScenePrefabDefinition resolved = new ScenePrefabResolver().Resolve(host).Definition;
 
-        SceneActorSnapshot child = resolved.Actors[2];
+        SceneEntitySnapshot child = resolved.Entities[2];
         child.NodeId.Should().Be("turret::child");
         child.Name.Should().Be("Gun");
         child.Components[0].Data.GetProperty("position")[2].GetInt32().Should().Be(3);
@@ -102,7 +102,7 @@ public sealed class ScenePrefabNestingTests
         ScenePrefabDefinition basePrefab = CreateBasePrefab();
         var host = new ScenePrefabDefinition(
             "prefab/host",
-            [Actor("host-root")],
+            [Entity("host-root")],
             nested:
             [
                 new ScenePrefabNestedInstance(
@@ -112,29 +112,29 @@ public sealed class ScenePrefabNestingTests
             ],
             overrides:
             [
-                new ScenePrefabRemoveActorOperation("turret::child")
+                new ScenePrefabRemoveEntityOperation("turret::child")
             ]);
 
         ScenePrefabDefinition resolved = new ScenePrefabResolver().Resolve(host).Definition;
 
-        resolved.Actors.Select(actor => actor.NodeId)
+        resolved.Entities.Select(entity => entity.NodeId)
             .Should().ContainInOrder("host-root", "turret::root");
     }
 
     [Fact]
-    public void BaseActors_AreReplacedByOwnActors()
+    public void BaseEntities_AreReplacedByOwnEntities()
     {
         ScenePrefabDefinition basePrefab = CreateBasePrefab();
         var variant = new ScenePrefabDefinition(
             "prefab/variant",
-            [Actor("child", parentNodeId: "root", name: "Replaced")],
+            [Entity("child", parentNodeId: "root", name: "Replaced")],
             ScenePrefabKind.Variant,
             basePrefab: ScenePrefabReference.FromInline(basePrefab));
 
         ScenePrefabDefinition resolved = new ScenePrefabResolver().Resolve(variant).Definition;
 
-        resolved.Actors.Should().HaveCount(2);
-        resolved.Actors[1].Name.Should().Be("Replaced");
+        resolved.Entities.Should().HaveCount(2);
+        resolved.Entities[1].Name.Should().Be("Replaced");
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public sealed class ScenePrefabNestingTests
 
         var resolver = new ScenePrefabResolver(registry);
         ScenePrefabDefinition resolved = resolver.Resolve("prefab/base").Definition;
-        resolved.Actors.Should().HaveCount(2);
+        resolved.Entities.Should().HaveCount(2);
 
         var staleReference = new ScenePrefabDefinition(
             "prefab/variant",
@@ -205,15 +205,15 @@ public sealed class ScenePrefabNestingTests
         ScenePrefabDefinition resolved = resolver.Resolve(
             "prefab/base",
             [
-                new ScenePrefabSetActorFieldOperation(
+                new ScenePrefabSetEntityFieldOperation(
                     "root",
-                    ScenePrefabActorField.Tag,
-                    ScenePrefabActorFieldValue.FromString("Live"))
+                    ScenePrefabEntityField.Tag,
+                    ScenePrefabEntityFieldValue.FromString("Live"))
             ]).Definition;
 
-        resolved.Actors[0].Tag.Should().Be("Live");
+        resolved.Entities[0].Tag.Should().Be("Live");
         resolved.Kind.Should().Be(ScenePrefabKind.Resolved);
-        resolver.Resolve("prefab/base").Definition.Actors[0].Tag.Should().Be("Root");
+        resolver.Resolve("prefab/base").Definition.Entities[0].Tag.Should().Be("Root");
     }
 
     [Fact]
@@ -234,7 +234,7 @@ public sealed class ScenePrefabNestingTests
 
         Action act = () => _ = new ScenePrefabDefinition(
             "prefab/host",
-            [Actor("host-root")],
+            [Entity("host-root")],
             nested:
             [
                 new ScenePrefabNestedInstance("dup", ScenePrefabReference.FromInline(basePrefab)),
@@ -249,15 +249,15 @@ public sealed class ScenePrefabNestingTests
         new(
             "prefab/base",
             [
-                Actor("root", tag: "Root"),
-                Actor(
+                Entity("root", tag: "Root"),
+                Entity(
                     "child",
                     parentNodeId: "root",
                     components: Component("Transform", """{"position":[0,0,0]}"""))
             ],
             metadata: revision is null ? null : new ScenePrefabMetadata { Revision = revision });
 
-    private static SceneActorSnapshot Actor(
+    private static SceneEntitySnapshot Entity(
         string nodeId,
         string? parentNodeId = null,
         string? name = null,

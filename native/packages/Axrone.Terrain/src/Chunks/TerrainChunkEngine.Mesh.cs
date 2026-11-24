@@ -5,7 +5,7 @@ public partial class TerrainEngine<TSurface, TBackoff, TObserver>
 {
     /// <summary>
     /// Writes a chunk's surface mesh into caller-owned buffers. Positions are chunk-local and
-    /// origin-centered, so the actor that renders the chunk sits at the chunk center. Heights
+    /// origin-centered, so the entity that renders the chunk sits at the chunk center. Heights
     /// are scaled by <see cref="MaxHeight"/>.
     /// </summary>
     /// <param name="coord">Chunk coordinate.</param>

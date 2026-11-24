@@ -252,13 +252,13 @@ public sealed class SceneGlSpriteBuilderIntegrationTests
         var builder = new SceneProfileBuilder(new SceneProfileId(SceneStringId.FromName("test/gl-sprite-builder")));
         SceneWorld world = builder.AddTransform2D().AddRendering2D().Build().CreateWorld();
 
-        SceneActor cameraActor = world.CreateActor("Camera2D");
-        world.GetTransform2D(cameraActor).SetPosition(Vec2.Zero);
+        SceneEntity cameraEntity = world.CreateEntity("Camera2D");
+        world.GetTransform2D(cameraEntity).SetPosition(Vec2.Zero);
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
         camera.OrthographicSize = 5.0f;
-        world.AddData(cameraActor, camera);
-        world.AddData(cameraActor, SceneCamera2D.Default);
+        world.AddData(cameraEntity, camera);
+        world.AddData(cameraEntity, SceneCamera2D.Default);
         world.UpdateTransforms();
 
         frame = new SceneCamera2DFrameCollector().Collect(world, 320, 180)!;

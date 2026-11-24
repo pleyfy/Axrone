@@ -15,14 +15,14 @@ using ParticlePipeline = Axrone.Particles.PipelineStage<
 
 /// <summary>
 /// Bridges <see cref="SceneParticleSystem"/> components into standalone
-/// particle engines. The bridge owns one engine per actor, emits particles
-/// from the actor's world position and exposes the dense storage streams for
+/// particle engines. The bridge owns one engine per entity, emits particles
+/// from the entity's world position and exposes the dense storage streams for
 /// the renderer.
 /// </summary>
 public sealed class SceneParticleBridge3D : IDisposable, ISceneParticleSource
 {
     private readonly SceneWorld _world;
-    private readonly Dictionary<SceneActor, ParticleInstance> _byActor = new();
+    private readonly Dictionary<SceneEntity, ParticleInstance> _byEntity = new();
     private readonly List<ParticleInstance> _instances = new();
     private bool _disposed;
 
@@ -41,25 +41,25 @@ public sealed class SceneParticleBridge3D : IDisposable, ISceneParticleSource
     {
         ThrowIfDisposed();
 
-        var seen = new HashSet<SceneActor>();
+        var seen = new HashSet<SceneEntity>();
 
-        foreach (SceneActor actor in _world.Actors)
+        foreach (SceneEntity entity in _world.Entities)
         {
-            if (!_world.IsActiveInHierarchy(actor) ||
-                !_world.TryGetData(actor, out SceneParticleSystem system) ||
+            if (!_world.IsActiveInHierarchy(entity) ||
+                !_world.TryGetData(entity, out SceneParticleSystem system) ||
                 !system.Enabled)
             {
                 continue;
             }
 
-            seen.Add(actor);
+            seen.Add(entity);
 
-            if (_byActor.TryGetValue(actor, out ParticleInstance? instance))
+            if (_byEntity.TryGetValue(entity, out ParticleInstance? instance))
             {
                 if (instance.Engine.Storage.Capacity < system.MaxParticles)
                 {
-                    Remove(actor);
-                    Add(actor, in system);
+                    Remove(entity);
+                    Add(entity, in system);
                 }
                 else
                 {
@@ -69,15 +69,15 @@ public sealed class SceneParticleBridge3D : IDisposable, ISceneParticleSource
                 continue;
             }
 
-            Add(actor, in system);
+            Add(entity, in system);
         }
 
-        List<SceneActor>? stale = null;
-        foreach (SceneActor actor in _byActor.Keys)
+        List<SceneEntity>? stale = null;
+        foreach (SceneEntity entity in _byEntity.Keys)
         {
-            if (!seen.Contains(actor))
+            if (!seen.Contains(entity))
             {
-                (stale ??= []).Add(actor);
+                (stale ??= []).Add(entity);
             }
         }
 
@@ -103,14 +103,14 @@ public sealed class SceneParticleBridge3D : IDisposable, ISceneParticleSource
         for (int i = 0; i < _instances.Count; i++)
         {
             ParticleInstance instance = _instances[i];
-            if (!_world.TryGetData(instance.Actor, out SceneParticleSystem config) || !config.Enabled)
+            if (!_world.TryGetData(instance.Entity, out SceneParticleSystem config) || !config.Enabled)
             {
                 continue;
             }
 
             if (config.Playing && _world.HasTransform3D)
             {
-                Vec3 origin = _world.GetWorldPosition3D(instance.Actor);
+                Vec3 origin = _world.GetWorldPosition3D(instance.Entity);
                 instance.EmissionAccumulator += config.EmissionRate * deltaSeconds;
 
                 while (instance.EmissionAccumulator >= 1.0f)
@@ -136,7 +136,7 @@ public sealed class SceneParticleBridge3D : IDisposable, ISceneParticleSource
         if (count == 0)
         {
             return new SceneParticleSnapshot(
-                instance.Actor,
+                instance.Entity,
                 0,
                 [],
                 [],
@@ -149,7 +149,7 @@ public sealed class SceneParticleBridge3D : IDisposable, ISceneParticleSource
         }
 
         return new SceneParticleSnapshot(
-            instance.Actor,
+            instance.Entity,
             count,
             new ReadOnlySpan<float>(storage.PosX, count),
             new ReadOnlySpan<float>(storage.PosY, count),
@@ -175,25 +175,25 @@ public sealed class SceneParticleBridge3D : IDisposable, ISceneParticleSource
         }
 
         _instances.Clear();
-        _byActor.Clear();
+        _byEntity.Clear();
         _disposed = true;
     }
 
-    private void Add(SceneActor actor, in SceneParticleSystem config)
+    private void Add(SceneEntity entity, in SceneParticleSystem config)
     {
         ParticleSystemEngine<ParticlePipeline, DelegateEventSink> engine =
             ParticleSystemFactory.CreateDefault(Math.Max(1, config.MaxParticles));
-        var instance = new ParticleInstance(actor, engine);
+        var instance = new ParticleInstance(entity, engine);
         ApplyConfig(instance, in config);
         engine.Play();
 
-        _byActor.Add(actor, instance);
+        _byEntity.Add(entity, instance);
         _instances.Add(instance);
     }
 
-    private void Remove(SceneActor actor)
+    private void Remove(SceneEntity entity)
     {
-        if (!_byActor.Remove(actor, out ParticleInstance? instance))
+        if (!_byEntity.Remove(entity, out ParticleInstance? instance))
         {
             return;
         }
@@ -236,14 +236,14 @@ public sealed class SceneParticleBridge3D : IDisposable, ISceneParticleSource
     private sealed class ParticleInstance
     {
         public ParticleInstance(
-            SceneActor actor,
+            SceneEntity entity,
             ParticleSystemEngine<ParticlePipeline, DelegateEventSink> engine)
         {
-            Actor = actor;
+            Entity = entity;
             Engine = engine;
         }
 
-        public SceneActor Actor { get; }
+        public SceneEntity Entity { get; }
 
         public ParticleSystemEngine<ParticlePipeline, DelegateEventSink> Engine { get; }
 

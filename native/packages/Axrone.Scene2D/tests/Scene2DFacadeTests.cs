@@ -3,16 +3,16 @@ namespace Scene2DTests;
 public class Scene2DFacadeTests
 {
     [Fact]
-    public void CameraActorUsesOrthographicDefaults()
+    public void CameraEntityUsesOrthographicDefaults()
     {
         using Scene2D scene = Scene2D.Create();
 
-        SceneActor actor = scene.CreateCameraActor(
-            new SceneActorConfig("Camera"),
+        SceneEntity entity = scene.CreateCameraEntity(
+            new SceneEntityConfig("Camera"),
             new Scene2DCameraConfig { Primary = true });
 
         SceneCamera defaults = SceneCamera2DDefaults.CreateCamera();
-        scene.World.TryGetData(actor, out Scene2DCamera camera).Should().BeTrue();
+        scene.World.TryGetData(entity, out Scene2DCamera camera).Should().BeTrue();
         camera.Orthographic.Should().Be(defaults.Orthographic);
         camera.Enabled.Should().Be(defaults.Enabled);
         camera.Primary.Should().Be(defaults.Primary);
@@ -21,10 +21,10 @@ public class Scene2DFacadeTests
         camera.OrthographicSize.Should().Be(defaults.OrthographicSize);
         camera.ClearMask.Should().Be(Scene2DClearMask.Color | Scene2DClearMask.Depth);
 
-        scene.World.TryGetData(actor, out Scene2DCamera2D camera2D).Should().BeTrue();
+        scene.World.TryGetData(entity, out Scene2DCamera2D camera2D).Should().BeTrue();
         camera2D.Depth.Should().Be(SceneCamera2DDefaults.Depth);
-        scene.World.GetWorldPosition2D(actor).Should().Be(Vec2.Zero);
-        scene.World.GetName(actor).Should().Be("Camera");
+        scene.World.GetWorldPosition2D(entity).Should().Be(Vec2.Zero);
+        scene.World.GetName(entity).Should().Be("Camera");
     }
 
     [Fact]
@@ -32,8 +32,8 @@ public class Scene2DFacadeTests
     {
         using Scene2D scene = Scene2D.Create();
 
-        SceneActor actor = scene.CreateCameraActor(
-            new SceneActorConfig("Perspective"),
+        SceneEntity entity = scene.CreateCameraEntity(
+            new SceneEntityConfig("Perspective"),
             new Scene2DCameraConfig
             {
                 Orthographic = false,
@@ -43,17 +43,17 @@ public class Scene2DFacadeTests
                 Depth = 7.0f
             });
 
-        scene.World.TryGetData(actor, out Scene2DCamera camera).Should().BeTrue();
+        scene.World.TryGetData(entity, out Scene2DCamera camera).Should().BeTrue();
         camera.Orthographic.Should().BeFalse();
         camera.FieldOfViewDegrees.Should().Be(45.0f);
         camera.Near.Should().Be(0.5f);
         camera.Far.Should().Be(200.0f);
-        scene.World.TryGetData(actor, out Scene2DCamera2D camera2D).Should().BeTrue();
+        scene.World.TryGetData(entity, out Scene2DCamera2D camera2D).Should().BeTrue();
         camera2D.Depth.Should().Be(7.0f);
     }
 
     [Fact]
-    public void SpriteActorCarriesConfiguredRenderer()
+    public void SpriteEntityCarriesConfiguredRenderer()
     {
         using Scene2D scene = Scene2D.Create();
         SceneStringId texture = SceneStringId.FromName("texture/hero");
@@ -68,9 +68,9 @@ public class Scene2DFacadeTests
             FlipX = true
         };
 
-        SceneActor actor = scene.CreateSpriteActor(new SceneActorConfig("Hero", layer: 3), config);
+        SceneEntity entity = scene.CreateSpriteEntity(new SceneEntityConfig("Hero", layer: 3), config);
 
-        scene.World.TryGetData(actor, out Scene2DSpriteRenderer renderer).Should().BeTrue();
+        scene.World.TryGetData(entity, out Scene2DSpriteRenderer renderer).Should().BeTrue();
         renderer.TextureId.Should().Be(texture);
         renderer.Size.Should().Be(new Vec2(2.0f, 3.0f));
         renderer.Anchor.Should().Be(new Vec2(0.25f, 0.75f));
@@ -79,12 +79,12 @@ public class Scene2DFacadeTests
         renderer.RenderOrder.Should().Be(7);
         renderer.FlipX.Should().BeTrue();
         renderer.PassId.Should().Be(SceneStringId.FromName("main"));
-        scene.World.GetName(actor).Should().Be("Hero");
-        scene.World.LayerOf(actor).Should().Be(3);
+        scene.World.GetName(entity).Should().Be("Hero");
+        scene.World.LayerOf(entity).Should().Be(3);
     }
 
     [Fact]
-    public void AnimatedSpriteActorCarriesRendererAndAnimator()
+    public void AnimatedSpriteEntityCarriesRendererAndAnimator()
     {
         using Scene2D scene = Scene2D.Create();
         SceneStringId clip = SceneStringId.FromName("clip/idle");
@@ -97,13 +97,13 @@ public class Scene2DFacadeTests
             Playing = true
         };
 
-        SceneActor actor = scene.CreateAnimatedSpriteActor(
-            new SceneActorConfig("Animated"),
+        SceneEntity entity = scene.CreateAnimatedSpriteEntity(
+            new SceneEntityConfig("Animated"),
             sprite,
             animator);
 
-        scene.World.HasData<Scene2DSpriteRenderer>(actor).Should().BeTrue();
-        scene.World.TryGetData(actor, out Scene2DSpriteAnimator value).Should().BeTrue();
+        scene.World.HasData<Scene2DSpriteRenderer>(entity).Should().BeTrue();
+        scene.World.TryGetData(entity, out Scene2DSpriteAnimator value).Should().BeTrue();
         value.ClipId.Should().Be(clip);
         value.Speed.Should().Be(2.0f);
         value.Loop.Should().BeFalse();
@@ -111,7 +111,7 @@ public class Scene2DFacadeTests
     }
 
     [Fact]
-    public void MaskActorCarriesConfiguredMask()
+    public void MaskEntityCarriesConfiguredMask()
     {
         using Scene2D scene = Scene2D.Create();
         var config = new Scene2DSpriteMaskConfig
@@ -123,9 +123,9 @@ public class Scene2DFacadeTests
             Invert = true
         };
 
-        SceneActor actor = scene.CreateMaskActor(new SceneActorConfig("Mask"), config);
+        SceneEntity entity = scene.CreateMaskEntity(new SceneEntityConfig("Mask"), config);
 
-        scene.World.TryGetData(actor, out Scene2DSpriteMask mask).Should().BeTrue();
+        scene.World.TryGetData(entity, out Scene2DSpriteMask mask).Should().BeTrue();
         mask.Kind.Should().Be(Scene2DSpriteMaskKind.RoundedRect);
         mask.Rect.Should().Be(new Vec4(0.1f, 0.2f, 0.5f, 0.6f));
         mask.CornerRadius.Should().Be(0.25f);
@@ -141,7 +141,7 @@ public class Scene2DFacadeTests
         scene.Dispose();
 
         scene.World.IsDisposed.Should().BeTrue();
-        Action create = () => scene.CreateSpriteActor(new SceneActorConfig("Sprite"), new Scene2DSpriteConfig());
+        Action create = () => scene.CreateSpriteEntity(new SceneEntityConfig("Sprite"), new Scene2DSpriteConfig());
         create.Should().Throw<SceneDisposedException>();
         scene.Dispose();
     }
@@ -165,32 +165,32 @@ public class Scene2DFacadeTests
     }
 
     [Fact]
-    public void MalformedConfigsAreRejectedBeforeActorAllocation()
+    public void MalformedConfigsAreRejectedBeforeEntityAllocation()
     {
         using Scene2D scene = Scene2D.Create();
 
-        Action camera = () => scene.CreateCameraActor(
-            new SceneActorConfig("Camera"),
+        Action camera = () => scene.CreateCameraEntity(
+            new SceneEntityConfig("Camera"),
             new Scene2DCameraConfig { Near = 0.0f });
         camera.Should().Throw<SceneValidationException>();
 
-        Action sprite = () => scene.CreateSpriteActor(
-            new SceneActorConfig("Sprite"),
+        Action sprite = () => scene.CreateSpriteEntity(
+            new SceneEntityConfig("Sprite"),
             new Scene2DSpriteConfig { Size = new Vec2(float.NaN, 1.0f) });
         sprite.Should().Throw<SceneValidationException>();
 
-        Action mask = () => scene.CreateMaskActor(
-            new SceneActorConfig("Mask"),
+        Action mask = () => scene.CreateMaskEntity(
+            new SceneEntityConfig("Mask"),
             new Scene2DSpriteMaskConfig { Rect = new Vec4(0.0f, 0.0f, 0.0f, 1.0f) });
         mask.Should().Throw<SceneValidationException>();
 
-        Action animator = () => scene.CreateAnimatedSpriteActor(
-            new SceneActorConfig("Animated"),
+        Action animator = () => scene.CreateAnimatedSpriteEntity(
+            new SceneEntityConfig("Animated"),
             new Scene2DSpriteConfig(),
             new Scene2DSpriteAnimatorConfig { Speed = -1.0f });
         animator.Should().Throw<SceneValidationException>();
 
-        scene.ActorCount.Should().Be(0);
+        scene.EntityCount.Should().Be(0);
     }
 
     [Fact]

@@ -8,33 +8,33 @@ public enum UiOverlaySpace
     /// <summary>Composited in screen space over the scene.</summary>
     Screen,
 
-    /// <summary>Composited in world space on the host actor.</summary>
+    /// <summary>Composited in world space on the host entity.</summary>
     World,
 }
 
 /// <summary>
-/// Mounting record of one UI document on a scene actor. The actor handle is a
+/// Mounting record of one UI document on a scene entity. The entity handle is a
 /// generational scene identity, so a recycled slot resolves as stale instead
 /// of aliasing the new occupant.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public readonly record struct UiOverlayAttachment(
     UiDocumentId Document,
-    SceneActor Host,
+    SceneEntity Host,
     UiOverlaySpace Space,
     int ZOrder,
     float PixelsPerUnit);
 
 /// <summary>
 /// Scene.Rendering integration contract: owns which UI documents are mounted on
-/// which scene actors and routes their frames into the render host.
+/// which scene entities and routes their frames into the render host.
 /// </summary>
 public interface IUiSceneOverlayBridge
 {
     /// <summary>Gets the number of mounted documents.</summary>
     int AttachmentCount { get; }
 
-    /// <summary>Mounts a document on a scene actor.</summary>
+    /// <summary>Mounts a document on a scene entity.</summary>
     bool TryAttach(in UiOverlayAttachment attachment);
 
     /// <summary>Unmounts a document.</summary>

@@ -82,19 +82,19 @@ public sealed class SceneGlSkinnedMeshTests
 
         using SceneWorld world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        SceneActor actor = CreateSkinnedActor(world, mesh, materialAssets.MaterialId);
+        SceneEntity entity = CreateSkinnedEntity(world, mesh, materialAssets.MaterialId);
         world.UpdateTransforms();
 
         var palettes = new SceneBonePaletteStore();
-        palettes.ApplyBonePalette(actor, [Mat4.CreateTranslation(0.25f, 0, 0)]);
+        palettes.ApplyBonePalette(entity, [Mat4.CreateTranslation(0.25f, 0, 0)]);
 
         using var cache = new SceneGlAssetCache(context, assets);
         cache.UploadAll();
         var collector = new SceneSkinnedMeshItemCollector();
         collector.Collect(world, frame, SceneRenderPassIds.Main, assets).Should().Be(1);
 
-        SceneActor lightActor = world.CreateActor("Sun");
-        world.AddData(lightActor, SceneDirectionalLight.Default);
+        SceneEntity lightEntity = world.CreateEntity("Sun");
+        world.AddData(lightEntity, SceneDirectionalLight.Default);
         world.UpdateTransforms();
         using var lightingCollector = new SceneLightingCollector(2);
         LightingSelectionState lighting = lightingCollector.Collect(world, frame.Position, Vec3.Zero, Vec3.Zero, Vec3.Zero);
@@ -136,7 +136,7 @@ public sealed class SceneGlSkinnedMeshTests
 
         using SceneWorld world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        _ = CreateSkinnedActor(world, mesh, material.MaterialId);
+        _ = CreateSkinnedEntity(world, mesh, material.MaterialId);
         world.UpdateTransforms();
 
         using var cache = new SceneGlAssetCache(context, assets);
@@ -165,7 +165,7 @@ public sealed class SceneGlSkinnedMeshTests
 
         using SceneWorld world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        SceneActor actor = CreateSkinnedActor(world, mesh, material.MaterialId);
+        SceneEntity entity = CreateSkinnedEntity(world, mesh, material.MaterialId);
         world.UpdateTransforms();
 
         var palettes = new SceneBonePaletteStore();
@@ -178,17 +178,17 @@ public sealed class SceneGlSkinnedMeshTests
         var state = new SceneRenderFrameState();
         state.Begin(0);
 
-        palettes.ApplyBonePalette(actor, CreatePalette(128));
+        palettes.ApplyBonePalette(entity, CreatePalette(128));
         renderer.Render(world, frame, collector.Items, null, pass, state).Should().Be(1);
         renderer.LastBoneCount.Should().Be(128);
         api.CallLog.Should().Contain(call => call.StartsWith("TexSubImage2D(3553, 0, 0, 0, 512, 1)", StringComparison.Ordinal));
 
-        palettes.ApplyBonePalette(actor, CreatePalette(SceneGlSkinnedMeshRenderer.MaxBones));
+        palettes.ApplyBonePalette(entity, CreatePalette(SceneGlSkinnedMeshRenderer.MaxBones));
         renderer.Render(world, frame, collector.Items, null, pass, state).Should().Be(1);
         renderer.LastBoneCount.Should().Be(256);
         api.CallLog.Should().Contain(call => call.StartsWith("TexSubImage2D(3553, 0, 0, 0, 1024, 1)", StringComparison.Ordinal));
 
-        palettes.ApplyBonePalette(actor, CreatePalette(SceneGlSkinnedMeshRenderer.MaxBones + 1));
+        palettes.ApplyBonePalette(entity, CreatePalette(SceneGlSkinnedMeshRenderer.MaxBones + 1));
         renderer.Render(world, frame, collector.Items, null, pass, state).Should().Be(0);
         renderer.SkippedBatches.Should().Be(1);
     }
@@ -205,11 +205,11 @@ public sealed class SceneGlSkinnedMeshTests
 
         using SceneWorld world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        SceneActor actor = CreateSkinnedActor(world, mesh, material.MaterialId);
+        SceneEntity entity = CreateSkinnedEntity(world, mesh, material.MaterialId);
         world.UpdateTransforms();
 
         var palettes = new SceneBonePaletteStore();
-        palettes.ApplyBonePalette(actor, [Mat4.Identity]);
+        palettes.ApplyBonePalette(entity, [Mat4.Identity]);
 
         using var cache = new SceneGlAssetCache(context, assets);
         cache.UploadAll();
@@ -236,11 +236,11 @@ public sealed class SceneGlSkinnedMeshTests
 
         using SceneWorld world = CreateWorld();
         SceneCameraFrame frame = CreateCameraFrame(world);
-        SceneActor actor = CreateSkinnedActor(world, mesh, material.MaterialId);
+        SceneEntity entity = CreateSkinnedEntity(world, mesh, material.MaterialId);
         world.UpdateTransforms();
 
         var palettes = new SceneBonePaletteStore();
-        palettes.ApplyBonePalette(actor, [Mat4.Identity]);
+        palettes.ApplyBonePalette(entity, [Mat4.Identity]);
 
         using var cache = new SceneGlAssetCache(context, assets);
         cache.UploadAll();
@@ -365,26 +365,26 @@ public sealed class SceneGlSkinnedMeshTests
 
     private static SceneCameraFrame CreateCameraFrame(SceneWorld world)
     {
-        SceneActor actor = world.CreateActor("Camera");
-        world.GetTransform3D(actor).SetPosition(new Vec3(0, 0, 10));
+        SceneEntity entity = world.CreateEntity("Camera");
+        world.GetTransform3D(entity).SetPosition(new Vec3(0, 0, 10));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(actor, camera);
+        world.AddData(entity, camera);
         world.UpdateTransforms();
-        return new SceneCameraFrameCollector().Collect(world, actor, 800, 600)!;
+        return new SceneCameraFrameCollector().Collect(world, entity, 800, 600)!;
     }
 
-    private static SceneActor CreateSkinnedActor(
+    private static SceneEntity CreateSkinnedEntity(
         SceneWorld world,
         SceneAssetId<MeshAssetTag> mesh,
         SceneAssetId<MaterialAssetTag> material)
     {
-        SceneActor actor = world.CreateActor("Skinned");
+        SceneEntity entity = world.CreateEntity("Skinned");
         SceneSkinnedMeshRenderer renderer = SceneSkinnedMeshRenderer.Default;
         renderer.MeshId = mesh;
         renderer.MaterialId = material;
-        world.AddData(actor, renderer);
-        return actor;
+        world.AddData(entity, renderer);
+        return entity;
     }
 
     private static SceneAssetId<MeshAssetTag> RegisterSkinnedMesh(SceneAssetRegistry assets)

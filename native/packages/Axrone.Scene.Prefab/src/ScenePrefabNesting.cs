@@ -60,7 +60,7 @@ public sealed class ScenePrefabReference
 }
 
 /// <summary>
-/// One nested prefab instance: the resolved actors are scoped under the
+/// One nested prefab instance: the resolved entities are scoped under the
 /// instance id, prefixed, attached to an optional parent and adjusted by the
 /// instance's own override operations.
 /// </summary>
@@ -93,7 +93,7 @@ public sealed class ScenePrefabNestedInstance
     /// <summary>Optional host node that parents every nested root.</summary>
     public string? ParentNodeId { get; }
 
-    /// <summary>Optional prefix applied to every nested actor name.</summary>
+    /// <summary>Optional prefix applied to every nested entity name.</summary>
     public string? NamePrefix { get; }
 
     /// <summary>Instance-local override operations.</summary>
@@ -257,7 +257,7 @@ public sealed class ScenePrefabResolutionResult
 
 /// <summary>
 /// Resolves variants and nested instances into one flat definition. Resolution
-/// applies base actors, nested instance scopes and override layers in authoring
+/// applies base entities, nested instance scopes and override layers in authoring
 /// order, then validates the final hierarchy exactly once.
 /// </summary>
 public sealed class ScenePrefabResolver
@@ -409,17 +409,17 @@ public sealed class ScenePrefabResolver
 
             if (baseResolved is not null)
             {
-                state.AddActors(baseResolved.Actors);
+                state.AddEntities(baseResolved.Entities);
             }
 
-            state.AddActors(definition.Actors);
+            state.AddEntities(definition.Entities);
 
             for (int i = 0; i < definition.Nested.Count; i++)
             {
                 ScenePrefabNestedInstance nested = definition.Nested[i];
                 ScenePrefabDefinition nestedResolved = ResolveReference(nested.Reference, stack);
-                state.AddActors(ScenePrefabNestedScope.ScopeActors(
-                    nestedResolved.Actors,
+                state.AddEntities(ScenePrefabNestedScope.ScopeEntities(
+                    nestedResolved.Entities,
                     nested,
                     nestedResolved.Id,
                     nestedResolved.Lineage));
@@ -505,40 +505,40 @@ internal static class ScenePrefabNestedScope
     public static string ScopedNodeId(string instanceId, string nodeId) =>
         $"{instanceId}::{nodeId}";
 
-    /// <summary>Scopes actors under an instance id, parent and optional name prefix.</summary>
-    public static SceneActorSnapshot[] ScopeActors(
-        IReadOnlyList<SceneActorSnapshot> actors,
+    /// <summary>Scopes entities under an instance id, parent and optional name prefix.</summary>
+    public static SceneEntitySnapshot[] ScopeEntities(
+        IReadOnlyList<SceneEntitySnapshot> entities,
         ScenePrefabNestedInstance nested,
         string sourcePrefabId,
         IReadOnlyList<string> sourceLineage)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePrefabId);
 
-        var scoped = new SceneActorSnapshot[actors.Count];
-        for (int i = 0; i < actors.Count; i++)
+        var scoped = new SceneEntitySnapshot[entities.Count];
+        for (int i = 0; i < entities.Count; i++)
         {
-            SceneActorSnapshot actor = ScenePrefabNodeIdentity.EnsureProvenance(
-                actors[i],
+            SceneEntitySnapshot entity = ScenePrefabNodeIdentity.EnsureProvenance(
+                entities[i],
                 sourcePrefabId,
                 sourceLineage,
                 i);
-            string? parentNodeId = actor.ParentNodeId is { } parent
+            string? parentNodeId = entity.ParentNodeId is { } parent
                 ? ScopedNodeId(nested.InstanceId, parent)
                 : nested.ParentNodeId;
             string name = nested.NamePrefix is { } prefix
-                ? string.Concat(prefix, actor.Name)
-                : actor.Name;
-            ScenePrefabNodeSource source = actor.Source!.Value.WithInstancePath(nested.InstanceId);
+                ? string.Concat(prefix, entity.Name)
+                : entity.Name;
+            ScenePrefabNodeSource source = entity.Source!.Value.WithInstancePath(nested.InstanceId);
 
-            scoped[i] = new SceneActorSnapshot(
-                ScopedNodeId(nested.InstanceId, actor.NodeId),
+            scoped[i] = new SceneEntitySnapshot(
+                ScopedNodeId(nested.InstanceId, entity.NodeId),
                 name,
-                actor.Layer,
-                actor.Tag,
-                actor.Active,
-                actor.Persistent,
-                actor.Pooled,
-                actor.Components,
+                entity.Layer,
+                entity.Tag,
+                entity.Active,
+                entity.Persistent,
+                entity.Pooled,
+                entity.Components,
                 parentNodeId,
                 source);
         }
@@ -572,17 +572,17 @@ internal static class ScenePrefabNestedScope
 
         return operation switch
         {
-            ScenePrefabAddActorOperation add => new ScenePrefabAddActorOperation(
-                ScopeActors([add.Actor], nested, sourcePrefabId, sourceLineage)[0],
+            ScenePrefabAddEntityOperation add => new ScenePrefabAddEntityOperation(
+                ScopeEntities([add.Entity], nested, sourcePrefabId, sourceLineage)[0],
                 add.AfterNodeId is { } afterNodeId ? ScopeId(afterNodeId) : null),
-            ScenePrefabRemoveActorOperation remove => new ScenePrefabRemoveActorOperation(
+            ScenePrefabRemoveEntityOperation remove => new ScenePrefabRemoveEntityOperation(
                 ScopeId(remove.NodeId)),
-            ScenePrefabReparentActorOperation reparent => new ScenePrefabReparentActorOperation(
+            ScenePrefabReparentEntityOperation reparent => new ScenePrefabReparentEntityOperation(
                 ScopeId(reparent.NodeId),
                 reparent.ParentNodeId is { } parentNodeId
                     ? ScopeId(parentNodeId)
                     : nested.ParentNodeId),
-            ScenePrefabSetActorFieldOperation setField => new ScenePrefabSetActorFieldOperation(
+            ScenePrefabSetEntityFieldOperation setField => new ScenePrefabSetEntityFieldOperation(
                 ScopeId(setField.NodeId),
                 setField.Field,
                 setField.Value),

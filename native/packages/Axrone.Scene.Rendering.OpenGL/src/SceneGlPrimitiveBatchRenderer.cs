@@ -188,7 +188,7 @@ public sealed class SceneGlPrimitiveBatchRenderer : IDisposable
                 hasTexture = true;
             }
 
-            Vec3 center = world.GetWorldPosition3D(item.Actor);
+            Vec3 center = world.GetWorldPosition3D(item.Entity);
             Vec3 right = cameraRight;
             Vec3 up = cameraUp;
             if (item.Mode == SceneBillboardMode.Cylindrical)
@@ -476,7 +476,7 @@ public sealed class SceneGlPrimitiveBatchRenderer : IDisposable
         in SceneLineRenderItem current,
         in Vec3 previousEnd,
         in Vec3 currentStart) =>
-        previous.Actor == current.Actor &&
+        previous.Entity == current.Entity &&
         previous.Width == current.Width &&
         previousEnd == currentStart;
 

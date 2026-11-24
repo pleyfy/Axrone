@@ -64,17 +64,17 @@ internal static class RenderingFixture
             bounds: new BoundingSphere3(Vec3.Zero, radius));
     }
 
-    public static SceneActor CreateCamera(
+    public static SceneEntity CreateCamera(
         SceneWorld world,
         Vec3 position,
         bool primary = false)
     {
-        SceneActor actor = world.CreateActor("Camera");
-        world.GetTransform3D(actor).SetPosition(position);
+        SceneEntity entity = world.CreateEntity("Camera");
+        world.GetTransform3D(entity).SetPosition(position);
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = primary;
-        world.AddData(actor, camera);
+        world.AddData(entity, camera);
         world.UpdateTransforms();
-        return actor;
+        return entity;
     }
 }

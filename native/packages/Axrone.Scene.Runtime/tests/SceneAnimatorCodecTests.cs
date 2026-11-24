@@ -216,11 +216,11 @@ public sealed class SceneAnimatorCodecTests
         };
 
         using SceneRuntime source = new(new SceneRuntimeOptions { Profile = CreateAnimationProfile() });
-        SceneActor actor = source.World.CreateActor("Animated");
-        source.World.GetTransform3D(actor).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
-        source.World.AddData(actor, animator);
-        source.World.AddData(actor, pathAgent);
-        source.World.AddData(actor, binding);
+        SceneEntity entity = source.World.CreateEntity("Animated");
+        source.World.GetTransform3D(entity).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
+        source.World.AddData(entity, animator);
+        source.World.AddData(entity, pathAgent);
+        source.World.AddData(entity, binding);
         source.World.UpdateTransforms();
 
         SceneSnapshot snapshot = source.CaptureSnapshot("prefab/animated");
@@ -228,8 +228,8 @@ public sealed class SceneAnimatorCodecTests
         using SceneRuntime target = new(new SceneRuntimeOptions { Profile = CreateAnimationProfile() });
         ScenePrefabInstantiationResult result = target.LoadSnapshot(snapshot);
 
-        result.Actors.Should().ContainSingle();
-        SceneActor loaded = result.Actors[0];
+        result.Entities.Should().ContainSingle();
+        SceneEntity loaded = result.Entities[0];
         target.World.GetData<SceneAnimator>(loaded).Should().Be(animator);
         target.World.GetData<ScenePathAgent>(loaded).Should().Be(pathAgent);
         target.World.GetData<SceneAnimationBinding>(loaded).Should().Be(binding);

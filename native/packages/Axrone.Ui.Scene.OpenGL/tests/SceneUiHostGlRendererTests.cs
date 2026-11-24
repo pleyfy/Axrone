@@ -46,7 +46,7 @@ public sealed class SceneUiHostGlRendererTests
         using GLContext context = new(api);
         using SceneWorld world = CreateWorld();
         using SceneUiHostBridge bridge = CreateBridge(world);
-        SceneActor actor = AddHost(world, SceneUiHostRenderMode.ScreenOverlay);
+        SceneEntity entity = AddHost(world, SceneUiHostRenderMode.ScreenOverlay);
         bridge.Sync();
         bridge.Update(in Viewport);
         using SceneUiHostGlRenderer renderer = new(context, bridge);
@@ -57,7 +57,7 @@ public sealed class SceneUiHostGlRendererTests
         renderer.LastScreenHosts.Should().Be(1);
         renderer.LastWorldHosts.Should().Be(0);
         api.CallLog.Should().Contain(static call => call.StartsWith("DrawArraysInstanced(", StringComparison.Ordinal));
-        _ = actor;
+        _ = entity;
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public sealed class SceneUiHostGlRendererTests
         using GLContext context = new(api);
         using SceneWorld world = CreateWorld();
         using SceneUiHostBridge bridge = CreateBridge(world);
-        SceneActor hostActor = AddHost(world, SceneUiHostRenderMode.WorldSpace);
+        SceneEntity hostEntity = AddHost(world, SceneUiHostRenderMode.WorldSpace);
         SceneCameraFrame camera = CreateCamera(world);
         bridge.Sync();
         using SceneUiHostGlRenderer renderer = new(context, bridge);
@@ -77,7 +77,7 @@ public sealed class SceneUiHostGlRendererTests
         renderer.LastWorldHosts.Should().Be(1);
         renderer.LastScreenHosts.Should().Be(0);
         renderer.SurfaceCount.Should().Be(1);
-        renderer.TryGetSurfaceSize(hostActor, out int width, out int height).Should().BeTrue();
+        renderer.TryGetSurfaceSize(hostEntity, out int width, out int height).Should().BeTrue();
         width.Should().Be(512);
         height.Should().Be(256);
         api.CallLog.Should().Contain(static call => call.StartsWith("GenFramebuffer(", StringComparison.Ordinal));
@@ -92,19 +92,19 @@ public sealed class SceneUiHostGlRendererTests
         using GLContext context = new(api);
         using SceneWorld world = CreateWorld();
         using SceneUiHostBridge bridge = CreateBridge(world);
-        SceneActor actor = AddHost(world, SceneUiHostRenderMode.WorldSpace);
+        SceneEntity entity = AddHost(world, SceneUiHostRenderMode.WorldSpace);
         SceneCameraFrame camera = CreateCamera(world);
         bridge.Sync();
         using SceneUiHostGlRenderer renderer = new(context, bridge);
         renderer.Render(world, camera, in Viewport, bridge);
 
-        ref SceneUiHost component = ref world.GetData<SceneUiHost>(actor);
+        ref SceneUiHost component = ref world.GetData<SceneUiHost>(entity);
         component.WorldWidth = 2.0f;
         component.WorldHeight = 1.0f;
         bridge.Sync();
         renderer.Render(world, camera, in Viewport, bridge);
 
-        renderer.TryGetSurfaceSize(actor, out int width, out int height).Should().BeTrue();
+        renderer.TryGetSurfaceSize(entity, out int width, out int height).Should().BeTrue();
         width.Should().Be(1024);
         height.Should().Be(512);
     }
@@ -116,8 +116,8 @@ public sealed class SceneUiHostGlRendererTests
         using GLContext context = new(api);
         using SceneWorld world = CreateWorld();
         using SceneUiHostBridge bridge = CreateBridge(world);
-        SceneActor actor = AddHost(world, SceneUiHostRenderMode.ScreenOverlay);
-        ref SceneUiHost component = ref world.GetData<SceneUiHost>(actor);
+        SceneEntity entity = AddHost(world, SceneUiHostRenderMode.ScreenOverlay);
+        ref SceneUiHost component = ref world.GetData<SceneUiHost>(entity);
         component.Visible = false;
         bridge.Sync();
         using SceneUiHostGlRenderer renderer = new(context, bridge);
@@ -135,14 +135,14 @@ public sealed class SceneUiHostGlRendererTests
         using GLContext context = new(api);
         using SceneWorld world = CreateWorld();
         using SceneUiHostBridge bridge = CreateBridge(world);
-        SceneActor actor = AddHost(world, SceneUiHostRenderMode.WorldSpace);
+        SceneEntity entity = AddHost(world, SceneUiHostRenderMode.WorldSpace);
         SceneCameraFrame camera = CreateCamera(world);
         bridge.Sync();
         using SceneUiHostGlRenderer renderer = new(context, bridge);
         renderer.Render(world, camera, in Viewport, bridge);
         renderer.SurfaceCount.Should().Be(1);
 
-        world.RemoveData<SceneUiHost>(actor);
+        world.RemoveData<SceneUiHost>(entity);
         bridge.Sync();
         renderer.Render(world, camera, in Viewport, bridge);
 
@@ -172,24 +172,24 @@ public sealed class SceneUiHostGlRendererTests
     private static SceneUiHostBridge CreateBridge(SceneWorld world) =>
         new(world, new SceneUiHostBridgeOptions { Assets = CreateTable() });
 
-    private static SceneActor AddHost(SceneWorld world, SceneUiHostRenderMode mode)
+    private static SceneEntity AddHost(SceneWorld world, SceneUiHostRenderMode mode)
     {
-        SceneActor actor = world.CreateActor("Hud");
+        SceneEntity entity = world.CreateEntity("Hud");
         SceneUiHost component = SceneUiHost.Default;
         component.AssetId = SceneStringId.FromName(AssetId);
         component.RenderMode = mode;
-        world.AddData(actor, component);
+        world.AddData(entity, component);
         world.UpdateTransforms();
-        return actor;
+        return entity;
     }
 
     private static SceneCameraFrame CreateCamera(SceneWorld world)
     {
-        SceneActor actor = world.CreateActor("Camera");
-        world.GetTransform3D(actor).SetPosition(new Vec3(0.0f, 0.0f, 5.0f));
+        SceneEntity entity = world.CreateEntity("Camera");
+        world.GetTransform3D(entity).SetPosition(new Vec3(0.0f, 0.0f, 5.0f));
         SceneCamera camera = SceneCamera.Default;
         camera.Primary = true;
-        world.AddData(actor, camera);
+        world.AddData(entity, camera);
         world.UpdateTransforms();
         SceneCameraFrame? frame = new SceneCameraFrameCollector().Collect(world, 320, 180);
         return frame!;

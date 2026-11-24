@@ -8,7 +8,7 @@ namespace Axrone.Scene2D;
 /// </summary>
 /// <remarks>
 /// The world is loop-thread confined. Disposing the facade disposes its world;
-/// actor creation after disposal throws <see cref="SceneDisposedException"/>.
+/// entity creation after disposal throws <see cref="SceneDisposedException"/>.
 /// Renderer profiles convert every payload through
 /// <see cref="Scene2DRendererBridge"/>; lean profiles keep staging payloads.
 /// </remarks>
@@ -63,15 +63,15 @@ public sealed class Scene2D : IDisposable
     /// <summary>Payload ownership mode resolved at creation.</summary>
     public Scene2DComponentMode Mode => _mode;
 
-    /// <summary>Number of live actors.</summary>
-    public int ActorCount => _world.ActorCount;
+    /// <summary>Number of live entities.</summary>
+    public int EntityCount => _world.EntityCount;
 
-    /// <summary>Allocated actor slot capacity.</summary>
+    /// <summary>Allocated entity slot capacity.</summary>
     public int Capacity => _world.Capacity;
 
-    /// <summary>Creates a camera actor with explicit camera settings.</summary>
-    public SceneActor CreateCameraActor(
-        in SceneActorConfig actorConfig,
+    /// <summary>Creates a camera entity with explicit camera settings.</summary>
+    public SceneEntity CreateCameraEntity(
+        in SceneEntityConfig entityConfig,
         in Scene2DCameraConfig cameraConfig)
     {
         ThrowIfDisposed();
@@ -79,61 +79,61 @@ public sealed class Scene2D : IDisposable
 
         Scene2DCamera camera = cameraConfig.ToComponent();
         Scene2DCamera2D camera2D = cameraConfig.ToDepthComponent();
-        SceneActor actor = _world.CreateActor(in actorConfig);
+        SceneEntity entity = _world.CreateEntity(in entityConfig);
         try
         {
             if (_mode == Scene2DComponentMode.Renderer)
             {
-                Scene2DRendererBridge.AttachCamera(_world, actor, in camera, in camera2D);
+                Scene2DRendererBridge.AttachCamera(_world, entity, in camera, in camera2D);
             }
             else
             {
-                _world.AddData(actor, in camera);
-                _world.AddData(actor, in camera2D);
+                _world.AddData(entity, in camera);
+                _world.AddData(entity, in camera2D);
             }
 
-            return actor;
+            return entity;
         }
         catch
         {
-            _world.DestroyActor(actor);
+            _world.DestroyEntity(entity);
             throw;
         }
     }
 
-    /// <summary>Creates a sprite actor with explicit sprite settings.</summary>
-    public SceneActor CreateSpriteActor(
-        in SceneActorConfig actorConfig,
+    /// <summary>Creates a sprite entity with explicit sprite settings.</summary>
+    public SceneEntity CreateSpriteEntity(
+        in SceneEntityConfig entityConfig,
         in Scene2DSpriteConfig spriteConfig)
     {
         ThrowIfDisposed();
         spriteConfig.Validate();
 
         Scene2DSpriteRenderer renderer = spriteConfig.ToComponent();
-        SceneActor actor = _world.CreateActor(in actorConfig);
+        SceneEntity entity = _world.CreateEntity(in entityConfig);
         try
         {
             if (_mode == Scene2DComponentMode.Renderer)
             {
-                Scene2DRendererBridge.AttachSprite(_world, actor, in renderer);
+                Scene2DRendererBridge.AttachSprite(_world, entity, in renderer);
             }
             else
             {
-                _world.AddData(actor, in renderer);
+                _world.AddData(entity, in renderer);
             }
 
-            return actor;
+            return entity;
         }
         catch
         {
-            _world.DestroyActor(actor);
+            _world.DestroyEntity(entity);
             throw;
         }
     }
 
-    /// <summary>Creates a sprite actor with a renderer and animator payload.</summary>
-    public SceneActor CreateAnimatedSpriteActor(
-        in SceneActorConfig actorConfig,
+    /// <summary>Creates a sprite entity with a renderer and animator payload.</summary>
+    public SceneEntity CreateAnimatedSpriteEntity(
+        in SceneEntityConfig entityConfig,
         in Scene2DSpriteConfig spriteConfig,
         in Scene2DSpriteAnimatorConfig animatorConfig)
     {
@@ -149,74 +149,74 @@ public sealed class Scene2D : IDisposable
 
         Scene2DSpriteRenderer renderer = spriteConfig.ToComponent();
         Scene2DSpriteAnimator animator = animatorConfig.ToComponent();
-        SceneActor actor = _world.CreateActor(in actorConfig);
+        SceneEntity entity = _world.CreateEntity(in entityConfig);
         try
         {
             if (_mode == Scene2DComponentMode.Renderer)
             {
-                Scene2DRendererBridge.AttachSprite(_world, actor, in renderer);
-                Scene2DRendererBridge.AttachAnimator(_world, actor, in animator, animatorConfig.Clip);
+                Scene2DRendererBridge.AttachSprite(_world, entity, in renderer);
+                Scene2DRendererBridge.AttachAnimator(_world, entity, in animator, animatorConfig.Clip);
             }
             else
             {
-                _world.AddData(actor, in renderer);
-                _world.AddData(actor, in animator);
+                _world.AddData(entity, in renderer);
+                _world.AddData(entity, in animator);
             }
 
-            return actor;
+            return entity;
         }
         catch
         {
-            _world.DestroyActor(actor);
+            _world.DestroyEntity(entity);
             throw;
         }
     }
 
-    /// <summary>Creates a mask actor with explicit mask settings.</summary>
-    public SceneActor CreateMaskActor(
-        in SceneActorConfig actorConfig,
+    /// <summary>Creates a mask entity with explicit mask settings.</summary>
+    public SceneEntity CreateMaskEntity(
+        in SceneEntityConfig entityConfig,
         in Scene2DSpriteMaskConfig maskConfig)
     {
         ThrowIfDisposed();
         maskConfig.Validate();
 
         Scene2DSpriteMask mask = maskConfig.ToComponent();
-        SceneActor actor = _world.CreateActor(in actorConfig);
+        SceneEntity entity = _world.CreateEntity(in entityConfig);
         try
         {
             if (_mode == Scene2DComponentMode.Renderer)
             {
-                Scene2DRendererBridge.AttachMask(_world, actor, in mask);
+                Scene2DRendererBridge.AttachMask(_world, entity, in mask);
             }
             else
             {
-                _world.AddData(actor, in mask);
+                _world.AddData(entity, in mask);
             }
 
-            return actor;
+            return entity;
         }
         catch
         {
-            _world.DestroyActor(actor);
+            _world.DestroyEntity(entity);
             throw;
         }
     }
 
     /// <summary>
-    /// Creates one sprite actor per spec inside a single structural batch.
+    /// Creates one sprite entity per spec inside a single structural batch.
     /// Every spec receives the same component set, so the batch stays on one
-    /// archetype. Actor handles are written to <paramref name="destination"/>
+    /// archetype. Entity handles are written to <paramref name="destination"/>
     /// in input order; no managed allocation occurs once the world has warmed
-    /// its actor slots and component columns.
+    /// its entity slots and component columns.
     /// </summary>
-    /// <returns>Number of sprite actors created.</returns>
+    /// <returns>Number of sprite entities created.</returns>
     /// <exception cref="ArgumentException">
     /// The destination span is shorter than the spec span.
     /// </exception>
     /// <exception cref="SceneValidationException">A spec is malformed.</exception>
     public int CreateSprites(
         ReadOnlySpan<Scene2DSpriteSpec> specs,
-        Span<SceneActor> destination)
+        Span<SceneEntity> destination)
     {
         ThrowIfDisposed();
 
@@ -242,23 +242,23 @@ public sealed class Scene2D : IDisposable
             for (int i = 0; i < specs.Length; i++)
             {
                 ref readonly Scene2DSpriteSpec spec = ref specs[i];
-                SceneActorConfig actorConfig = spec.ActorConfig;
-                SceneActor actor = _world.CreateActor(in actorConfig);
-                destination[i] = actor;
+                SceneEntityConfig entityConfig = spec.EntityConfig;
+                SceneEntity entity = _world.CreateEntity(in entityConfig);
+                destination[i] = entity;
                 created = i + 1;
 
                 Scene2DSpriteRenderer renderer = spec.Sprite.ToComponent();
                 if (_mode == Scene2DComponentMode.Renderer)
                 {
-                    Scene2DRendererBridge.AttachSprite(_world, actor, in renderer);
+                    Scene2DRendererBridge.AttachSprite(_world, entity, in renderer);
                 }
                 else
                 {
-                    _world.AddData(actor, in renderer);
+                    _world.AddData(entity, in renderer);
                 }
 
                 Vec2 position = spec.Position;
-                _world.GetTransform2D(actor).SetPosition(in position);
+                _world.GetTransform2D(entity).SetPosition(in position);
             }
 
             _world.UpdateTransforms();
@@ -267,7 +267,7 @@ public sealed class Scene2D : IDisposable
         {
             for (int i = created - 1; i >= 0; i--)
             {
-                _world.DestroyActor(destination[i]);
+                _world.DestroyEntity(destination[i]);
             }
 
             throw;
@@ -308,6 +308,6 @@ internal static class Scene2DThrowHelper
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void ThrowDestinationTooSmall(int destinationLength, int required) =>
         throw new ArgumentException(
-            $"Destination span holds {destinationLength} actors but {required} sprites were requested.",
+            $"Destination span holds {destinationLength} entities but {required} sprites were requested.",
             nameof(destinationLength));
 }

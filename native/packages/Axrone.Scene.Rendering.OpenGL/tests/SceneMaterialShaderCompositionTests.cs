@@ -137,9 +137,9 @@ public sealed class SceneMaterialShaderCompositionTests
         cache.TryGetMaterial(materialId, out SceneGlMaterial? material).Should().BeTrue();
         material!.TextureSlots.Length.Should().Be(0);
 
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 320, 180)!;
-        SceneRenderItem item = fixture.CreateItem(rendererActor);
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out SceneEntity rendererEntity);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 320, 180)!;
+        SceneRenderItem item = fixture.CreateItem(rendererEntity);
         item.MaterialId = materialId;
         var executor = new SceneGlDrawExecutor(fixture.Context, cache);
         var state = new SceneRenderFrameState();
@@ -221,9 +221,9 @@ public sealed class SceneMaterialShaderCompositionTests
         using var fixture = new SceneGlFixture();
         using var cache = new SceneGlAssetCache(fixture.Context, fixture.Assets);
         _ = cache.UploadAll();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out SceneActor rendererActor);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 320, 180)!;
-        SceneRenderItem item = fixture.CreateItem(rendererActor);
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out SceneEntity rendererEntity);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 320, 180)!;
+        SceneRenderItem item = fixture.CreateItem(rendererEntity);
         var executor = new SceneGlDrawExecutor(fixture.Context, cache);
         var state = new SceneRenderFrameState();
         state.Begin(0);

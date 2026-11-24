@@ -3,7 +3,7 @@ namespace Axrone.Scene.Snapshot;
 /// <summary>Snapshot loading options.</summary>
 public sealed record SceneSnapshotLoadOptions : ScenePrefabInstantiateOptions
 {
-    /// <summary>Whether existing actors and render passes are cleared first.</summary>
+    /// <summary>Whether existing entities and render passes are cleared first.</summary>
     public bool ClearExisting { get; init; } = true;
 }
 
@@ -57,7 +57,7 @@ public sealed class SceneSnapshotLoader
         {
             if (options.ClearExisting)
             {
-                _world.DestroyAllActors();
+                _world.DestroyAllEntities();
                 clearedPasses = _assets.RenderPasses.Clear();
             }
 

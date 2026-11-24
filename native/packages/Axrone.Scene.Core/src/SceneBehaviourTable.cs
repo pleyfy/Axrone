@@ -8,17 +8,17 @@ internal interface ISceneBehaviourHost
 
     bool IsStarted { get; }
 
-    bool IsActiveInHierarchy(SceneActor actor);
+    bool IsActiveInHierarchy(SceneEntity entity);
 
-    void ReportBehaviourFault(ISceneBehaviour behaviour, SceneActor actor, int slot, Exception exception);
+    void ReportBehaviourFault(ISceneBehaviour behaviour, SceneEntity entity, int slot, Exception exception);
 }
 
-/// <summary>One managed behaviour slot; <see cref="Next"/> links the actor list.</summary>
+/// <summary>One managed behaviour slot; <see cref="Next"/> links the entity list.</summary>
 internal struct SceneBehaviourSlot
 {
     public ISceneBehaviour? Behaviour;
     public SceneBehaviourContext? Context;
-    public int ActorSlot;
+    public int EntitySlot;
     public int Next;
     public Action? Start;
     public Action? Enable;
@@ -39,7 +39,7 @@ internal sealed class SceneBehaviourTable
 {
     private const int MinimumCapacity = 16;
 
-    private readonly SceneActorTable _actors;
+    private readonly SceneEntityTable _entities;
     private readonly SceneComponentRegistry _registry;
     private readonly ISceneBehaviourHost _host;
     private readonly SceneChangeJournal _changes;
@@ -53,13 +53,13 @@ internal sealed class SceneBehaviourTable
     private int _orderCount;
 
     public SceneBehaviourTable(
-        SceneActorTable actors,
+        SceneEntityTable entities,
         SceneComponentRegistry registry,
         ISceneBehaviourHost host,
         SceneChangeJournal changes,
         int initialCapacity = 32)
     {
-        ArgumentNullException.ThrowIfNull(actors);
+        ArgumentNullException.ThrowIfNull(entities);
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(changes);
@@ -70,7 +70,7 @@ internal sealed class SceneBehaviourTable
         }
 
         int capacity = Math.Max(initialCapacity, MinimumCapacity);
-        _actors = actors;
+        _entities = entities;
         _registry = registry;
         _host = host;
         _changes = changes;
@@ -99,26 +99,26 @@ internal sealed class SceneBehaviourTable
     public bool IsStarted => _host.IsStarted;
 
     /// <summary>Creates and attaches a behaviour through its registered descriptor.</summary>
-    public T Add<T>(SceneActor actor, T behaviour)
+    public T Add<T>(SceneEntity entity, T behaviour)
         where T : class, ISceneBehaviour
     {
         ArgumentNullException.ThrowIfNull(behaviour);
         SceneBehaviourDescriptor descriptor = _registry.GetBehaviourByType(typeof(T));
-        AddCore(actor, descriptor, behaviour);
+        AddCore(entity, descriptor, behaviour);
         return behaviour;
     }
 
     /// <summary>Creates a behaviour from its descriptor and attaches it.</summary>
-    public ISceneBehaviour Add(SceneActor actor, SceneBehaviourDescriptor descriptor)
+    public ISceneBehaviour Add(SceneEntity entity, SceneBehaviourDescriptor descriptor)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ISceneBehaviour behaviour = descriptor.Create();
-        AddCore(actor, descriptor, behaviour);
+        AddCore(entity, descriptor, behaviour);
         return behaviour;
     }
 
     /// <summary>Creates and attaches a behaviour using its registered factory.</summary>
-    public T Add<T>(SceneActor actor)
+    public T Add<T>(SceneEntity entity)
         where T : class, ISceneBehaviour
     {
         SceneBehaviourDescriptor descriptor = _registry.GetBehaviourByType(typeof(T));
@@ -129,15 +129,15 @@ internal sealed class SceneBehaviourTable
                 $"Behaviour factory for '{descriptor.Name}' did not produce {typeof(T).Name}.");
         }
 
-        AddCore(actor, descriptor, behaviour);
+        AddCore(entity, descriptor, behaviour);
         return behaviour;
     }
 
-    /// <summary>Removes every behaviour attached to an actor.</summary>
-    public void RemoveAllOnActor(SceneActor actor)
+    /// <summary>Removes every behaviour attached to an entity.</summary>
+    public void RemoveAllOnEntity(SceneEntity entity)
     {
-        int actorSlot = _actors.Resolve(actor);
-        int slot = _actors.BehaviourHeadAt(actorSlot);
+        int entitySlot = _entities.Resolve(entity);
+        int slot = _entities.BehaviourHeadAt(entitySlot);
         while (slot >= 0)
         {
             int next = _slots[slot].Next;
@@ -150,45 +150,45 @@ internal sealed class SceneBehaviourTable
         }
     }
 
-    /// <summary>Returns the first behaviour of a type on an actor.</summary>
-    public ISceneBehaviour? Get(SceneActor actor, SceneBehaviourTypeId typeId)
+    /// <summary>Returns the first behaviour of a type on an entity.</summary>
+    public ISceneBehaviour? Get(SceneEntity entity, SceneBehaviourTypeId typeId)
     {
-        int actorSlot = _actors.Resolve(actor);
-        int slot = Find(actorSlot, typeId);
+        int entitySlot = _entities.Resolve(entity);
+        int slot = Find(entitySlot, typeId);
         return slot < 0 ? null : _slots[slot].Behaviour;
     }
 
-    /// <summary>Returns the first behaviour of <typeparamref name="T"/> on an actor.</summary>
-    public T? Get<T>(SceneActor actor)
+    /// <summary>Returns the first behaviour of <typeparamref name="T"/> on an entity.</summary>
+    public T? Get<T>(SceneEntity entity)
         where T : class, ISceneBehaviour
     {
         SceneBehaviourDescriptor descriptor = _registry.GetBehaviourByType(typeof(T));
-        return Get(actor, descriptor.TypeId) as T;
+        return Get(entity, descriptor.TypeId) as T;
     }
 
-    /// <summary>Returns the attachment context of the first behaviour of a type on an actor.</summary>
-    public SceneBehaviourContext? GetContext(SceneActor actor, SceneBehaviourTypeId typeId)
+    /// <summary>Returns the attachment context of the first behaviour of a type on an entity.</summary>
+    public SceneBehaviourContext? GetContext(SceneEntity entity, SceneBehaviourTypeId typeId)
     {
-        int actorSlot = _actors.Resolve(actor);
-        int slot = Find(actorSlot, typeId);
+        int entitySlot = _entities.Resolve(entity);
+        int slot = Find(entitySlot, typeId);
         return slot < 0 ? null : _slots[slot].Context;
     }
 
     /// <summary>Returns the attachment context of the first behaviour of <typeparamref name="T"/>.</summary>
-    public SceneBehaviourContext? GetContext<T>(SceneActor actor)
+    public SceneBehaviourContext? GetContext<T>(SceneEntity entity)
         where T : class, ISceneBehaviour
     {
         SceneBehaviourDescriptor descriptor = _registry.GetBehaviourByType(typeof(T));
-        return GetContext(actor, descriptor.TypeId);
+        return GetContext(entity, descriptor.TypeId);
     }
 
-    /// <summary>Whether an actor carries a behaviour of <typeparamref name="T"/>.</summary>
-    public bool Has<T>(SceneActor actor)
+    /// <summary>Whether an entity carries a behaviour of <typeparamref name="T"/>.</summary>
+    public bool Has<T>(SceneEntity entity)
         where T : class, ISceneBehaviour
     {
         SceneBehaviourDescriptor descriptor = _registry.GetBehaviourByType(typeof(T));
-        int actorSlot = _actors.Resolve(actor);
-        return Find(actorSlot, descriptor.TypeId) >= 0;
+        int entitySlot = _entities.Resolve(entity);
+        return Find(entitySlot, descriptor.TypeId) >= 0;
     }
 
     /// <summary>Removes a specific behaviour instance.</summary>
@@ -204,24 +204,24 @@ internal sealed class SceneBehaviourTable
         }
 
         SceneBehaviourContext context = _slots[slot].Context!;
-        int actorSlot = _slots[slot].ActorSlot;
-        SceneActor actor = context.Actor;
+        int entitySlot = _slots[slot].EntitySlot;
+        SceneEntity entity = context.Entity;
         SceneBehaviourTypeId typeId = context.TypeId;
-        Unlink(actorSlot, slot);
+        Unlink(entitySlot, slot);
 
         TeardownSlot(slot, reportFaults: true);
         RebuildOrder();
-        _changes.Write(SceneChange.BehaviourRemoved(actor, typeId));
+        _changes.Write(SceneChange.BehaviourRemoved(entity, typeId));
         return true;
     }
 
-    /// <summary>Removes the first behaviour of <typeparamref name="T"/> from an actor.</summary>
-    public bool Remove<T>(SceneActor actor)
+    /// <summary>Removes the first behaviour of <typeparamref name="T"/> from an entity.</summary>
+    public bool Remove<T>(SceneEntity entity)
         where T : class, ISceneBehaviour
     {
         SceneBehaviourDescriptor descriptor = _registry.GetBehaviourByType(typeof(T));
-        int actorSlot = _actors.Resolve(actor);
-        int slot = Find(actorSlot, descriptor.TypeId);
+        int entitySlot = _entities.Resolve(entity);
+        int slot = Find(entitySlot, descriptor.TypeId);
         if (slot < 0)
         {
             return false;
@@ -276,11 +276,11 @@ internal sealed class SceneBehaviourTable
         }
     }
 
-    /// <summary>Applies hierarchy activation to every behaviour on an actor.</summary>
-    public void SetActiveInHierarchy(in SceneActor actor, bool active)
+    /// <summary>Applies hierarchy activation to every behaviour on an entity.</summary>
+    public void SetActiveInHierarchy(in SceneEntity entity, bool active)
     {
-        int actorSlot = _actors.Resolve(actor);
-        int slot = _actors.BehaviourHeadAt(actorSlot);
+        int entitySlot = _entities.Resolve(entity);
+        int slot = _entities.BehaviourHeadAt(entitySlot);
 
         while (slot >= 0)
         {
@@ -450,7 +450,7 @@ internal sealed class SceneBehaviourTable
         (entry.Subscriptions ??= []).Add(subscription);
     }
 
-    private void AddCore(SceneActor actor, SceneBehaviourDescriptor descriptor, ISceneBehaviour behaviour)
+    private void AddCore(SceneEntity entity, SceneBehaviourDescriptor descriptor, ISceneBehaviour behaviour)
     {
         if (!descriptor.ComponentType.IsInstanceOfType(behaviour))
         {
@@ -463,32 +463,32 @@ internal sealed class SceneBehaviourTable
         {
             throw new SceneValidationException(
                 SceneErrorCodes.ValidationInvalid,
-                $"{behaviour.GetType().Name} is already attached to an actor.");
+                $"{behaviour.GetType().Name} is already attached to an entity.");
         }
 
-        int actorSlot = _actors.Resolve(actor);
+        int entitySlot = _entities.Resolve(entity);
 
-        if (descriptor.IsSingleton && Find(actorSlot, descriptor.TypeId) >= 0)
+        if (descriptor.IsSingleton && Find(entitySlot, descriptor.TypeId) >= 0)
         {
-            SceneThrowHelper.ThrowComponentDuplicate(in actor, descriptor.ComponentType.Name);
+            SceneThrowHelper.ThrowComponentDuplicate(in entity, descriptor.ComponentType.Name);
         }
 
         int slot = AllocateSlot();
         var context = new SceneBehaviourContext(
             this,
             slot,
-            actor,
+            entity,
             _host.World,
             descriptor.TypeId,
             descriptor.Priority);
-        context.ActiveInHierarchyFlag = _host.IsActiveInHierarchy(actor);
+        context.ActiveInHierarchyFlag = _host.IsActiveInHierarchy(entity);
 
         ref SceneBehaviourSlot entry = ref _slots[slot];
         entry.Behaviour = behaviour;
         entry.Context = context;
-        entry.ActorSlot = actorSlot;
-        entry.Next = _actors.BehaviourHeadAt(actorSlot);
-        _actors.BehaviourHeadAt(actorSlot) = slot;
+        entry.EntitySlot = entitySlot;
+        entry.Next = _entities.BehaviourHeadAt(entitySlot);
+        _entities.BehaviourHeadAt(entitySlot) = slot;
         _slotByBehaviour.Add(behaviour, slot);
         _count++;
 
@@ -503,13 +503,13 @@ internal sealed class SceneBehaviourTable
         }
         catch (Exception)
         {
-            Unlink(actorSlot, slot);
+            Unlink(entitySlot, slot);
             TeardownSlot(slot, reportFaults: false);
             throw;
         }
 
         RebuildOrder();
-        _changes.Write(SceneChange.BehaviourAdded(actor, descriptor.TypeId));
+        _changes.Write(SceneChange.BehaviourAdded(entity, descriptor.TypeId));
     }
 
     private void StartCore(int slot)
@@ -529,8 +529,8 @@ internal sealed class SceneBehaviourTable
             ? SceneBehaviourState.Enabled
             : SceneBehaviourState.Disabled;
         _changes.Write(shouldDispatch
-            ? SceneChange.BehaviourEnabled(context.Actor, context.TypeId)
-            : SceneChange.BehaviourDisabled(context.Actor, context.TypeId));
+            ? SceneChange.BehaviourEnabled(context.Entity, context.TypeId)
+            : SceneChange.BehaviourDisabled(context.Entity, context.TypeId));
 
         if (shouldDispatch)
         {
@@ -568,13 +568,13 @@ internal sealed class SceneBehaviourTable
         if (shouldDispatch && context.LifecycleState == SceneBehaviourState.Disabled)
         {
             context.LifecycleState = SceneBehaviourState.Enabled;
-            _changes.Write(SceneChange.BehaviourEnabled(context.Actor, context.TypeId));
+            _changes.Write(SceneChange.BehaviourEnabled(context.Entity, context.TypeId));
             entry.Enable?.Invoke();
         }
         else if (!shouldDispatch && context.LifecycleState == SceneBehaviourState.Enabled)
         {
             context.LifecycleState = SceneBehaviourState.Disabled;
-            _changes.Write(SceneChange.BehaviourDisabled(context.Actor, context.TypeId));
+            _changes.Write(SceneChange.BehaviourDisabled(context.Entity, context.TypeId));
             entry.Disable?.Invoke();
         }
     }
@@ -616,7 +616,7 @@ internal sealed class SceneBehaviourTable
             return;
         }
 
-        SceneActor actor = context.Actor;
+        SceneEntity entity = context.Entity;
         Exception? fault = null;
 
         if (context.LifecycleState == SceneBehaviourState.Enabled)
@@ -638,7 +638,7 @@ internal sealed class SceneBehaviourTable
         entry.Subscriptions = null;
         entry.Behaviour = null;
         entry.Context = null;
-        entry.ActorSlot = -1;
+        entry.EntitySlot = -1;
         entry.Next = _freeHead;
         _freeHead = slot;
         _slotByBehaviour.Remove(behaviour);
@@ -646,7 +646,7 @@ internal sealed class SceneBehaviourTable
 
         if (fault is not null && reportFaults)
         {
-            _host.ReportBehaviourFault(behaviour, actor, slot, fault);
+            _host.ReportBehaviourFault(behaviour, entity, slot, fault);
         }
     }
 
@@ -690,7 +690,7 @@ internal sealed class SceneBehaviourTable
     }
 
     private void ReportFault(int slot, ISceneBehaviour behaviour, Exception exception) =>
-        _host.ReportBehaviourFault(behaviour, _slots[slot].Context!.Actor, slot, exception);
+        _host.ReportBehaviourFault(behaviour, _slots[slot].Context!.Entity, slot, exception);
 
     private void ValidateContext(SceneBehaviourContext context)
     {
@@ -738,15 +738,15 @@ internal sealed class SceneBehaviourTable
             ref SceneBehaviourSlot entry = ref _slots[slot];
             entry.Behaviour = null;
             entry.Context = null;
-            entry.ActorSlot = -1;
+            entry.EntitySlot = -1;
             entry.Next = _freeHead;
             _freeHead = slot;
         }
     }
 
-    private int Find(int actorSlot, SceneBehaviourTypeId typeId)
+    private int Find(int entitySlot, SceneBehaviourTypeId typeId)
     {
-        for (int slot = _actors.BehaviourHeadAt(actorSlot); slot >= 0; slot = _slots[slot].Next)
+        for (int slot = _entities.BehaviourHeadAt(entitySlot); slot >= 0; slot = _slots[slot].Next)
         {
             if (_slots[slot].Context?.TypeId == typeId)
             {
@@ -757,20 +757,20 @@ internal sealed class SceneBehaviourTable
         return -1;
     }
 
-    private void Unlink(int actorSlot, int slot)
+    private void Unlink(int entitySlot, int slot)
     {
-        if ((uint)actorSlot >= (uint)_actors.Capacity)
+        if ((uint)entitySlot >= (uint)_entities.Capacity)
         {
             return;
         }
 
-        ref SceneActorRecord actor = ref _actors.RecordAt(actorSlot);
-        if ((actor.Meta.Flags & SceneActorFlags.IsFree) != 0)
+        ref SceneEntityRecord entity = ref _entities.RecordAt(entitySlot);
+        if ((entity.Meta.Flags & SceneEntityFlags.IsFree) != 0)
         {
             return;
         }
 
-        ref int head = ref _actors.BehaviourHeadAt(actorSlot);
+        ref int head = ref _entities.BehaviourHeadAt(entitySlot);
         if (head == slot)
         {
             head = _slots[slot].Next;

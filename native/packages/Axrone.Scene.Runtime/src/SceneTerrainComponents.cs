@@ -1,7 +1,7 @@
 namespace Axrone.Scene.Runtime;
 
 /// <summary>
-/// Identifies one committed terrain chunk rendered by a scene actor. The runtime
+/// Identifies one committed terrain chunk rendered by a scene entity. The runtime
 /// resolves the terrain engine through <see cref="TerrainId"/>; the component itself stays
 /// unmanaged so it can live in the scene component column.
 /// </summary>

@@ -10,10 +10,10 @@ public enum SceneComponentTraits : ushort
     /// <summary>No special traits.</summary>
     None = 0,
 
-    /// <summary>At most one instance may be attached to an actor.</summary>
+    /// <summary>At most one instance may be attached to an entity.</summary>
     Singleton = 1 << 0,
 
-    /// <summary>Every actor created through the world receives this component.</summary>
+    /// <summary>Every entity created through the world receives this component.</summary>
     Required = 1 << 1,
 
     /// <summary>The component is visible to editor inspectors.</summary>
@@ -28,6 +28,6 @@ public enum SceneComponentTraits : ushort
     /// <summary>The component is retained for compatibility and will be removed.</summary>
     Deprecated = 1 << 5,
 
-    /// <summary>The component may appear more than once on an actor.</summary>
+    /// <summary>The component may appear more than once on an entity.</summary>
     MultiInstance = 1 << 6
 }

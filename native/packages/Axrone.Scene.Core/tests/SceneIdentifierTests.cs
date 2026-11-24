@@ -8,25 +8,25 @@ using Xunit;
 public sealed class SceneIdentifierTests
 {
     [Fact]
-    public void SceneActor_FromSlot_RoundTrips()
+    public void SceneEntity_FromSlot_RoundTrips()
     {
-        SceneActor actor = SceneActor.FromSlot(3, new Generation(2));
+        SceneEntity entity = SceneEntity.FromSlot(3, new Generation(2));
 
-        actor.IsValid.Should().BeTrue();
-        actor.Slot.Should().Be(3);
-        actor.Generation.Value.Should().Be(2U);
-        actor.Entity.Id.Value.Should().Be(4);
-        actor.Entity.Version.Value.Should().Be(2);
-        actor.ToString().Should().Be("SceneActor[3v2]");
+        entity.IsValid.Should().BeTrue();
+        entity.Slot.Should().Be(3);
+        entity.Generation.Value.Should().Be(2U);
+        entity.Entity.Id.Value.Should().Be(4);
+        entity.Entity.Version.Value.Should().Be(2);
+        entity.ToString().Should().Be("SceneEntity[3v2]");
     }
 
     [Fact]
-    public void SceneActor_Null_IsNotValid()
+    public void SceneEntity_Null_IsNotValid()
     {
-        SceneActor.Null.IsNull.Should().BeTrue();
-        SceneActor.Null.IsValid.Should().BeFalse();
-        SceneActor.Null.Slot.Should().Be(-1);
-        SceneActor.Null.ToString().Should().Be("SceneActor[Null]");
+        SceneEntity.Null.IsNull.Should().BeTrue();
+        SceneEntity.Null.IsValid.Should().BeFalse();
+        SceneEntity.Null.Slot.Should().Be(-1);
+        SceneEntity.Null.ToString().Should().Be("SceneEntity[Null]");
     }
 
     [Fact]

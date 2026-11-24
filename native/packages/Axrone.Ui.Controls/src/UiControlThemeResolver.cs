@@ -104,7 +104,7 @@ public readonly record struct UiControlVariantTokens(
         new UiThemeTokenId(34));
 }
 
-/// <summary>Resolves theme scale factors and variant palettes for controls.</summary>
+/// <summary>Resolves theme scale fentities and variant palettes for controls.</summary>
 public static class UiControlThemeResolver
 {
     /// <summary>Gets the reference control height for scale resolution.</summary>

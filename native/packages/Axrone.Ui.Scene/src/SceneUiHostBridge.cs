@@ -16,19 +16,19 @@ public sealed record SceneUiHostBridgeOptions
     public int MaxHosts { get; init; } = 64;
 }
 
-/// <summary>One live host: actor, component copy and compiled runtime.</summary>
+/// <summary>One live host: entity, component copy and compiled runtime.</summary>
 public sealed class SceneUiHostInstance
 {
-    internal SceneUiHostInstance(int order, SceneActor actor, in SceneUiHost component, UiHostRuntime runtime)
+    internal SceneUiHostInstance(int order, SceneEntity entity, in SceneUiHost component, UiHostRuntime runtime)
     {
         Order = order;
-        Actor = actor;
+        Entity = entity;
         Component = component;
         Runtime = runtime;
     }
 
-    /// <summary>Gets the owning actor.</summary>
-    public SceneActor Actor { get; }
+    /// <summary>Gets the owning entity.</summary>
+    public SceneEntity Entity { get; }
 
     /// <summary>Gets the current component copy.</summary>
     public SceneUiHost Component { get; internal set; }
@@ -71,7 +71,7 @@ public sealed class SceneUiHostBridge : IDisposable
     private readonly SceneWorld _world;
     private readonly SceneUiHostBridgeOptions _options;
     private readonly List<SceneUiHostInstance> _hosts = new();
-    private readonly Dictionary<SceneActor, SceneUiHostInstance> _byActor = new();
+    private readonly Dictionary<SceneEntity, SceneUiHostInstance> _byEntity = new();
     private readonly List<SceneUiHostInstance> _scratch = new();
     private readonly UiInputAdapter _adapter = new();
     private SceneUiHostInstance? _activeHost;
@@ -107,7 +107,7 @@ public sealed class SceneUiHostBridge : IDisposable
         for (int i = _hosts.Count - 1; i >= 0; i--)
         {
             SceneUiHostInstance host = _hosts[i];
-            if (!_world.TryGetData(host.Actor, out SceneUiHost component) || !component.Enabled)
+            if (!_world.TryGetData(host.Entity, out SceneUiHost component) || !component.Enabled)
             {
                 RemoveAt(i);
                 continue;
@@ -132,18 +132,18 @@ public sealed class SceneUiHostBridge : IDisposable
             host.Component = component;
         }
 
-        foreach (SceneActor actor in _world.Actors)
+        foreach (SceneEntity entity in _world.Entities)
         {
             if (_hosts.Count >= _options.MaxHosts ||
-                _byActor.ContainsKey(actor) ||
-                !_world.TryGetData(actor, out SceneUiHost component) ||
+                _byEntity.ContainsKey(entity) ||
+                !_world.TryGetData(entity, out SceneUiHost component) ||
                 !component.Enabled ||
                 !component.AssetId.IsValid)
             {
                 continue;
             }
 
-            TryAddHost(actor, in component);
+            TryAddHost(entity, in component);
         }
     }
 
@@ -179,19 +179,19 @@ public sealed class SceneUiHostBridge : IDisposable
         return false;
     }
 
-    /// <summary>Gets the host of an actor.</summary>
-    public bool TryGetHost(SceneActor actor, [NotNullWhen(true)] out SceneUiHostInstance? host) =>
-        _byActor.TryGetValue(actor, out host);
+    /// <summary>Gets the host of an entity.</summary>
+    public bool TryGetHost(SceneEntity entity, [NotNullWhen(true)] out SceneUiHostInstance? host) =>
+        _byEntity.TryGetValue(entity, out host);
 
     /// <summary>
     /// Rebuilds one host's runtime from its asset. Returns false when the asset
     /// cannot be resolved or decoded.
     /// </summary>
-    public bool Reload(SceneActor actor)
+    public bool Reload(SceneEntity entity)
     {
         ThrowIfDisposed();
-        if (!_byActor.TryGetValue(actor, out SceneUiHostInstance? host) ||
-            !_world.TryGetData(actor, out SceneUiHost component))
+        if (!_byEntity.TryGetValue(entity, out SceneUiHostInstance? host) ||
+            !_world.TryGetData(entity, out SceneUiHost component))
         {
             return false;
         }
@@ -206,7 +206,7 @@ public sealed class SceneUiHostBridge : IDisposable
         for (int i = _hosts.Count - 1; i >= 0; i--)
         {
             SceneUiHostInstance host = _hosts[i];
-            if (!_world.TryGetData(host.Actor, out SceneUiHost component) || !TryRebind(host, in component))
+            if (!_world.TryGetData(host.Entity, out SceneUiHost component) || !TryRebind(host, in component))
             {
                 RemoveAt(i);
             }
@@ -267,7 +267,7 @@ public sealed class SceneUiHostBridge : IDisposable
             SceneUiHost component = host.Component;
             if (!TryMapWorldPointer(
                     _world,
-                    host.Actor,
+                    host.Entity,
                     in component,
                     in viewport,
                     camera,
@@ -360,7 +360,7 @@ public sealed class SceneUiHostBridge : IDisposable
     /// </summary>
     public static bool TryMapWorldPointer(
         SceneWorld world,
-        SceneActor actor,
+        SceneEntity entity,
         in SceneUiHost component,
         in UiViewport screenViewport,
         SceneCameraFrame camera,
@@ -373,13 +373,13 @@ public sealed class SceneUiHostBridge : IDisposable
         surfacePoint = default;
         distance = float.PositiveInfinity;
 
-        if (screenViewport.Width <= 0.0f || screenViewport.Height <= 0.0f || !world.HasData<SceneTransform3D>(actor))
+        if (screenViewport.Width <= 0.0f || screenViewport.Height <= 0.0f || !world.HasData<SceneTransform3D>(entity))
         {
             return false;
         }
 
         Vec3 cameraPosition = camera.Position;
-        if (!SceneUiHostMath.TryBuildWorldModel(world, actor, in component, in cameraPosition, out Mat4 model) ||
+        if (!SceneUiHostMath.TryBuildWorldModel(world, entity, in component, in cameraPosition, out Mat4 model) ||
             !camera.ViewProjectionMatrix.Invert(out Mat4 inverseViewProjection) ||
             !model.Invert(out Mat4 inverseModel))
         {
@@ -436,7 +436,7 @@ public sealed class SceneUiHostBridge : IDisposable
         }
 
         _hosts.Clear();
-        _byActor.Clear();
+        _byEntity.Clear();
         _scratch.Clear();
         _activeHost = null;
         Text.Dispose();
@@ -447,7 +447,7 @@ public sealed class SceneUiHostBridge : IDisposable
         if (_activeHost is not null &&
             _activeHost.Component.ReceiveInput &&
             _activeHost.IsRenderable &&
-            _byActor.TryGetValue(_activeHost.Actor, out SceneUiHostInstance? live) &&
+            _byEntity.TryGetValue(_activeHost.Entity, out SceneUiHostInstance? live) &&
             ReferenceEquals(live, _activeHost))
         {
             return _activeHost;
@@ -471,7 +471,7 @@ public sealed class SceneUiHostBridge : IDisposable
         return best;
     }
 
-    private bool TryAddHost(SceneActor actor, in SceneUiHost component)
+    private bool TryAddHost(SceneEntity entity, in SceneUiHost component)
     {
         UiHostRuntimeOptions runtimeOptions = _options.Runtime;
         if (_options.Assets is null ||
@@ -487,9 +487,9 @@ public sealed class SceneUiHostBridge : IDisposable
             return false;
         }
 
-        var host = new SceneUiHostInstance(++_order, actor, in component, runtime);
+        var host = new SceneUiHostInstance(++_order, entity, in component, runtime);
         _hosts.Add(host);
-        _byActor.Add(actor, host);
+        _byEntity.Add(entity, host);
         Revision++;
         return true;
     }
@@ -511,14 +511,14 @@ public sealed class SceneUiHostBridge : IDisposable
         }
 
         host.Runtime.Dispose();
-        SceneUiHostInstance replacement = new(host.Order, host.Actor, in component, runtime);
+        SceneUiHostInstance replacement = new(host.Order, host.Entity, in component, runtime);
         int index = _hosts.IndexOf(host);
         if (index >= 0)
         {
             _hosts[index] = replacement;
         }
 
-        _byActor[host.Actor] = replacement;
+        _byEntity[host.Entity] = replacement;
         if (ReferenceEquals(_activeHost, host))
         {
             _activeHost = replacement;
@@ -532,7 +532,7 @@ public sealed class SceneUiHostBridge : IDisposable
     {
         SceneUiHostInstance host = _hosts[index];
         _hosts.RemoveAt(index);
-        _byActor.Remove(host.Actor);
+        _byEntity.Remove(host.Entity);
         host.Runtime.Dispose();
         if (ReferenceEquals(_activeHost, host))
         {

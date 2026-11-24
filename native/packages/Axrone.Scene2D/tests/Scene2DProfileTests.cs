@@ -69,11 +69,11 @@ public class Scene2DProfileTests
         var runtime = SceneRuntimeProfiles.CreateCustom("test/custom-2d", profile);
 
         using Scene2D scene = Scene2D.Create(new Scene2DCreateOptions { RuntimeProfile = runtime });
-        SceneActor actor = scene.CreateSpriteActor(new SceneActorConfig("CustomSprite"), new Scene2DSpriteConfig());
+        SceneEntity entity = scene.CreateSpriteEntity(new SceneEntityConfig("CustomSprite"), new Scene2DSpriteConfig());
         Scene2DComponentIds.GetComponentType(Scene2DBuiltInComponent.SpriteRenderer)
             .Should()
             .Be<Scene2DSpriteRenderer>();
-        scene.World.TryGetData(actor, out Scene2DSpriteRenderer renderer).Should().BeTrue();
+        scene.World.TryGetData(entity, out Scene2DSpriteRenderer renderer).Should().BeTrue();
         renderer.Visible.Should().BeTrue();
     }
 }

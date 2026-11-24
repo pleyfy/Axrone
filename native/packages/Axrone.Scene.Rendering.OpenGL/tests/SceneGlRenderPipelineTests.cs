@@ -123,8 +123,8 @@ public sealed class SceneGlRenderPipelineTests
     {
         var api = new MockGLApi { EnableCallLogging = true };
         using var fixture = new SceneGlFixture();
-        using SceneWorld world = fixture.CreateWorld(out SceneActor cameraActor, out _);
-        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraActor, 640, 360)!;
+        using SceneWorld world = fixture.CreateWorld(out SceneEntity cameraEntity, out _);
+        SceneCameraFrame frame = new SceneCameraFrameCollector().Collect(world, cameraEntity, 640, 360)!;
         using var orchestrator = new SceneGlRenderOrchestrator(fixture.Context, fixture.Cache, world);
         var frameState = new SceneRenderFrameState();
         frameState.Begin(7);

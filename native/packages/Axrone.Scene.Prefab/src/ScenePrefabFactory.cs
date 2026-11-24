@@ -3,12 +3,12 @@ namespace Axrone.Scene.Prefab;
 using System.Buffers;
 
 /// <summary>
-/// Builds prefab definitions from a live scene world. Node ids are actor slots,
+/// Builds prefab definitions from a live scene world. Node ids are entity slots,
 /// which keeps snapshots stable for the lifetime of one world.
 /// </summary>
 public static class ScenePrefabFactory
 {
-    /// <summary>Creates a prefab from every live actor.</summary>
+    /// <summary>Creates a prefab from every live entity.</summary>
     public static ScenePrefabDefinition Create(
         SceneWorld world,
         SceneCodecRegistry codecs,
@@ -25,17 +25,17 @@ public static class ScenePrefabFactory
                 "Prefab definitions require a non-empty id.");
         }
 
-        var actors = new List<SceneActorSnapshot>(world.ActorCount);
+        var entities = new List<SceneEntitySnapshot>(world.EntityCount);
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
-            string nodeId = actor.Slot.ToString(CultureInfo.InvariantCulture);
-            SceneActor parent = world.Hierarchy.ParentOf(actor);
+            string nodeId = entity.Slot.ToString(CultureInfo.InvariantCulture);
+            SceneEntity parent = world.Hierarchy.ParentOf(entity);
             string? parentNodeId = parent.IsValid
                 ? parent.Slot.ToString(CultureInfo.InvariantCulture)
                 : null;
 
-            SceneComponentMask mask = world.GetComponentMask(actor);
+            SceneComponentMask mask = world.GetComponentMask(entity);
             var components = new List<SceneComponentSnapshot>(codecs.Count);
             ReadOnlySpan<SceneCodecRegistration> registrations = codecs.Registrations;
 
@@ -48,38 +48,38 @@ public static class ScenePrefabFactory
                 }
 
                 string typeName = world.Names.Resolve(registration.Descriptor.Name);
-                JsonElement data = CaptureComponent(world, actor, registration.Codec);
+                JsonElement data = CaptureComponent(world, entity, registration.Codec);
                 components.Add(new SceneComponentSnapshot(typeName, data));
             }
 
             components.Sort(static (left, right) =>
                 string.CompareOrdinal(left.Type, right.Type));
 
-            actors.Add(new SceneActorSnapshot(
+            entities.Add(new SceneEntitySnapshot(
                 nodeId,
-                world.GetName(actor),
-                world.LayerOf(actor),
-                world.GetTag(actor),
-                world.IsActiveSelf(actor),
-                world.IsPersistent(actor),
-                world.IsPooled(actor),
+                world.GetName(entity),
+                world.LayerOf(entity),
+                world.GetTag(entity),
+                world.IsActiveSelf(entity),
+                world.IsPersistent(entity),
+                world.IsPooled(entity),
                 components,
                 parentNodeId));
         }
 
-        return new ScenePrefabDefinition(id, actors, ScenePrefabKind.Prefab, metadata);
+        return new ScenePrefabDefinition(id, entities, ScenePrefabKind.Prefab, metadata);
     }
 
     private static JsonElement CaptureComponent(
         SceneWorld world,
-        SceneActor actor,
+        SceneEntity entity,
         ISceneDataCodec codec)
     {
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer))
         {
             writer.WriteStartObject();
-            codec.Write(world, actor, writer);
+            codec.Write(world, entity, writer);
             writer.WriteEndObject();
         }
 

@@ -70,7 +70,7 @@ public struct SceneRigidbody2D : ISceneDataComponent
 }
 
 /// <summary>
-/// Collider data component for 2D scenes. One actor carries at most one
+/// Collider data component for 2D scenes. One entity carries at most one
 /// collider; the physics bridge attaches it as a shape on the owning body.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -88,7 +88,7 @@ public struct SceneCollider2D : ISceneDataComponent
     /// <summary>Half length of the capsule segment along X.</summary>
     public float CapsuleHalfHeight;
 
-    /// <summary>Local-space offset from the actor origin.</summary>
+    /// <summary>Local-space offset from the entity origin.</summary>
     public Vec2 Offset;
 
     /// <summary>Mass per unit area.</summary>

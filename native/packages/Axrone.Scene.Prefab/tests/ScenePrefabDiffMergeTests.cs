@@ -9,24 +9,24 @@ using Xunit;
 public sealed class ScenePrefabDiffMergeTests
 {
     [Fact]
-    public void Diff_EmitsActorFieldAndHierarchyChanges()
+    public void Diff_EmitsEntityFieldAndHierarchyChanges()
     {
         ScenePrefabDefinition basePrefab = Create(
             "prefab/base",
-            Actor("root"),
-            Actor("child", parentNodeId: "root"));
+            Entity("root"),
+            Entity("child", parentNodeId: "root"));
         ScenePrefabDefinition target = Create(
             "prefab/target",
-            Actor("root"),
-            Actor("child", name: "Renamed", layer: 4));
+            Entity("root"),
+            Entity("child", name: "Renamed", layer: 4));
 
         ScenePrefabDiffResult diff = ScenePrefabDiff.Compute(basePrefab, target);
 
         diff.Overrides.Should().HaveCount(3);
-        diff.Overrides.Should().Contain(operation => operation is ScenePrefabReparentActorOperation);
-        diff.Overrides.OfType<ScenePrefabSetActorFieldOperation>()
-            .Should().Contain(operation => operation.Field == ScenePrefabActorField.Name)
-            .And.Contain(operation => operation.Field == ScenePrefabActorField.Layer);
+        diff.Overrides.Should().Contain(operation => operation is ScenePrefabReparentEntityOperation);
+        diff.Overrides.OfType<ScenePrefabSetEntityFieldOperation>()
+            .Should().Contain(operation => operation.Field == ScenePrefabEntityField.Name)
+            .And.Contain(operation => operation.Field == ScenePrefabEntityField.Layer);
     }
 
     [Fact]
@@ -34,7 +34,7 @@ public sealed class ScenePrefabDiffMergeTests
     {
         ScenePrefabDefinition basePrefab = Create(
             "prefab/base",
-            Actor(
+            Entity(
                 "root",
                 components:
                 [
@@ -43,7 +43,7 @@ public sealed class ScenePrefabDiffMergeTests
                 ]));
         ScenePrefabDefinition target = Create(
             "prefab/target",
-            Actor(
+            Entity(
                 "root",
                 components:
                 [
@@ -69,14 +69,14 @@ public sealed class ScenePrefabDiffMergeTests
     {
         ScenePrefabDefinition basePrefab = Create(
             "prefab/base",
-            Actor("root"),
-            Actor("branch", parentNodeId: "root"),
-            Actor("leaf", parentNodeId: "branch"));
-        ScenePrefabDefinition target = Create("prefab/target", Actor("root"));
+            Entity("root"),
+            Entity("branch", parentNodeId: "root"),
+            Entity("leaf", parentNodeId: "branch"));
+        ScenePrefabDefinition target = Create("prefab/target", Entity("root"));
 
         ScenePrefabDiffResult diff = ScenePrefabDiff.Compute(basePrefab, target);
 
-        diff.Overrides.OfType<ScenePrefabRemoveActorOperation>()
+        diff.Overrides.OfType<ScenePrefabRemoveEntityOperation>()
             .Should().ContainSingle()
             .Which.NodeId.Should().Be("branch");
     }
@@ -84,17 +84,17 @@ public sealed class ScenePrefabDiffMergeTests
     [Fact]
     public void Diff_AddsParentsBeforeChildren()
     {
-        ScenePrefabDefinition basePrefab = Create("prefab/base", Actor("root"));
+        ScenePrefabDefinition basePrefab = Create("prefab/base", Entity("root"));
         ScenePrefabDefinition target = Create(
             "prefab/target",
-            Actor("root"),
-            Actor("child", parentNodeId: "added-parent"),
-            Actor("added-parent", parentNodeId: "root"));
+            Entity("root"),
+            Entity("child", parentNodeId: "added-parent"),
+            Entity("added-parent", parentNodeId: "root"));
 
         ScenePrefabDiffResult diff = ScenePrefabDiff.Compute(basePrefab, target);
 
-        string[] added = diff.Overrides.OfType<ScenePrefabAddActorOperation>()
-            .Select(operation => operation.Actor.NodeId)
+        string[] added = diff.Overrides.OfType<ScenePrefabAddEntityOperation>()
+            .Select(operation => operation.Entity.NodeId)
             .ToArray();
         added.Should().ContainInOrder("added-parent", "child");
     }
@@ -104,7 +104,7 @@ public sealed class ScenePrefabDiffMergeTests
     {
         ScenePrefabDefinition definition = Create(
             "prefab/base",
-            Actor("root", components: Component("Transform", """{"position":[0,0,0]}""")));
+            Entity("root", components: Component("Transform", """{"position":[0,0,0]}""")));
 
         ScenePrefabDiffResult diff = ScenePrefabDiff.Compute(definition, definition);
 
@@ -116,42 +116,42 @@ public sealed class ScenePrefabDiffMergeTests
     {
         ScenePrefabDefinition basePrefab = Create(
             "prefab/base",
-            Actor(
+            Entity(
                 "root",
                 tag: "Base",
                 components: Component(
                     "Transform",
                     """{"position":[0,0,0],"uniforms":{"tint":1,"mode":"lit"}}""")),
-            Actor("child", parentNodeId: "root"));
+            Entity("child", parentNodeId: "root"));
         ScenePrefabDefinition target = Create(
             "prefab/target",
-            Actor(
+            Entity(
                 "root",
                 tag: "Target",
                 active: false,
                 components: Component(
                     "Transform",
                     """{"position":[0,5,0],"uniforms":{"tint":2,"extra":true}}""")),
-            Actor("child", parentNodeId: "root", name: "Renamed"),
-            Actor("added"));
+            Entity("child", parentNodeId: "root", name: "Renamed"),
+            Entity("added"));
 
         ScenePrefabDiffResult diff = ScenePrefabDiff.Compute(basePrefab, target);
         ScenePrefabDefinition replayed = ScenePrefabOverrides.Apply(basePrefab, diff.Overrides);
 
-        replayed.Actors.Should().HaveCount(target.Actors.Count);
-        for (int i = 0; i < target.Actors.Count; i++)
+        replayed.Entities.Should().HaveCount(target.Entities.Count);
+        for (int i = 0; i < target.Entities.Count; i++)
         {
-            replayed.Actors[i].NodeId.Should().Be(target.Actors[i].NodeId);
-            replayed.Actors[i].Name.Should().Be(target.Actors[i].Name);
-            replayed.Actors[i].Tag.Should().Be(target.Actors[i].Tag);
-            replayed.Actors[i].Active.Should().Be(target.Actors[i].Active);
-            replayed.Actors[i].ParentNodeId.Should().Be(target.Actors[i].ParentNodeId);
-            replayed.Actors[i].Components.Count.Should().Be(target.Actors[i].Components.Count);
-            for (int c = 0; c < target.Actors[i].Components.Count; c++)
+            replayed.Entities[i].NodeId.Should().Be(target.Entities[i].NodeId);
+            replayed.Entities[i].Name.Should().Be(target.Entities[i].Name);
+            replayed.Entities[i].Tag.Should().Be(target.Entities[i].Tag);
+            replayed.Entities[i].Active.Should().Be(target.Entities[i].Active);
+            replayed.Entities[i].ParentNodeId.Should().Be(target.Entities[i].ParentNodeId);
+            replayed.Entities[i].Components.Count.Should().Be(target.Entities[i].Components.Count);
+            for (int c = 0; c < target.Entities[i].Components.Count; c++)
             {
                 JsonElement.DeepEquals(
-                        replayed.Actors[i].Components[c].Data,
-                        target.Actors[i].Components[c].Data)
+                        replayed.Entities[i].Components[c].Data,
+                        target.Entities[i].Components[c].Data)
                     .Should().BeTrue();
             }
         }
@@ -160,41 +160,41 @@ public sealed class ScenePrefabDiffMergeTests
     [Fact]
     public void Merge_WithoutConflictsCombinesBothDeltas()
     {
-        ScenePrefabDefinition basePrefab = Create("prefab/base", Actor("root", tag: "Base"));
-        ScenePrefabDefinition local = Create("prefab/local", Actor("root", name: "Local", tag: "Base"));
-        ScenePrefabDefinition incoming = Create("prefab/incoming", Actor("root", tag: "Incoming"));
+        ScenePrefabDefinition basePrefab = Create("prefab/base", Entity("root", tag: "Base"));
+        ScenePrefabDefinition local = Create("prefab/local", Entity("root", name: "Local", tag: "Base"));
+        ScenePrefabDefinition incoming = Create("prefab/incoming", Entity("root", tag: "Incoming"));
 
         ScenePrefabMergeResult result = ScenePrefabMerge.Merge(basePrefab, local, incoming);
 
         result.Resolved.Should().BeTrue();
         result.Conflicts.Should().BeEmpty();
-        result.Definition.Actors[0].Name.Should().Be("Local");
-        result.Definition.Actors[0].Tag.Should().Be("Incoming");
+        result.Definition.Entities[0].Name.Should().Be("Local");
+        result.Definition.Entities[0].Tag.Should().Be("Incoming");
     }
 
     [Fact]
     public void Merge_ManualReportsConflictsAndRevertsLocalOperation()
     {
-        ScenePrefabDefinition basePrefab = Create("prefab/base", Actor("root", name: "Base"));
-        ScenePrefabDefinition local = Create("prefab/local", Actor("root", name: "Local"));
-        ScenePrefabDefinition incoming = Create("prefab/incoming", Actor("root", name: "Incoming"));
+        ScenePrefabDefinition basePrefab = Create("prefab/base", Entity("root", name: "Base"));
+        ScenePrefabDefinition local = Create("prefab/local", Entity("root", name: "Local"));
+        ScenePrefabDefinition incoming = Create("prefab/incoming", Entity("root", name: "Incoming"));
 
         ScenePrefabMergeResult result = ScenePrefabMerge.Merge(basePrefab, local, incoming);
 
         result.Resolved.Should().BeFalse();
         ScenePrefabConflict conflict = result.Conflicts.Should().ContainSingle().Subject;
-        conflict.Key.Should().Be("actor:root:field:name");
+        conflict.Key.Should().Be("entity:root:field:name");
         conflict.BaseValue.Kind.Should().Be(ScenePrefabConflictBaseValueKind.Json);
         conflict.BaseValue.Json.GetString().Should().Be("Base");
-        result.Definition.Actors[0].Name.Should().Be("Base");
+        result.Definition.Entities[0].Name.Should().Be("Base");
     }
 
     [Fact]
     public void Merge_PreferIncomingKeepsIncomingValue()
     {
-        ScenePrefabDefinition basePrefab = Create("prefab/base", Actor("root", name: "Base"));
-        ScenePrefabDefinition local = Create("prefab/local", Actor("root", name: "Local"));
-        ScenePrefabDefinition incoming = Create("prefab/incoming", Actor("root", name: "Incoming"));
+        ScenePrefabDefinition basePrefab = Create("prefab/base", Entity("root", name: "Base"));
+        ScenePrefabDefinition local = Create("prefab/local", Entity("root", name: "Local"));
+        ScenePrefabDefinition incoming = Create("prefab/incoming", Entity("root", name: "Incoming"));
 
         ScenePrefabMergeResult result = ScenePrefabMerge.Merge(
             basePrefab,
@@ -203,15 +203,15 @@ public sealed class ScenePrefabDiffMergeTests
             new ScenePrefabMergeOptions { ConflictPolicy = ScenePrefabConflictPolicy.PreferIncoming });
 
         result.Resolved.Should().BeTrue();
-        result.Definition.Actors[0].Name.Should().Be("Incoming");
+        result.Definition.Entities[0].Name.Should().Be("Incoming");
     }
 
     [Fact]
     public void Merge_PreferLocalKeepsLocalValue()
     {
-        ScenePrefabDefinition basePrefab = Create("prefab/base", Actor("root", name: "Base"));
-        ScenePrefabDefinition local = Create("prefab/local", Actor("root", name: "Local"));
-        ScenePrefabDefinition incoming = Create("prefab/incoming", Actor("root", name: "Incoming"));
+        ScenePrefabDefinition basePrefab = Create("prefab/base", Entity("root", name: "Base"));
+        ScenePrefabDefinition local = Create("prefab/local", Entity("root", name: "Local"));
+        ScenePrefabDefinition incoming = Create("prefab/incoming", Entity("root", name: "Incoming"));
 
         ScenePrefabMergeResult result = ScenePrefabMerge.Merge(
             basePrefab,
@@ -220,15 +220,15 @@ public sealed class ScenePrefabDiffMergeTests
             new ScenePrefabMergeOptions { ConflictPolicy = ScenePrefabConflictPolicy.PreferLocal });
 
         result.Resolved.Should().BeTrue();
-        result.Definition.Actors[0].Name.Should().Be("Local");
+        result.Definition.Entities[0].Name.Should().Be("Local");
     }
 
     [Fact]
     public void Merge_PreferBaseDropsBothValues()
     {
-        ScenePrefabDefinition basePrefab = Create("prefab/base", Actor("root", name: "Base"));
-        ScenePrefabDefinition local = Create("prefab/local", Actor("root", name: "Local"));
-        ScenePrefabDefinition incoming = Create("prefab/incoming", Actor("root", name: "Incoming"));
+        ScenePrefabDefinition basePrefab = Create("prefab/base", Entity("root", name: "Base"));
+        ScenePrefabDefinition local = Create("prefab/local", Entity("root", name: "Local"));
+        ScenePrefabDefinition incoming = Create("prefab/incoming", Entity("root", name: "Incoming"));
 
         ScenePrefabMergeResult result = ScenePrefabMerge.Merge(
             basePrefab,
@@ -237,7 +237,7 @@ public sealed class ScenePrefabDiffMergeTests
             new ScenePrefabMergeOptions { ConflictPolicy = ScenePrefabConflictPolicy.PreferBase });
 
         result.Resolved.Should().BeTrue();
-        result.Definition.Actors[0].Name.Should().Be("Base");
+        result.Definition.Entities[0].Name.Should().Be("Base");
     }
 
     [Fact]
@@ -245,13 +245,13 @@ public sealed class ScenePrefabDiffMergeTests
     {
         ScenePrefabDefinition basePrefab = Create(
             "prefab/base",
-            Actor("root", name: "Base", tag: "Base"));
+            Entity("root", name: "Base", tag: "Base"));
         ScenePrefabDefinition local = Create(
             "prefab/local",
-            Actor("root", name: "LocalName", tag: "LocalTag"));
+            Entity("root", name: "LocalName", tag: "LocalTag"));
         ScenePrefabDefinition incoming = Create(
             "prefab/incoming",
-            Actor("root", name: "IncomingName", tag: "IncomingTag"));
+            Entity("root", name: "IncomingName", tag: "IncomingTag"));
 
         var options = new ScenePrefabMergeOptions
         {
@@ -263,8 +263,8 @@ public sealed class ScenePrefabDiffMergeTests
         ScenePrefabMergeResult result = ScenePrefabMerge.Merge(basePrefab, local, incoming, options);
 
         result.Resolved.Should().BeTrue();
-        result.Definition.Actors[0].Name.Should().Be("LocalName");
-        result.Definition.Actors[0].Tag.Should().Be("IncomingTag");
+        result.Definition.Entities[0].Name.Should().Be("LocalName");
+        result.Definition.Entities[0].Tag.Should().Be("IncomingTag");
     }
 
     [Fact]
@@ -272,13 +272,13 @@ public sealed class ScenePrefabDiffMergeTests
     {
         ScenePrefabDefinition basePrefab = Create(
             "prefab/base",
-            Actor("root", components: Component("Transform", """{"position":[0,0,0]}""")));
+            Entity("root", components: Component("Transform", """{"position":[0,0,0]}""")));
         ScenePrefabDefinition local = Create(
             "prefab/local",
-            Actor("root", components: Component("Transform", """{"position":[1,0,0]}""")));
+            Entity("root", components: Component("Transform", """{"position":[1,0,0]}""")));
         ScenePrefabDefinition incoming = Create(
             "prefab/incoming",
-            Actor("root", components: Component("Transform", """{"position":[2,0,0]}""")));
+            Entity("root", components: Component("Transform", """{"position":[2,0,0]}""")));
 
         ScenePrefabMergeResult result = ScenePrefabMerge.Merge(basePrefab, local, incoming);
 
@@ -286,14 +286,14 @@ public sealed class ScenePrefabDiffMergeTests
         conflict.Key.Should().Contain("component:root:");
         conflict.BaseValue.Kind.Should().Be(ScenePrefabConflictBaseValueKind.Json);
         conflict.BaseValue.Json.GetInt32().Should().Be(0);
-        result.Definition.Actors[0].Components[0].Data
+        result.Definition.Entities[0].Components[0].Data
             .GetProperty("position")[0].GetInt32().Should().Be(0);
     }
 
-    private static ScenePrefabDefinition Create(string id, params SceneActorSnapshot[] actors) =>
-        new(id, actors);
+    private static ScenePrefabDefinition Create(string id, params SceneEntitySnapshot[] entities) =>
+        new(id, entities);
 
-    private static SceneActorSnapshot Actor(
+    private static SceneEntitySnapshot Entity(
         string nodeId,
         string? parentNodeId = null,
         string? name = null,

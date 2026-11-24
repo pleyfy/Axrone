@@ -19,9 +19,9 @@ public sealed class SceneBonePalettePoseSink : IScenePoseSink
     }
 
     /// <inheritdoc/>
-    public void ApplyPose(SceneActor actor, ReadOnlySpan<LocalTransform> localPose, ReadOnlySpan<Mat4> worldPalette)
+    public void ApplyPose(SceneEntity entity, ReadOnlySpan<LocalTransform> localPose, ReadOnlySpan<Mat4> worldPalette)
     {
         _ = localPose;
-        _sink.ApplyBonePalette(actor, worldPalette);
+        _sink.ApplyBonePalette(entity, worldPalette);
     }
 }

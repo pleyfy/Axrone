@@ -12,7 +12,7 @@ public enum SceneCameraFovAxis : byte
 
 /// <summary>
 /// Camera data component. Projection and view matrices are produced by
-/// <c>SceneCameraFrameCollector</c> from this payload and the actor's
+/// <c>SceneCameraFrameCollector</c> from this payload and the entity's
 /// world transform.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]

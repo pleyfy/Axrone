@@ -105,8 +105,8 @@ public struct SceneSpriteRenderer : ISceneDataComponent
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct SceneSpriteRenderItem
 {
-    /// <summary>Owning actor; the batch renderer fetches its world matrix.</summary>
-    public SceneActor Actor;
+    /// <summary>Owning entity; the batch renderer fetches its world matrix.</summary>
+    public SceneEntity Entity;
 
     /// <summary>Sprite texture asset id.</summary>
     public SceneAssetId<TextureAssetTag> TextureId;
@@ -226,15 +226,15 @@ public sealed class SceneSpriteItemCollector
 
         _count = 0;
         CulledCount = 0;
-        EnsureCapacity(Math.Max(world.ActorCount, 16));
+        EnsureCapacity(Math.Max(world.EntityCount, 16));
 
         CameraFrustum frustum = cameraFrame.Frustum;
 
-        foreach (SceneActor actor in world.Actors)
+        foreach (SceneEntity entity in world.Entities)
         {
             if ((!world.HasTransform2D && !world.HasTransform3D) ||
-                !world.IsActiveInHierarchy(actor) ||
-                !world.TryGetData(actor, out SceneSpriteRenderer sprite) ||
+                !world.IsActiveInHierarchy(entity) ||
+                !world.TryGetData(entity, out SceneSpriteRenderer sprite) ||
                 !sprite.Enabled ||
                 !sprite.Visible ||
                 !sprite.HasRenderableSource ||
@@ -246,8 +246,8 @@ public sealed class SceneSpriteItemCollector
             if (cull)
             {
                 Mat4 worldMatrix = world.HasTransform2D
-                    ? SceneBounds.FromAffine2D(world.GetWorldMatrix2D(actor))
-                    : world.GetWorldMatrix3D(actor);
+                    ? SceneBounds.FromAffine2D(world.GetWorldMatrix2D(entity))
+                    : world.GetWorldMatrix3D(entity);
                 BoundingSphere3 localBounds = sprite.GetLocalBounds();
                 BoundingSphere3 worldBounds = SceneBounds.TransformSphere(in worldMatrix, in localBounds);
                 if (!frustum.IntersectsSphere(in worldBounds))
@@ -262,10 +262,10 @@ public sealed class SceneSpriteItemCollector
                 Grow();
             }
 
-            bool hasMask = SceneSpriteMaskResolver.TryResolve(world, actor, out SceneSpriteMask mask);
+            bool hasMask = SceneSpriteMaskResolver.TryResolve(world, entity, out SceneSpriteMask mask);
 
             ref SceneSpriteRenderItem item = ref _items[_count];
-            item.Actor = actor;
+            item.Entity = entity;
             item.TextureId = sprite.TextureId;
             item.MaterialId = sprite.MaterialId;
             item.SortingLayer = sprite.SortingLayer;

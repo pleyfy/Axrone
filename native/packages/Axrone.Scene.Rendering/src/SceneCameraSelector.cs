@@ -2,27 +2,27 @@ namespace Axrone.Scene.Rendering;
 
 /// <summary>
 /// Selects the frame camera: the first active primary camera, otherwise the
-/// first active enabled camera in stable actor order.
+/// first active enabled camera in stable entity order.
 /// </summary>
 public static class SceneCameraSelector
 {
-    /// <summary>Selects a camera actor.</summary>
-    public static bool TrySelect(SceneWorld world, out SceneActor cameraActor)
+    /// <summary>Selects a camera entity.</summary>
+    public static bool TrySelect(SceneWorld world, out SceneEntity cameraEntity)
     {
         ArgumentNullException.ThrowIfNull(world);
 
-        SceneActor fallback = SceneActor.Null;
-        foreach (SceneActor actor in world.Actors)
+        SceneEntity fallback = SceneEntity.Null;
+        foreach (SceneEntity entity in world.Entities)
         {
-            // Actors carrying the 2D marker are owned by the 2D selector.
-            if (!world.IsActiveInHierarchy(actor) ||
-                !world.HasData<SceneCamera>(actor) ||
-                world.HasData<SceneCamera2D>(actor))
+            // Entities carrying the 2D marker are owned by the 2D selector.
+            if (!world.IsActiveInHierarchy(entity) ||
+                !world.HasData<SceneCamera>(entity) ||
+                world.HasData<SceneCamera2D>(entity))
             {
                 continue;
             }
 
-            ref SceneCamera camera = ref world.GetData<SceneCamera>(actor);
+            ref SceneCamera camera = ref world.GetData<SceneCamera>(entity);
             if (!camera.Enabled)
             {
                 continue;
@@ -30,17 +30,17 @@ public static class SceneCameraSelector
 
             if (camera.Primary)
             {
-                cameraActor = actor;
+                cameraEntity = entity;
                 return true;
             }
 
             if (fallback.IsNull)
             {
-                fallback = actor;
+                fallback = entity;
             }
         }
 
-        cameraActor = fallback;
-        return cameraActor.IsValid;
+        cameraEntity = fallback;
+        return cameraEntity.IsValid;
     }
 }
