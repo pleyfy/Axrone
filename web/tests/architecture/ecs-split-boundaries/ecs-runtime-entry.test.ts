@@ -5,12 +5,12 @@ describe('ecs-runtime entry', () => {
     it('surfaces the remaining ecs runtime ownership without leaking scene facades', () => {
         expect(ecsRuntime.Component).toBeDefined();
         expect(ecsRuntime.script).toBeDefined();
-        expect(ecsRuntime.Actor).toBeDefined();
+        expect(ecsRuntime.Entity).toBeDefined();
         expect(ecsRuntime.World).toBeDefined();
         expect(ecsRuntime.WorldEventRuntime).toBeDefined();
         expect(ecsRuntime.WorldMutationRuntime).toBeDefined();
         expect(ecsRuntime.WorldQueryExecutionRuntime).toBeDefined();
-        expect(ecsRuntime.WorldActorRegistry).toBeDefined();
+        expect(ecsRuntime.WorldEntityRegistry).toBeDefined();
         expect(ecsRuntime.WorldMetricsService).toBeDefined();
         expect(ecsRuntime.SystemManager).toBeDefined();
         expect(ecsRuntime.Transform).toBeDefined();
