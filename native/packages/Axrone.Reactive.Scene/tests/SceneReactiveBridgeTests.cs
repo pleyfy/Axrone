@@ -32,43 +32,43 @@ public sealed class SceneReactiveBridgeTests
         using IDisposable removedSub = bridge.ComponentRemoved<Probe>().Subscribe(new Observer<ComponentRemoved<Probe>>(removed.Add));
         using IDisposable changedSub = bridge.ComponentChanged<Probe>().Subscribe(new Observer<ComponentChanged<Probe>>(changed.Add));
 
-        SceneActor actor = world.CreateActor();
-        world.AddData(actor, new Probe { Value = 7 });
-        world.SetData(actor, new Probe { Value = 8 });
-        world.MarkChanged<Probe>(actor);
-        world.RemoveData<Probe>(actor);
+        SceneEntity entity = world.CreateEntity();
+        world.AddData(entity, new Probe { Value = 7 });
+        world.SetData(entity, new Probe { Value = 8 });
+        world.MarkChanged<Probe>(entity);
+        world.RemoveData<Probe>(entity);
 
         bridge.Pump();
 
         added.Should().ContainSingle();
-        added[0].Actor.Should().Be(actor);
+        added[0].Entity.Should().Be(entity);
 
         changed.Should().HaveCount(2);
-        changed[0].Actor.Should().Be(actor);
-        changed[1].Actor.Should().Be(actor);
+        changed[0].Entity.Should().Be(entity);
+        changed[1].Entity.Should().Be(entity);
 
         removed.Should().ContainSingle();
-        removed[0].Actor.Should().Be(actor);
+        removed[0].Entity.Should().Be(entity);
     }
 
     [Fact]
-    public void ActorLifecycle_FlowsThroughBridge()
+    public void EntityLifecycle_FlowsThroughBridge()
     {
         using SceneWorld world = CreateWorld();
         using var bridge = new SceneReactiveBridge(world);
-        var created = new List<SceneActor>();
-        var destroyed = new List<SceneActor>();
+        var created = new List<SceneEntity>();
+        var destroyed = new List<SceneEntity>();
 
-        using IDisposable createdSub = bridge.ActorCreated.Subscribe(new Observer<SceneActor>(created.Add));
-        using IDisposable destroyedSub = bridge.ActorDestroyed.Subscribe(new Observer<SceneActor>(destroyed.Add));
+        using IDisposable createdSub = bridge.EntityCreated.Subscribe(new Observer<SceneEntity>(created.Add));
+        using IDisposable destroyedSub = bridge.EntityDestroyed.Subscribe(new Observer<SceneEntity>(destroyed.Add));
 
-        SceneActor actor = world.CreateActor();
+        SceneEntity entity = world.CreateEntity();
         bridge.Pump();
-        world.DestroyActor(actor);
+        world.DestroyEntity(entity);
         bridge.Pump();
 
-        created.Should().ContainSingle().Which.Should().Be(actor);
-        destroyed.Should().ContainSingle().Which.Should().Be(actor);
+        created.Should().ContainSingle().Which.Should().Be(entity);
+        destroyed.Should().ContainSingle().Which.Should().Be(entity);
     }
 
     [Fact]
@@ -76,18 +76,18 @@ public sealed class SceneReactiveBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using var bridge = new SceneReactiveBridge(world);
-        SceneActor actor = world.CreateActor();
-        TrackingBehaviour behaviour = world.AddBehaviour<TrackingBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity();
+        TrackingBehaviour behaviour = world.AddBehaviour<TrackingBehaviour>(entity);
 
         int observed = 0;
         behaviour.Context!.ObserveComponentAdded<Probe>(bridge, _ => observed++);
 
-        world.AddData(actor, new Probe());
+        world.AddData(entity, new Probe());
         bridge.Pump();
         observed.Should().Be(1);
 
         world.RemoveBehaviour(behaviour);
-        SceneActor other = world.CreateActor();
+        SceneEntity other = world.CreateEntity();
         world.AddData(other, new Probe());
         bridge.Pump();
 
@@ -102,8 +102,8 @@ public sealed class SceneReactiveBridgeTests
         var changes = new List<BehaviourChange>();
         using IDisposable subscription = bridge.BehaviourChanges.Subscribe(new Observer<BehaviourChange>(changes.Add));
 
-        SceneActor actor = world.CreateActor();
-        TrackingBehaviour behaviour = world.AddBehaviour<TrackingBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity();
+        TrackingBehaviour behaviour = world.AddBehaviour<TrackingBehaviour>(entity);
         world.RemoveBehaviour(behaviour);
         bridge.Pump();
 
@@ -117,14 +117,14 @@ public sealed class SceneReactiveBridgeTests
     {
         using SceneWorld world = CreateWorld();
         using var bridge = new SceneReactiveBridge(world);
-        SceneActor actor = world.CreateActor();
+        SceneEntity entity = world.CreateEntity();
 
         for (int i = 0; i < 1_000; i++)
         {
-            world.AddData(actor, new Probe { Value = i });
-            world.MarkChanged<Probe>(actor);
+            world.AddData(entity, new Probe { Value = i });
+            world.MarkChanged<Probe>(entity);
             bridge.Pump();
-            world.RemoveData<Probe>(actor);
+            world.RemoveData<Probe>(entity);
             bridge.Pump();
         }
 
@@ -139,8 +139,8 @@ public sealed class SceneReactiveBridgeTests
         var changes = new List<HierarchyChange>();
         using IDisposable subscription = bridge.HierarchyChanges.Subscribe(new Observer<HierarchyChange>(changes.Add));
 
-        SceneActor parent = world.CreateActor();
-        SceneActor child = world.CreateActor();
+        SceneEntity parent = world.CreateEntity();
+        SceneEntity child = world.CreateEntity();
         bridge.Pump();
         changes.Clear();
 
@@ -148,8 +148,8 @@ public sealed class SceneReactiveBridgeTests
         world.SetActive(parent, false);
         bridge.Pump();
 
-        changes.Should().Contain(change => change.Actor == child && change.Kind == SceneChangeKind.ParentChanged);
-        changes.Should().Contain(change => change.Actor == child && change.Kind == SceneChangeKind.ActiveInHierarchyChanged);
+        changes.Should().Contain(change => change.Entity == child && change.Kind == SceneChangeKind.ParentChanged);
+        changes.Should().Contain(change => change.Entity == child && change.Kind == SceneChangeKind.ActiveInHierarchyChanged);
     }
 
     [Fact]
@@ -162,17 +162,17 @@ public sealed class SceneReactiveBridgeTests
         using var runtime = new SceneRuntime(new SceneRuntimeOptions { Profile = profile });
         var bridge = new SceneReactiveBridge(runtime.World);
         using var loop = new SceneRuntimeLoop(runtime);
-        var created = new List<SceneActor>();
-        using IDisposable subscription = bridge.ActorCreated.Subscribe(new Observer<SceneActor>(created.Add));
+        var created = new List<SceneEntity>();
+        using IDisposable subscription = bridge.EntityCreated.Subscribe(new Observer<SceneEntity>(created.Add));
 
         bridge.AttachLoop(loop);
         loop.Start();
-        SceneActor actor = runtime.World.CreateActor();
+        SceneEntity entity = runtime.World.CreateEntity();
         _ = loop.Tick();
-        created.Should().ContainSingle().Which.Should().Be(actor);
+        created.Should().ContainSingle().Which.Should().Be(entity);
 
         bridge.DetachLoop();
-        _ = runtime.World.CreateActor();
+        _ = runtime.World.CreateEntity();
         _ = loop.Tick();
         created.Should().ContainSingle();
 
@@ -189,14 +189,14 @@ public sealed class SceneReactiveBridgeTests
         using var runtime = new SceneRuntime(new SceneRuntimeOptions { Profile = profile });
         var bridge = new SceneReactiveBridge(runtime.World);
         using var loop = new SceneRuntimeLoop(runtime);
-        var created = new List<SceneActor>();
-        using IDisposable subscription = bridge.ActorCreated.Subscribe(new Observer<SceneActor>(created.Add));
+        var created = new List<SceneEntity>();
+        using IDisposable subscription = bridge.EntityCreated.Subscribe(new Observer<SceneEntity>(created.Add));
 
         bridge.AttachLoop(loop);
         bridge.AttachLoop(loop);
         bridge.DetachLoop();
         loop.Start();
-        _ = runtime.World.CreateActor();
+        _ = runtime.World.CreateEntity();
         _ = loop.Tick();
 
         created.Should().BeEmpty("detach must remove the single loop registration");
