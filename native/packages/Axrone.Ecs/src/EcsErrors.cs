@@ -63,18 +63,18 @@ public sealed class EcsSingletonConflictException(ComponentId componentId, Entit
 }
 
 /// <summary>
-/// An actor name is already claimed by another live entity.
+/// An entity name is already claimed by another live entity.
 /// </summary>
-/// <param name="name">Claimed actor name.</param>
+/// <param name="name">Claimed entity name.</param>
 /// <param name="owner">Entity that owns the name.</param>
 /// <param name="attempted">Entity that tried to take it.</param>
-public sealed class EcsActorNameConflictException(EcsActorName name, Entity owner, Entity attempted)
+public sealed class EcsEntityNameConflictException(EcsEntityName name, Entity owner, Entity attempted)
     : EcsException(
-        "ecs.actor-name-conflict",
-        $"Actor '{name}' is owned by {owner}; {attempted} cannot claim the same name.")
+        "ecs.entity-name-conflict",
+        $"Entity '{name}' is owned by {owner}; {attempted} cannot claim the same name.")
 {
-    /// <summary>Claimed actor name.</summary>
-    public EcsActorName Name { get; } = name;
+    /// <summary>Claimed entity name.</summary>
+    public EcsEntityName Name { get; } = name;
 
     /// <summary>Current owner.</summary>
     public Entity Owner { get; } = owner;
@@ -276,23 +276,23 @@ internal static class EcsThrowHelper
     public static void ThrowSingletonConflict(ComponentId componentId, Entity owner, Entity attempted) =>
         throw new EcsSingletonConflictException(componentId, owner, attempted);
 
-    /// <summary>Throws when an actor registration targets a missing entity.</summary>
+    /// <summary>Throws when an entity registration targets a missing entity.</summary>
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ThrowActorEntityNotFound(in Entity entity) =>
-        throw new EcsEntityException(entity, "Actor registration requires a live entity.");
+    public static void ThrowEntityEntityNotFound(in Entity entity) =>
+        throw new EcsEntityException(entity, "Entity registration requires a live entity.");
 
-    /// <summary>Throws when an actor name slot is unresolved.</summary>
+    /// <summary>Throws when an entity name slot is unresolved.</summary>
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ThrowInvalidActorName(string operation) =>
+    public static void ThrowInvalidEntityName(string operation) =>
         throw new EcsConfigurationException(
-            "ecs.invalid-actor-name",
-            $"'{operation}' requires an interned actor name; use EcsActorNames.Intern.");
+            "ecs.invalid-entity-name",
+            $"'{operation}' requires an interned entity name; use EcsEntityNames.Intern.");
 
-    /// <summary>Throws when an actor name is owned by another live entity.</summary>
+    /// <summary>Throws when an entity name is owned by another live entity.</summary>
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ThrowActorNameConflict(in EcsActorName name, in Entity owner, in Entity attempted) =>
-        throw new EcsActorNameConflictException(name, owner, attempted);
+    public static void ThrowEntityNameConflict(in EcsEntityName name, in Entity owner, in Entity attempted) =>
+        throw new EcsEntityNameConflictException(name, owner, attempted);
 }
