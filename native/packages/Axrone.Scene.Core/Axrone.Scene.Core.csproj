@@ -3,7 +3,7 @@
   <PropertyGroup>
     <RootNamespace>Axrone.Scene</RootNamespace>
     <AssemblyName>Axrone.Scene.Core</AssemblyName>
-    <Description>Scene graph core for the Axrone engine: generational actors, two-tier components, hierarchy visitors, transform stores and lifecycle dispatch.</Description>
+    <Description>Scene graph core for the Axrone engine: generational entities, two-tier components, hierarchy visitors, transform stores and lifecycle dispatch.</Description>
   </PropertyGroup>
 
   <PropertyGroup Label="AotCompatibility">
@@ -41,8 +41,8 @@
     <!-- CA1819: Properties returning arrays — serialization and diagnostics
          expose defensive snapshots, never hot-path buffers. -->
     <NoWarn>$(NoWarn);CA1819</NoWarn>
-    <!-- CA1711: SceneActorFlags is a bitmask; "Flags" is the domain term and
-         matches the engine-wide convention for actor state bits. -->
+    <!-- CA1711: SceneEntityFlags is a bitmask; "Flags" is the domain term and
+         matches the engine-wide convention for entity state bits. -->
     <NoWarn>$(NoWarn);CA1711</NoWarn>
     <!-- CA1031: Behaviour attachment and teardown must catch any exception to
          restore structural invariants; attachment rethrows after rollback. -->

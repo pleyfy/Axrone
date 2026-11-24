@@ -47,7 +47,7 @@ public abstract class SceneComponentDescriptor
     /// <summary>Storage tier.</summary>
     public abstract SceneComponentKind Kind { get; }
 
-    /// <summary>Whether at most one instance may be attached to an actor.</summary>
+    /// <summary>Whether at most one instance may be attached to an entity.</summary>
     public bool IsSingleton => (Traits & SceneComponentTraits.Singleton) != 0;
 
     /// <summary>Whether the component participates in snapshot serialization.</summary>

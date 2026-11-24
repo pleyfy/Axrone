@@ -18,13 +18,13 @@ public sealed class SceneProfileTests
         profile.Registry.IsSealed.Should().BeTrue();
 
         using SceneWorld world = profile.CreateWorld();
-        SceneActor actor = world.CreateActor();
+        SceneEntity entity = world.CreateEntity();
 
         world.HasTransform3D.Should().BeTrue();
         world.HasTransform2D.Should().BeFalse();
-        world.GetTransform3D(actor).Scale.Should().Be(Vec3.One);
+        world.GetTransform3D(entity).Scale.Should().Be(Vec3.One);
 
-        Action get2D = () => world.GetTransform2D(actor);
+        Action get2D = () => world.GetTransform2D(entity);
         get2D.Should().Throw<SceneCapabilityException>();
     }
 
@@ -33,15 +33,15 @@ public sealed class SceneProfileTests
     {
         SceneProfile profile = SceneProfiles.CreateCore2D();
         using SceneWorld world = profile.CreateWorld();
-        SceneActor actor = world.CreateActor();
+        SceneEntity entity = world.CreateEntity();
 
         world.HasTransform2D.Should().BeTrue();
         world.HasTransform3D.Should().BeFalse();
 
-        world.GetTransform2D(actor).SetPosition(new Vec2(1.0f, 2.0f));
+        world.GetTransform2D(entity).SetPosition(new Vec2(1.0f, 2.0f));
         world.UpdateTransforms();
 
-        world.GetWorldPosition2D(actor).Should().Be(new Vec2(1.0f, 2.0f));
+        world.GetWorldPosition2D(entity).Should().Be(new Vec2(1.0f, 2.0f));
     }
 
     [Fact]

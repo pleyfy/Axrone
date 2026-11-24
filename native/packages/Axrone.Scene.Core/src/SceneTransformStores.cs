@@ -6,20 +6,20 @@ namespace Axrone.Scene;
 /// </summary>
 internal sealed class SceneTransform3DStore
 {
-    private readonly SceneActorTable _actors;
+    private readonly SceneEntityTable _entities;
     private readonly SceneComponentColumn<SceneTransform3D> _column;
     private Mat4[] _localMatrices;
     private Mat4[] _worldMatrices;
     private Quat[] _worldRotations;
 
     public SceneTransform3DStore(
-        SceneActorTable actors,
+        SceneEntityTable entities,
         SceneComponentColumn<SceneTransform3D> column)
     {
-        ArgumentNullException.ThrowIfNull(actors);
+        ArgumentNullException.ThrowIfNull(entities);
         ArgumentNullException.ThrowIfNull(column);
 
-        _actors = actors;
+        _entities = entities;
         _column = column;
         _localMatrices = new Mat4[column.Capacity];
         _worldMatrices = new Mat4[column.Capacity];
@@ -93,10 +93,10 @@ internal sealed class SceneTransform3DStore
     {
         _column.Get(slot).MarkWorldDirty();
 
-        int child = _actors.RecordAt(slot).FirstChild;
+        int child = _entities.RecordAt(slot).FirstChild;
         while (child >= 0)
         {
-            int next = _actors.RecordAt(child).NextSibling;
+            int next = _entities.RecordAt(child).NextSibling;
             MarkWorldDirtySubtree(child);
             child = next;
         }
@@ -105,14 +105,14 @@ internal sealed class SceneTransform3DStore
     /// <summary>Rebuilds dirty local/world matrices in hierarchy order.</summary>
     public void UpdateWorldMatrices()
     {
-        int capacity = _actors.Capacity;
+        int capacity = _entities.Capacity;
         Mat4 identity = Mat4.Identity;
         Quat identityRotation = Quat.Identity;
 
         for (int slot = 0; slot < capacity; slot++)
         {
-            ref SceneActorRecord record = ref _actors.RecordAt(slot);
-            if ((record.Meta.Flags & SceneActorFlags.IsFree) != 0 || record.Parent >= 0)
+            ref SceneEntityRecord record = ref _entities.RecordAt(slot);
+            if ((record.Meta.Flags & SceneEntityFlags.IsFree) != 0 || record.Parent >= 0)
             {
                 continue;
             }
@@ -138,7 +138,7 @@ internal sealed class SceneTransform3DStore
         bool worldChanged = false;
         if (transform.IsWorldDirty || parentChanged || localChanged)
         {
-            int parent = _actors.RecordAt(slot).Parent;
+            int parent = _entities.RecordAt(slot).Parent;
             if (parent < 0)
             {
                 _worldMatrices[slot] = _localMatrices[slot];
@@ -161,12 +161,12 @@ internal sealed class SceneTransform3DStore
         }
 
         bool childParentChanged = parentChanged || worldChanged;
-        int child = _actors.RecordAt(slot).FirstChild;
+        int child = _entities.RecordAt(slot).FirstChild;
         while (child >= 0)
         {
-            ref SceneActorRecord childRecord = ref _actors.RecordAt(child);
+            ref SceneEntityRecord childRecord = ref _entities.RecordAt(child);
             int next = childRecord.NextSibling;
-            if ((childRecord.Meta.Flags & SceneActorFlags.IsFree) == 0)
+            if ((childRecord.Meta.Flags & SceneEntityFlags.IsFree) == 0)
             {
                 UpdateRecursive(
                     child,
@@ -206,19 +206,19 @@ internal sealed class SceneTransform3DStore
 /// </summary>
 internal sealed class SceneTransform2DStore
 {
-    private readonly SceneActorTable _actors;
+    private readonly SceneEntityTable _entities;
     private readonly SceneComponentColumn<SceneTransform2D> _column;
     private Mat3[] _localMatrices;
     private Mat3[] _worldMatrices;
 
     public SceneTransform2DStore(
-        SceneActorTable actors,
+        SceneEntityTable entities,
         SceneComponentColumn<SceneTransform2D> column)
     {
-        ArgumentNullException.ThrowIfNull(actors);
+        ArgumentNullException.ThrowIfNull(entities);
         ArgumentNullException.ThrowIfNull(column);
 
-        _actors = actors;
+        _entities = entities;
         _column = column;
         _localMatrices = new Mat3[column.Capacity];
         _worldMatrices = new Mat3[column.Capacity];
@@ -283,10 +283,10 @@ internal sealed class SceneTransform2DStore
     {
         _column.Get(slot).MarkWorldDirty();
 
-        int child = _actors.RecordAt(slot).FirstChild;
+        int child = _entities.RecordAt(slot).FirstChild;
         while (child >= 0)
         {
-            int next = _actors.RecordAt(child).NextSibling;
+            int next = _entities.RecordAt(child).NextSibling;
             MarkWorldDirtySubtree(child);
             child = next;
         }
@@ -295,13 +295,13 @@ internal sealed class SceneTransform2DStore
     /// <summary>Rebuilds dirty local/world matrices in hierarchy order.</summary>
     public void UpdateWorldMatrices()
     {
-        int capacity = _actors.Capacity;
+        int capacity = _entities.Capacity;
         Mat3 identity = Mat3.Identity;
 
         for (int slot = 0; slot < capacity; slot++)
         {
-            ref SceneActorRecord record = ref _actors.RecordAt(slot);
-            if ((record.Meta.Flags & SceneActorFlags.IsFree) != 0 || record.Parent >= 0)
+            ref SceneEntityRecord record = ref _entities.RecordAt(slot);
+            if ((record.Meta.Flags & SceneEntityFlags.IsFree) != 0 || record.Parent >= 0)
             {
                 continue;
             }
@@ -323,7 +323,7 @@ internal sealed class SceneTransform2DStore
         bool worldChanged = false;
         if (transform.IsWorldDirty || parentChanged || localChanged)
         {
-            int parent = _actors.RecordAt(slot).Parent;
+            int parent = _entities.RecordAt(slot).Parent;
             if (parent < 0)
             {
                 _worldMatrices[slot] = _localMatrices[slot];
@@ -338,12 +338,12 @@ internal sealed class SceneTransform2DStore
         }
 
         bool childParentChanged = parentChanged || worldChanged;
-        int child = _actors.RecordAt(slot).FirstChild;
+        int child = _entities.RecordAt(slot).FirstChild;
         while (child >= 0)
         {
-            ref SceneActorRecord childRecord = ref _actors.RecordAt(child);
+            ref SceneEntityRecord childRecord = ref _entities.RecordAt(child);
             int next = childRecord.NextSibling;
-            if ((childRecord.Meta.Flags & SceneActorFlags.IsFree) == 0)
+            if ((childRecord.Meta.Flags & SceneEntityFlags.IsFree) == 0)
             {
                 UpdateRecursive(child, in _worldMatrices[slot], childParentChanged);
             }

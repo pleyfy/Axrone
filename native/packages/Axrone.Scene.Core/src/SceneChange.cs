@@ -3,8 +3,8 @@ namespace Axrone.Scene;
 /// <summary>Kind of structural mutation recorded by <see cref="SceneChangeJournal"/>.</summary>
 public enum SceneChangeKind : byte
 {
-    ActorCreated = 0,
-    ActorDestroyed = 1,
+    EntityCreated = 0,
+    EntityDestroyed = 1,
     ComponentAdded = 2,
     ComponentRemoved = 3,
     ComponentChanged = 4,
@@ -18,46 +18,46 @@ public enum SceneChangeKind : byte
 
 /// <summary>
 /// One structural scene mutation. Payload-free by design: consumers query the world with
-/// <see cref="SceneActor"/> plus the component/behaviour type when they need the value.
+/// <see cref="SceneEntity"/> plus the component/behaviour type when they need the value.
 /// </summary>
 public readonly record struct SceneChange(
     SceneChangeKind Kind,
-    SceneActor Actor,
+    SceneEntity Entity,
     SceneComponentTypeId ComponentType,
     SceneBehaviourTypeId BehaviourType)
 {
-    public static SceneChange ActorCreated(SceneActor actor) =>
-        new(SceneChangeKind.ActorCreated, actor, default, default);
+    public static SceneChange EntityCreated(SceneEntity entity) =>
+        new(SceneChangeKind.EntityCreated, entity, default, default);
 
-    public static SceneChange ActorDestroyed(SceneActor actor) =>
-        new(SceneChangeKind.ActorDestroyed, actor, default, default);
+    public static SceneChange EntityDestroyed(SceneEntity entity) =>
+        new(SceneChangeKind.EntityDestroyed, entity, default, default);
 
-    public static SceneChange ComponentAdded(SceneActor actor, SceneComponentTypeId type) =>
-        new(SceneChangeKind.ComponentAdded, actor, type, default);
+    public static SceneChange ComponentAdded(SceneEntity entity, SceneComponentTypeId type) =>
+        new(SceneChangeKind.ComponentAdded, entity, type, default);
 
-    public static SceneChange ComponentRemoved(SceneActor actor, SceneComponentTypeId type) =>
-        new(SceneChangeKind.ComponentRemoved, actor, type, default);
+    public static SceneChange ComponentRemoved(SceneEntity entity, SceneComponentTypeId type) =>
+        new(SceneChangeKind.ComponentRemoved, entity, type, default);
 
-    public static SceneChange ComponentChanged(SceneActor actor, SceneComponentTypeId type) =>
-        new(SceneChangeKind.ComponentChanged, actor, type, default);
+    public static SceneChange ComponentChanged(SceneEntity entity, SceneComponentTypeId type) =>
+        new(SceneChangeKind.ComponentChanged, entity, type, default);
 
-    public static SceneChange BehaviourAdded(SceneActor actor, SceneBehaviourTypeId type) =>
-        new(SceneChangeKind.BehaviourAdded, actor, default, type);
+    public static SceneChange BehaviourAdded(SceneEntity entity, SceneBehaviourTypeId type) =>
+        new(SceneChangeKind.BehaviourAdded, entity, default, type);
 
-    public static SceneChange BehaviourRemoved(SceneActor actor, SceneBehaviourTypeId type) =>
-        new(SceneChangeKind.BehaviourRemoved, actor, default, type);
+    public static SceneChange BehaviourRemoved(SceneEntity entity, SceneBehaviourTypeId type) =>
+        new(SceneChangeKind.BehaviourRemoved, entity, default, type);
 
-    public static SceneChange BehaviourEnabled(SceneActor actor, SceneBehaviourTypeId type) =>
-        new(SceneChangeKind.BehaviourEnabled, actor, default, type);
+    public static SceneChange BehaviourEnabled(SceneEntity entity, SceneBehaviourTypeId type) =>
+        new(SceneChangeKind.BehaviourEnabled, entity, default, type);
 
-    public static SceneChange BehaviourDisabled(SceneActor actor, SceneBehaviourTypeId type) =>
-        new(SceneChangeKind.BehaviourDisabled, actor, default, type);
+    public static SceneChange BehaviourDisabled(SceneEntity entity, SceneBehaviourTypeId type) =>
+        new(SceneChangeKind.BehaviourDisabled, entity, default, type);
 
-    public static SceneChange ParentChanged(SceneActor actor) =>
-        new(SceneChangeKind.ParentChanged, actor, default, default);
+    public static SceneChange ParentChanged(SceneEntity entity) =>
+        new(SceneChangeKind.ParentChanged, entity, default, default);
 
-    public static SceneChange ActiveInHierarchyChanged(SceneActor actor) =>
-        new(SceneChangeKind.ActiveInHierarchyChanged, actor, default, default);
+    public static SceneChange ActiveInHierarchyChanged(SceneEntity entity) =>
+        new(SceneChangeKind.ActiveInHierarchyChanged, entity, default, default);
 }
 
 /// <summary>

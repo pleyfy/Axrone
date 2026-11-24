@@ -7,43 +7,43 @@ using Xunit;
 public sealed class SceneBehaviourActiveTests
 {
     [Fact]
-    public void InactiveActor_StopsUpdatesAndFiresCallbacks()
+    public void InactiveEntity_StopsUpdatesAndFiresCallbacks()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor("Actor");
-        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity("Entity");
+        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(entity);
         world.Start();
 
         behaviour.EnableCount.Should().Be(1);
         world.Update(0.016f);
         behaviour.Updates.Should().Be(1);
 
-        world.SetActive(actor, false);
+        world.SetActive(entity, false);
         behaviour.DisableCount.Should().Be(1);
         world.Update(0.016f);
         behaviour.Updates.Should().Be(1);
 
-        world.SetActive(actor, true);
+        world.SetActive(entity, true);
         behaviour.EnableCount.Should().Be(2);
         world.Update(0.016f);
         behaviour.Updates.Should().Be(2);
     }
 
     [Fact]
-    public void InactiveActor_BehaviourAddedAfterStartStartsDisabled()
+    public void InactiveEntity_BehaviourAddedAfterStartStartsDisabled()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor("Actor");
+        SceneEntity entity = world.CreateEntity("Entity");
         world.Start();
-        world.SetActive(actor, false);
+        world.SetActive(entity, false);
 
-        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(actor);
+        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(entity);
 
         behaviour.EnableCount.Should().Be(0);
         world.Update(0.016f);
         behaviour.Updates.Should().Be(0);
 
-        world.SetActive(actor, true);
+        world.SetActive(entity, true);
         behaviour.EnableCount.Should().Be(1);
         world.Update(0.016f);
         behaviour.Updates.Should().Be(1);
@@ -53,8 +53,8 @@ public sealed class SceneBehaviourActiveTests
     public void ParentDeactivation_DisablesChildBehaviours()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor parent = world.CreateActor("Parent");
-        SceneActor child = world.CreateActor("Child");
+        SceneEntity parent = world.CreateEntity("Parent");
+        SceneEntity child = world.CreateEntity("Child");
         world.Hierarchy.SetParent(child, parent);
         CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(child);
         world.Start();
@@ -76,21 +76,21 @@ public sealed class SceneBehaviourActiveTests
     public void DisabledBehaviour_StaysDisabledAcrossHierarchyReactivation()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor("Actor");
-        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity("Entity");
+        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(entity);
         world.Start();
 
-        world.SetBehaviourEnabled<CounterBehaviour>(actor, false);
+        world.SetBehaviourEnabled<CounterBehaviour>(entity, false);
         behaviour.DisableCount.Should().Be(1);
 
-        world.SetActive(actor, false);
-        world.SetActive(actor, true);
+        world.SetActive(entity, false);
+        world.SetActive(entity, true);
 
         behaviour.EnableCount.Should().Be(1);
         world.Update(0.016f);
         behaviour.Updates.Should().Be(0);
 
-        world.SetBehaviourEnabled<CounterBehaviour>(actor, true);
+        world.SetBehaviourEnabled<CounterBehaviour>(entity, true);
         behaviour.EnableCount.Should().Be(2);
         world.Update(0.016f);
         behaviour.Updates.Should().Be(1);
@@ -100,13 +100,13 @@ public sealed class SceneBehaviourActiveTests
     public void Behaviour_ExposesContextUntilDetached()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor("Actor");
-        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity("Entity");
+        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(entity);
 
         behaviour.Context!.World.Should().BeSameAs(world);
         behaviour.Context.IsAttached.Should().BeTrue();
 
-        world.DestroyActor(actor);
+        world.DestroyEntity(entity);
 
         behaviour.Context.IsAttached.Should().BeFalse();
     }

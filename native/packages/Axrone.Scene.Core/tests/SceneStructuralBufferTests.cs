@@ -7,11 +7,11 @@ using Xunit;
 public sealed class SceneStructuralBufferTests
 {
     [Fact]
-    public void DestroyActor_DuringUpdateIsDeferred()
+    public void DestroyEntity_DuringUpdateIsDeferred()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor runner = world.CreateActor("Runner");
-        SceneActor target = world.CreateActor("Target");
+        SceneEntity runner = world.CreateEntity("Runner");
+        SceneEntity target = world.CreateEntity("Target");
         DeferredBehaviour behaviour = world.AddBehaviour<DeferredBehaviour>(runner);
 
         int countBefore = -1;
@@ -19,9 +19,9 @@ public sealed class SceneStructuralBufferTests
         bool destroyResult = false;
         behaviour.Action = () =>
         {
-            countBefore = world.ActorCount;
-            destroyResult = world.DestroyActor(target);
-            countAfter = world.ActorCount;
+            countBefore = world.EntityCount;
+            destroyResult = world.DestroyEntity(target);
+            countAfter = world.EntityCount;
         };
 
         world.Start();
@@ -30,24 +30,24 @@ public sealed class SceneStructuralBufferTests
         countBefore.Should().Be(2);
         destroyResult.Should().BeTrue();
         countAfter.Should().Be(2);
-        world.ActorCount.Should().Be(1);
-        world.TryGetActor(target, out _).Should().BeFalse();
+        world.EntityCount.Should().Be(1);
+        world.TryGetEntity(target, out _).Should().BeFalse();
     }
 
     [Fact]
-    public void DestroyActor_QueuedTwiceDestroysOnce()
+    public void DestroyEntity_QueuedTwiceDestroysOnce()
     {
         using SceneWorld world = CreateWorld();
-        SceneActor runner = world.CreateActor("Runner");
-        SceneActor target = world.CreateActor("Target");
+        SceneEntity runner = world.CreateEntity("Runner");
+        SceneEntity target = world.CreateEntity("Target");
         DeferredBehaviour behaviour = world.AddBehaviour<DeferredBehaviour>(runner);
 
         bool first = false;
         bool second = false;
         behaviour.Action = () =>
         {
-            first = world.DestroyActor(target);
-            second = world.DestroyActor(target);
+            first = world.DestroyEntity(target);
+            second = world.DestroyEntity(target);
         };
 
         world.Start();
@@ -55,18 +55,18 @@ public sealed class SceneStructuralBufferTests
 
         first.Should().BeTrue();
         second.Should().BeFalse();
-        world.ActorCount.Should().Be(1);
+        world.EntityCount.Should().Be(1);
     }
 
     [Fact]
-    public void DestroyActor_DirectOutsideIterationIsImmediate()
+    public void DestroyEntity_DirectOutsideIterationIsImmediate()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor("Actor");
+        SceneEntity entity = world.CreateEntity("Entity");
 
-        world.DestroyActor(actor).Should().BeTrue();
+        world.DestroyEntity(entity).Should().BeTrue();
 
-        world.ActorCount.Should().Be(0);
+        world.EntityCount.Should().Be(0);
     }
 
     private static SceneWorld CreateWorld()

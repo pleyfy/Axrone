@@ -37,42 +37,42 @@ public sealed class SceneCapabilityException(string capability, string message)
     public string Capability { get; } = capability;
 }
 
-/// <summary>An actor handle failed validation.</summary>
-public class SceneActorException : SceneException
+/// <summary>An entity handle failed validation.</summary>
+public class SceneEntityException : SceneException
 {
     /// <summary>Handle that failed validation.</summary>
-    public SceneActor Actor { get; }
+    public SceneEntity Entity { get; }
 
-    /// <summary>Creates an actor failure.</summary>
-    public SceneActorException(string code, in SceneActor actor, string message, Exception? inner = null)
-        : base(code, $"{actor}: {message}", inner)
+    /// <summary>Creates an entity failure.</summary>
+    public SceneEntityException(string code, in SceneEntity entity, string message, Exception? inner = null)
+        : base(code, $"{entity}: {message}", inner)
     {
-        Actor = actor;
+        Entity = entity;
     }
 }
 
-/// <summary>An actor handle names a slot whose generation no longer matches.</summary>
-public sealed class SceneStaleHandleException : SceneActorException
+/// <summary>An entity handle names a slot whose generation no longer matches.</summary>
+public sealed class SceneStaleHandleException : SceneEntityException
 {
     /// <summary>Creates a stale-handle failure.</summary>
-    public SceneStaleHandleException(in SceneActor actor)
-        : base(SceneErrorCodes.ActorStale, actor, "handle is stale or no longer resolves.")
+    public SceneStaleHandleException(in SceneEntity entity)
+        : base(SceneErrorCodes.EntityStale, entity, "handle is stale or no longer resolves.")
     {
     }
 }
 
-/// <summary>An actor handle does not resolve in the owning world.</summary>
-public sealed class SceneActorNotFoundException : SceneActorException
+/// <summary>An entity handle does not resolve in the owning world.</summary>
+public sealed class SceneEntityNotFoundException : SceneEntityException
 {
     /// <summary>Creates a not-found failure.</summary>
-    public SceneActorNotFoundException(in SceneActor actor)
-        : base(SceneErrorCodes.ActorNotFound, actor, "actor does not exist.")
+    public SceneEntityNotFoundException(in SceneEntity entity)
+        : base(SceneErrorCodes.EntityNotFound, entity, "entity does not exist.")
     {
     }
 }
 
-/// <summary>A component operation failed on a specific actor.</summary>
-public class SceneComponentException : SceneActorException
+/// <summary>A component operation failed on a specific entity.</summary>
+public class SceneComponentException : SceneEntityException
 {
     /// <summary>Component or behaviour type name.</summary>
     public string ComponentName { get; }
@@ -80,11 +80,11 @@ public class SceneComponentException : SceneActorException
     /// <summary>Creates a component failure.</summary>
     public SceneComponentException(
         string code,
-        in SceneActor actor,
+        in SceneEntity entity,
         string componentName,
         string message,
         Exception? inner = null)
-        : base(code, actor, $"component '{componentName}': {message}", inner)
+        : base(code, entity, $"component '{componentName}': {message}", inner)
     {
         ComponentName = componentName;
     }

@@ -3,8 +3,8 @@ namespace Axrone.Scene;
 using Axrone.Ecs;
 
 /// <summary>
-/// Stable actor handle into a <c>SceneWorld</c>. The payload is an
-/// <see cref="Entity"/> handle so scene actors and data-oriented ECS entities
+/// Stable entity handle into a <c>SceneWorld</c>. The payload is an
+/// <see cref="Entity"/> handle so scene entities and data-oriented ECS entities
 /// share one 64-bit identity across package boundaries.
 /// </summary>
 /// <remarks>
@@ -13,12 +13,12 @@ using Axrone.Ecs;
 /// than aliasing the new occupant.
 /// </remarks>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
-public readonly record struct SceneActor(Entity Entity) :
-    IComparable<SceneActor>,
-    IComparisonOperators<SceneActor, SceneActor, bool>
+public readonly record struct SceneEntity(Entity Entity) :
+    IComparable<SceneEntity>,
+    IComparisonOperators<SceneEntity, SceneEntity, bool>
 {
-    /// <summary>Null actor handle; never names live storage.</summary>
-    public static SceneActor Null
+    /// <summary>Null entity handle; never names live storage.</summary>
+    public static SceneEntity Null
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => new(Entity.Null);
@@ -31,14 +31,14 @@ public readonly record struct SceneActor(Entity Entity) :
         get => Entity.IsNull;
     }
 
-    /// <summary>Whether this handle names a non-null actor.</summary>
+    /// <summary>Whether this handle names a non-null entity.</summary>
     public bool IsValid
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => !Entity.IsNull;
     }
 
-    /// <summary>Zero-based actor slot, or <c>-1</c> for the null handle.</summary>
+    /// <summary>Zero-based entity slot, or <c>-1</c> for the null handle.</summary>
     public int Slot
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -54,7 +54,7 @@ public readonly record struct SceneActor(Entity Entity) :
 
     /// <summary>Wraps a raw ECS entity handle.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static SceneActor FromEntity(in Entity entity) => new(entity);
+    public static SceneEntity FromEntity(in Entity entity) => new(entity);
 
     /// <summary>
     /// Builds a handle from a zero-based slot and a live generation.
@@ -63,13 +63,13 @@ public readonly record struct SceneActor(Entity Entity) :
     /// The slot is negative, the generation is zero, or the generation does
     /// not fit the entity-version payload.
     /// </exception>
-    public static SceneActor FromSlot(int slot, Generation generation)
+    public static SceneEntity FromSlot(int slot, Generation generation)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(slot);
         ArgumentOutOfRangeException.ThrowIfZero(generation.Value);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(generation.Value, (uint)int.MaxValue);
 
-        return new SceneActor(new Entity(
+        return new SceneEntity(new Entity(
             new EntityId(slot + 1),
             new EntityVersion((int)generation.Value)));
     }
@@ -80,28 +80,28 @@ public readonly record struct SceneActor(Entity Entity) :
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int CompareTo(SceneActor other) => Entity.CompareTo(other.Entity);
+    public int CompareTo(SceneEntity other) => Entity.CompareTo(other.Entity);
 
     /// <summary>Determines whether the left handle sorts before the right one.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool operator <(SceneActor left, SceneActor right) => left.CompareTo(right) < 0;
+    public static bool operator <(SceneEntity left, SceneEntity right) => left.CompareTo(right) < 0;
 
     /// <summary>Determines whether the left handle sorts at or before the right one.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool operator <=(SceneActor left, SceneActor right) => left.CompareTo(right) <= 0;
+    public static bool operator <=(SceneEntity left, SceneEntity right) => left.CompareTo(right) <= 0;
 
     /// <summary>Determines whether the left handle sorts after the right one.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool operator >(SceneActor left, SceneActor right) => left.CompareTo(right) > 0;
+    public static bool operator >(SceneEntity left, SceneEntity right) => left.CompareTo(right) > 0;
 
     /// <summary>Determines whether the left handle sorts at or after the right one.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool operator >=(SceneActor left, SceneActor right) => left.CompareTo(right) >= 0;
+    public static bool operator >=(SceneEntity left, SceneEntity right) => left.CompareTo(right) >= 0;
 
     /// <inheritdoc/>
     public override string ToString() => Entity.IsNull
-        ? "SceneActor[Null]"
+        ? "SceneEntity[Null]"
         : string.Create(
             CultureInfo.InvariantCulture,
-            $"SceneActor[{Entity.Id.Value - 1}v{Entity.Version.Value}]");
+            $"SceneEntity[{Entity.Id.Value - 1}v{Entity.Version.Value}]");
 }

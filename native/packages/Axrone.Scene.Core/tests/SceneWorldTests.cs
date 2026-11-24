@@ -8,18 +8,18 @@ using Xunit;
 public sealed class SceneWorldTests
 {
     [Fact]
-    public void CreateActor_InitializesTransformAndMask()
+    public void CreateEntity_InitializesTransformAndMask()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
 
-        SceneActor actor = world.CreateActor("Player");
+        SceneEntity entity = world.CreateEntity("Player");
 
-        world.ActorCount.Should().Be(1);
-        world.ActiveActorCount.Should().Be(1);
+        world.EntityCount.Should().Be(1);
+        world.ActiveEntityCount.Should().Be(1);
         world.HasTransform3D.Should().BeTrue();
-        world.HasData<SceneTransform3D>(actor).Should().BeTrue();
-        world.GetData<SceneTransform3D>(actor).Position.Should().Be(Vec3.Zero);
-        world.GetComponentMask(actor).IsSet(world.Registry.GetDataByType(typeof(SceneTransform3D)).TypeId)
+        world.HasData<SceneTransform3D>(entity).Should().BeTrue();
+        world.GetData<SceneTransform3D>(entity).Position.Should().Be(Vec3.Zero);
+        world.GetComponentMask(entity).IsSet(world.Registry.GetDataByType(typeof(SceneTransform3D)).TypeId)
             .Should().BeTrue();
     }
 
@@ -27,20 +27,20 @@ public sealed class SceneWorldTests
     public void TransformMutation_RebuildsWorldMatrix()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor();
+        SceneEntity entity = world.CreateEntity();
 
-        world.GetTransform3D(actor).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
+        world.GetTransform3D(entity).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
         world.UpdateTransforms();
 
-        world.GetWorldPosition3D(actor).Should().Be(new Vec3(1.0f, 2.0f, 3.0f));
+        world.GetWorldPosition3D(entity).Should().Be(new Vec3(1.0f, 2.0f, 3.0f));
     }
 
     [Fact]
     public void Reparent_ComposesParentWorldMatrix()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor parent = world.CreateActor("Parent");
-        SceneActor child = world.CreateActor("Child");
+        SceneEntity parent = world.CreateEntity("Parent");
+        SceneEntity child = world.CreateEntity("Child");
 
         world.GetTransform3D(parent).SetPosition(new Vec3(10.0f, 0.0f, 0.0f));
         world.GetTransform3D(child).SetPosition(new Vec3(1.0f, 0.0f, 0.0f));
@@ -56,11 +56,11 @@ public sealed class SceneWorldTests
     public void WorldMatrix_UsesRowVectorTranslation()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor();
-        world.GetTransform3D(actor).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
+        SceneEntity entity = world.CreateEntity();
+        world.GetTransform3D(entity).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
         world.UpdateTransforms();
 
-        Mat4 matrix = world.GetWorldMatrix3D(actor);
+        Mat4 matrix = world.GetWorldMatrix3D(entity);
 
         matrix.M41.Should().Be(1.0f);
         matrix.M42.Should().Be(2.0f);
@@ -77,8 +77,8 @@ public sealed class SceneWorldTests
     public void WorldMatrix_RotationMatchesQuaternionRotation()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor parent = world.CreateActor("Parent");
-        SceneActor child = world.CreateActor("Child");
+        SceneEntity parent = world.CreateEntity("Parent");
+        SceneEntity child = world.CreateEntity("Child");
         Quat parentRotation = Quat.CreateFromYawPitchRoll(MathF.PI / 2.0f, 0.0f, 0.0f);
 
         world.GetTransform3D(parent).SetRotation(parentRotation);
@@ -94,8 +94,8 @@ public sealed class SceneWorldTests
     public void WorldRotation_PropagatesToChildren()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor parent = world.CreateActor("Parent");
-        SceneActor child = world.CreateActor("Child");
+        SceneEntity parent = world.CreateEntity("Parent");
+        SceneEntity child = world.CreateEntity("Child");
         Quat parentRotation = Quat.CreateFromYawPitchRoll(MathF.PI / 2.0f, 0.0f, 0.0f);
 
         world.GetTransform3D(parent).SetRotation(parentRotation);
@@ -111,8 +111,8 @@ public sealed class SceneWorldTests
     public void ActiveInHierarchy_PropagatesThroughHierarchy()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor parent = world.CreateActor();
-        SceneActor child = world.CreateActor();
+        SceneEntity parent = world.CreateEntity();
+        SceneEntity child = world.CreateEntity();
         world.Hierarchy.SetParent(child, parent);
 
         world.SetActive(parent, false);
@@ -121,27 +121,27 @@ public sealed class SceneWorldTests
         world.IsActiveInHierarchy(parent).Should().BeFalse();
         world.IsActiveSelf(child).Should().BeTrue();
         world.IsActiveInHierarchy(child).Should().BeFalse();
-        world.ActiveActorCount.Should().Be(0);
+        world.ActiveEntityCount.Should().Be(0);
 
         world.SetActive(parent, true);
 
         world.IsActiveInHierarchy(child).Should().BeTrue();
-        world.ActiveActorCount.Should().Be(2);
+        world.ActiveEntityCount.Should().Be(2);
     }
 
     [Fact]
-    public void DestroyActor_InvalidatesHandleAndDetachesChildren()
+    public void DestroyEntity_InvalidatesHandleAndDetachesChildren()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor parent = world.CreateActor();
-        SceneActor child = world.CreateActor();
+        SceneEntity parent = world.CreateEntity();
+        SceneEntity child = world.CreateEntity();
         world.Hierarchy.SetParent(child, parent);
 
-        world.DestroyActor(parent).Should().BeTrue();
+        world.DestroyEntity(parent).Should().BeTrue();
 
-        world.ActorCount.Should().Be(1);
-        world.TryGetActor(parent, out _).Should().BeFalse();
-        world.Hierarchy.ParentOf(child).Should().Be(SceneActor.Null);
+        world.EntityCount.Should().Be(1);
+        world.TryGetEntity(parent, out _).Should().BeFalse();
+        world.Hierarchy.ParentOf(child).Should().Be(SceneEntity.Null);
         Action access = () => world.GetTransform3D(parent);
         access.Should().Throw<SceneStaleHandleException>();
     }
@@ -150,19 +150,19 @@ public sealed class SceneWorldTests
     public void DataComponent_AddGetRemove_RoundTrips()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor();
+        SceneEntity entity = world.CreateEntity();
 
-        ref Health health = ref world.AddData(actor, new Health { Value = 42 });
+        ref Health health = ref world.AddData(entity, new Health { Value = 42 });
         health.Value.Should().Be(42);
-        world.GetData<Health>(actor).Value.Should().Be(42);
-        world.TryGetData<Health>(actor, out Health copy).Should().BeTrue();
+        world.GetData<Health>(entity).Value.Should().Be(42);
+        world.TryGetData<Health>(entity, out Health copy).Should().BeTrue();
         copy.Value.Should().Be(42);
 
-        world.GetData<Health>(actor).Value = 99;
-        world.GetData<Health>(actor).Value.Should().Be(99);
+        world.GetData<Health>(entity).Value = 99;
+        world.GetData<Health>(entity).Value.Should().Be(99);
 
-        world.RemoveData<Health>(actor).Should().BeTrue();
-        world.HasData<Health>(actor).Should().BeFalse();
+        world.RemoveData<Health>(entity).Should().BeTrue();
+        world.HasData<Health>(entity).Should().BeFalse();
     }
 
     [Fact]
@@ -170,9 +170,9 @@ public sealed class SceneWorldTests
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
         world.Start();
-        SceneActor actor = world.CreateActor();
+        SceneEntity entity = world.CreateEntity();
 
-        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(actor);
+        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(entity);
 
         behaviour.LoadCount.Should().Be(1);
         behaviour.StartCount.Should().Be(1);
@@ -197,9 +197,9 @@ public sealed class SceneWorldTests
 
         using var world = new SceneWorld(registry);
         world.Start();
-        SceneActor actor = world.CreateActor();
-        world.AddBehaviour<HighOrderBehaviour>(actor);
-        world.AddBehaviour<LowOrderBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity();
+        world.AddBehaviour<HighOrderBehaviour>(entity);
+        world.AddBehaviour<LowOrderBehaviour>(entity);
 
         world.Update(0.016f);
 
@@ -217,9 +217,9 @@ public sealed class SceneWorldTests
 
         using var world = new SceneWorld(registry, diagnostics);
         world.Start();
-        SceneActor actor = world.CreateActor();
-        world.AddBehaviour<ThrowingBehaviour>(actor);
-        CounterBehaviour counter = world.AddBehaviour<CounterBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity();
+        world.AddBehaviour<ThrowingBehaviour>(entity);
+        CounterBehaviour counter = world.AddBehaviour<CounterBehaviour>(entity);
 
         world.Update(0.016f);
 
@@ -240,23 +240,23 @@ public sealed class SceneWorldTests
             diagnostics: null,
             new SceneWorldOptions(64, SceneWorldErrorPolicy.FailFast));
         world.Start();
-        SceneActor actor = world.CreateActor();
-        world.AddBehaviour<ThrowingBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity();
+        world.AddBehaviour<ThrowingBehaviour>(entity);
 
         Action update = () => world.Update(0.016f);
         update.Should().Throw<InvalidOperationException>().WithMessage("behaviour fault");
     }
 
     [Fact]
-    public void StructuralMutation_DuringActorVisit_Throws()
+    public void StructuralMutation_DuringEntityVisit_Throws()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        _ = world.CreateActor();
-        _ = world.CreateActor();
+        _ = world.CreateEntity();
+        _ = world.CreateEntity();
 
         var visitor = new CreatingVisitor(world);
         int context = 0;
-        Action visit = () => world.VisitActors(ref visitor, ref context);
+        Action visit = () => world.VisitEntities(ref visitor, ref context);
 
         visit.Should().Throw<SceneStructuralMutationException>();
     }
@@ -266,8 +266,8 @@ public sealed class SceneWorldTests
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
         world.Start();
-        SceneActor actor = world.CreateActor();
-        _ = world.AddBehaviour<CounterBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity();
+        _ = world.AddBehaviour<CounterBehaviour>(entity);
 
         for (int i = 0; i < 100; i++)
         {
@@ -288,14 +288,14 @@ public sealed class SceneWorldTests
     public void SteadyState_TransformUpdateDoesNotAllocate()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor();
-        world.GetTransform3D(actor).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
+        SceneEntity entity = world.CreateEntity();
+        world.GetTransform3D(entity).SetPosition(new Vec3(1.0f, 2.0f, 3.0f));
         world.UpdateTransforms();
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 1000; i++)
         {
-            world.GetTransform3D(actor).Translate(new Vec3(0.0f, 0.0f, 0.0f));
+            world.GetTransform3D(entity).Translate(new Vec3(0.0f, 0.0f, 0.0f));
             world.UpdateTransforms();
         }
 
@@ -304,18 +304,18 @@ public sealed class SceneWorldTests
     }
 
     [Fact]
-    public void ActorEnumeration_DoesNotAllocate()
+    public void EntityEnumeration_DoesNotAllocate()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
         for (int i = 0; i < 8; i++)
         {
-            _ = world.CreateActor();
+            _ = world.CreateEntity();
         }
 
         for (int pass = 0; pass < 10; pass++)
         {
             int count = 0;
-            foreach (SceneActor _ in world.Actors)
+            foreach (SceneEntity _ in world.Entities)
             {
                 count++;
             }
@@ -327,7 +327,7 @@ public sealed class SceneWorldTests
         for (int pass = 0; pass < 1000; pass++)
         {
             int count = 0;
-            foreach (SceneActor _ in world.Actors)
+            foreach (SceneEntity _ in world.Entities)
             {
                 count++;
             }
@@ -343,25 +343,25 @@ public sealed class SceneWorldTests
     public void Dispose_IsIdempotent()
     {
         SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        _ = world.CreateActor();
+        _ = world.CreateEntity();
 
         world.Dispose();
         world.Dispose();
 
         world.IsDisposed.Should().BeTrue();
-        Action create = () => world.CreateActor();
+        Action create = () => world.CreateEntity();
         create.Should().Throw<SceneDisposedException>();
     }
 
-    private struct CreatingVisitor : ISceneActorVisitor<int>
+    private struct CreatingVisitor : ISceneEntityVisitor<int>
     {
         private readonly SceneWorld _world;
 
         public CreatingVisitor(SceneWorld world) => _world = world;
 
-        public bool Visit(SceneActor actor, scoped ref int context)
+        public bool Visit(SceneEntity entity, scoped ref int context)
         {
-            _ = _world.CreateActor();
+            _ = _world.CreateEntity();
             context++;
             return true;
         }

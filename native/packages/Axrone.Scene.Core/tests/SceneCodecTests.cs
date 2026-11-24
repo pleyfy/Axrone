@@ -15,7 +15,7 @@ public sealed class SceneCodecTests
         var codecs = new SceneCodecRegistry(registry);
         codecs.Register(new HealthCodec());
 
-        SceneActor source = world.CreateActor("Source");
+        SceneEntity source = world.CreateEntity("Source");
         world.AddData(source, new Health { Value = 42 });
 
         SceneCodecRegistration registration = codecs.Registrations[0];
@@ -38,7 +38,7 @@ public sealed class SceneCodecTests
         }
 
         using JsonDocument document = JsonDocument.Parse(buffer.WrittenMemory);
-        SceneActor target = world.CreateActor("Target");
+        SceneEntity target = world.CreateEntity("Target");
         registration.Codec.ReadInto(world, target, document.RootElement.GetProperty("data"));
 
         world.GetData<Health>(target).Value.Should().Be(42);

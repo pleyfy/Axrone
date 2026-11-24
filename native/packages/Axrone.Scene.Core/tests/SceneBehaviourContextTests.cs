@@ -10,11 +10,11 @@ public sealed class SceneBehaviourContextTests
     public void ContextReportsAttachmentAndLifecycleTransitions()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor("Actor");
-        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity("Entity");
+        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(entity);
         SceneBehaviourContext context = behaviour.Context!;
 
-        context.Actor.Should().Be(actor);
+        context.Entity.Should().Be(entity);
         context.World.Should().BeSameAs(world);
         context.IsAttached.Should().BeTrue();
         context.State.Should().Be(SceneBehaviourState.Loaded);
@@ -23,11 +23,11 @@ public sealed class SceneBehaviourContextTests
         world.Start();
         context.State.Should().Be(SceneBehaviourState.Enabled);
 
-        world.SetBehaviourEnabled<CounterBehaviour>(actor, false);
+        world.SetBehaviourEnabled<CounterBehaviour>(entity, false);
         context.State.Should().Be(SceneBehaviourState.Disabled);
         context.Enabled.Should().BeFalse();
 
-        world.SetBehaviourEnabled<CounterBehaviour>(actor, true);
+        world.SetBehaviourEnabled<CounterBehaviour>(entity, true);
         context.State.Should().Be(SceneBehaviourState.Enabled);
 
         world.RemoveBehaviour(behaviour);
@@ -40,8 +40,8 @@ public sealed class SceneBehaviourContextTests
     public void DuplicatePhaseRegistrationIsRejected()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor("Actor");
-        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity("Entity");
+        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(entity);
         SceneBehaviourContext context = behaviour.Context!;
 
         FluentActions.Invoking(() => context.OnUpdate(_ => { }))
@@ -54,14 +54,14 @@ public sealed class SceneBehaviourContextTests
     public void TrackedSubscriptionsDisposeOnDetachAndRejectLateRegistrations()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor("Actor");
-        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity("Entity");
+        CounterBehaviour behaviour = world.AddBehaviour<CounterBehaviour>(entity);
         SceneBehaviourContext context = behaviour.Context!;
         var probe = new DisposableProbe();
 
         context.Track(probe);
 
-        world.DestroyActor(actor);
+        world.DestroyEntity(entity);
         probe.Disposed.Should().Be(1);
         FluentActions.Invoking(() => context.Track(new DisposableProbe()))
             .Should().Throw<SceneValidationException>();
@@ -71,9 +71,9 @@ public sealed class SceneBehaviourContextTests
     public void TwoInstancesOfTheSameTypeAttachIndependently()
     {
         using SceneWorld world = SceneWorldFixture.Create3DWorld(out _);
-        SceneActor actor = world.CreateActor("Actor");
-        CounterBehaviour first = world.AddBehaviour<CounterBehaviour>(actor);
-        CounterBehaviour second = world.AddBehaviour<CounterBehaviour>(actor);
+        SceneEntity entity = world.CreateEntity("Entity");
+        CounterBehaviour first = world.AddBehaviour<CounterBehaviour>(entity);
+        CounterBehaviour second = world.AddBehaviour<CounterBehaviour>(entity);
 
         first.Context.Should().NotBeSameAs(second.Context);
         world.BehaviourCount.Should().Be(2);

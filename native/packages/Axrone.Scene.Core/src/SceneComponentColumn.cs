@@ -1,7 +1,7 @@
 namespace Axrone.Scene;
 
 /// <summary>
-/// Type-erased view over a data-component column so actor teardown and
+/// Type-erased view over a data-component column so entity teardown and
 /// capacity growth can operate without knowing the payload type.
 /// </summary>
 internal interface ISceneComponentColumn
@@ -18,7 +18,7 @@ internal interface ISceneComponentColumn
 }
 
 /// <summary>
-/// Dense column of one unmanaged data component, indexed by actor slot.
+/// Dense column of one unmanaged data component, indexed by entity slot.
 /// </summary>
 /// <typeparam name="T">Component payload.</typeparam>
 internal sealed class SceneComponentColumn<T> : ISceneComponentColumn
@@ -130,7 +130,7 @@ internal sealed class SceneComponentColumnSet
     }
 
     /// <summary>Gets or creates the column for <typeparamref name="T"/>.</summary>
-    public SceneComponentColumn<T> GetOrCreate<T>(SceneDataComponentDescriptor descriptor, int actorCapacity)
+    public SceneComponentColumn<T> GetOrCreate<T>(SceneDataComponentDescriptor descriptor, int entityCapacity)
         where T : unmanaged, ISceneDataComponent
     {
         ArgumentNullException.ThrowIfNull(descriptor);
@@ -145,7 +145,7 @@ internal sealed class SceneComponentColumnSet
 
         if (_columns[index] is SceneComponentColumn<T> existing)
         {
-            existing.EnsureCapacity(actorCapacity);
+            existing.EnsureCapacity(entityCapacity);
             return existing;
         }
 
@@ -156,7 +156,7 @@ internal sealed class SceneComponentColumnSet
                 $"Data component id {index} is already bound to a different payload type.");
         }
 
-        var column = new SceneComponentColumn<T>(descriptor.TypeId, actorCapacity);
+        var column = new SceneComponentColumn<T>(descriptor.TypeId, entityCapacity);
         _columns[index] = column;
         _active.Add(column);
         return column;
@@ -178,7 +178,7 @@ internal sealed class SceneComponentColumnSet
         return column;
     }
 
-    /// <summary>Grows every materialized column to the actor capacity.</summary>
+    /// <summary>Grows every materialized column to the entity capacity.</summary>
     public void EnsureCapacity(int required)
     {
         for (int i = 0; i < _active.Count; i++)
@@ -187,7 +187,7 @@ internal sealed class SceneComponentColumnSet
         }
     }
 
-    /// <summary>Clears every component stored on one actor slot.</summary>
+    /// <summary>Clears every component stored on one entity slot.</summary>
     public void ClearSlot(int slot)
     {
         for (int i = 0; i < _active.Count; i++)

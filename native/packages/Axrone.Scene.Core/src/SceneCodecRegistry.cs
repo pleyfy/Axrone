@@ -3,16 +3,16 @@ namespace Axrone.Scene;
 using System.Text.Json;
 
 /// <summary>
-/// Type-erased data-component codec. Codecs operate directly on a world actor,
+/// Type-erased data-component codec. Codecs operate directly on a world entity,
 /// so snapshot and prefab paths never box component payloads or use reflection.
 /// </summary>
 public interface ISceneDataCodec
 {
     /// <summary>Writes the component payload properties into the current JSON object.</summary>
-    void Write(SceneWorld world, SceneActor actor, Utf8JsonWriter writer);
+    void Write(SceneWorld world, SceneEntity entity, Utf8JsonWriter writer);
 
-    /// <summary>Reads the component payload object into the actor.</summary>
-    void ReadInto(SceneWorld world, SceneActor actor, JsonElement data);
+    /// <summary>Reads the component payload object into the entity.</summary>
+    void ReadInto(SceneWorld world, SceneEntity entity, JsonElement data);
 }
 
 /// <summary>
@@ -24,25 +24,25 @@ public abstract class SceneDataCodec<T> : ISceneDataCodec
     where T : unmanaged, ISceneDataComponent
 {
     /// <inheritdoc/>
-    public void Write(SceneWorld world, SceneActor actor, Utf8JsonWriter writer)
+    public void Write(SceneWorld world, SceneEntity entity, Utf8JsonWriter writer)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(writer);
-        Write(writer, world.GetData<T>(actor));
+        Write(writer, world.GetData<T>(entity));
     }
 
     /// <inheritdoc/>
-    public virtual void ReadInto(SceneWorld world, SceneActor actor, JsonElement data)
+    public virtual void ReadInto(SceneWorld world, SceneEntity entity, JsonElement data)
     {
         ArgumentNullException.ThrowIfNull(world);
         T value = Read(data);
-        if (world.HasData<T>(actor))
+        if (world.HasData<T>(entity))
         {
-            world.GetData<T>(actor) = value;
+            world.GetData<T>(entity) = value;
         }
         else
         {
-            world.AddData(actor, value);
+            world.AddData(entity, value);
         }
     }
 
