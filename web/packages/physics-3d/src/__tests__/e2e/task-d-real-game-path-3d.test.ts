@@ -56,7 +56,7 @@ const createTransform = (
     });
 };
 
-class MockActor {
+class MockEntity {
     active = true;
     isDestroyed = false;
     private readonly _components: unknown[] = [];
@@ -76,14 +76,14 @@ class MockActor {
 }
 
 class MockEcsWorld {
-    private readonly _actors: MockActor[] = [];
+    private readonly _entities: MockEntity[] = [];
 
-    addActor(actor: MockActor): void {
-        this._actors.push(actor);
+    addEntity(entity: MockEntity): void {
+        this._entities.push(entity);
     }
 
-    getAllActors(): MockActor[] {
-        return [...this._actors];
+    getAllEntities(): MockEntity[] {
+        return [...this._entities];
     }
 }
 
@@ -107,21 +107,21 @@ const addBox = (
     sizeY: number,
     friction: number
 ): Rigidbody3D => {
-    const actor = new MockActor();
+    const entity = new MockEntity();
     const rb = new Rigidbody3D();
     attachTransform(rb, transform);
     // Rigidbody3DType.Static === 0, Dynamic === 2 (local const enum in rigidbody3d.ts).
     rb.bodyType = (staticBody ? 0 : 2) as never;
     if (!staticBody) rb.mass = 1;
-    actor.addComponent(rb);
+    entity.addComponent(rb);
 
     const col = new BoxCollider3D();
     attachTransform(col, transform);
     col.size = { x: 40, y: sizeY, z: 40 };
     col.material = { staticFriction: friction, dynamicFriction: friction, bounciness: 0 };
-    actor.addComponent(col);
+    entity.addComponent(col);
 
-    world.addActor(actor);
+    world.addEntity(entity);
     return rb;
 };
 

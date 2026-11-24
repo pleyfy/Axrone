@@ -220,13 +220,13 @@ export interface AnimationMotionClipDefinition {
 export interface AnimationMotionMatchingDefinition {
     readonly kind: 'motionMatching';
     readonly database: AnimationMotionMatchDatabase;
-    /** Parameter holding the world-space trajectory X of the actor. */
+    /** Parameter holding the world-space trajectory X of the entity. */
     readonly trajectoryXParameter: AnimationParameterId | string;
-    /** Parameter holding the world-space trajectory Z of the actor. */
+    /** Parameter holding the world-space trajectory Z of the entity. */
     readonly trajectoryZParameter: AnimationParameterId | string;
-    /** Parameter holding the world-space facing X of the actor. */
+    /** Parameter holding the world-space facing X of the entity. */
     readonly facingXParameter: AnimationParameterId | string;
-    /** Parameter holding the world-space facing Z of the actor. */
+    /** Parameter holding the world-space facing Z of the entity. */
     readonly facingZParameter: AnimationParameterId | string;
     /** Minimum seconds between two searches. */
     readonly reselectIntervalSeconds?: number;

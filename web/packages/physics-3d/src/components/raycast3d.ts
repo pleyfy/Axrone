@@ -9,7 +9,7 @@ export interface RaycastHit3D {
     readonly normal: Vec3;
     readonly distance: number;
     readonly colliderId: number;
-    readonly actorId: string | null;
+    readonly entityUid: string | null;
 }
 
 export interface RayCast3DConfig {
@@ -37,7 +37,7 @@ const DEFAULT_DEBUG_HIT_COLOR: readonly [number, number, number] = [1, 0, 0];
  *     direction: { x: 0, y: -1, z: 0 },
  *     maxDistance: 10,
  * });
- * actor.addComponent(RayCast3D, raycast);
+ * entity.addComponent(RayCast3D, raycast);
  *
  * // In update loop
  * if (raycast.cast()) {
@@ -56,7 +56,7 @@ export class RayCast3D extends Component {
     private _debugHitColor: Vec3;
 
     private _lastHit: RaycastHit3D | null = null;
-    private _hitActors: string[] = [];
+    private _hitEntities: string[] = [];
     private _world: PhysicsWorld3D | null = null;
 
     constructor(config: RayCast3DConfig = {}) {
@@ -148,8 +148,8 @@ export class RayCast3D extends Component {
         return this._lastHit?.distance ?? 0;
     }
 
-    get hitActorId(): string | null {
-        return this._lastHit?.actorId ?? null;
+    get hitEntityUid(): string | null {
+        return this._lastHit?.entityUid ?? null;
     }
 
     /**
@@ -225,7 +225,7 @@ export class RayCast3D extends Component {
                 normal: new Vec3(hit.normal.x, hit.normal.y, hit.normal.z),
                 distance: hit.fraction * this._maxDistance,
                 colliderId: hit.shapeId,
-                actorId: String(hit.bodyId),
+                entityUid: String(hit.bodyId),
             };
             return true;
         }

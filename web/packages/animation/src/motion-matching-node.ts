@@ -23,10 +23,10 @@ export const createMotionMatchingSelection = (): AnimationMotionMatchingSelectio
 });
 
 /**
- * Reads the world-space trajectory and facing from the actor parameters and
+ * Reads the world-space trajectory and facing from the entity parameters and
  * picks the pose that matches them best.
  *
- * The search runs at most once per reselect interval so a moving actor does
+ * The search runs at most once per reselect interval so a moving entity does
  * not flip between two similar poses every frame; a loop of the timeline
  * always forces a fresh search.
  */
