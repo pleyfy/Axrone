@@ -97,7 +97,7 @@ const createRenderParams = (
     frameState: SceneRenderFrameState,
     overrides: Record<string, unknown> = {}
 ) => ({
-    actors: [],
+    entities: [],
     frame: 1,
     deltaSeconds: 1 / 60,
     viewportWidth: 640,

@@ -3,7 +3,7 @@ import { getOrCreateGLContext } from '@axrone/render-webgl2';
 import { World } from '@axrone/ecs-runtime';
 import { SystemManager, SystemPhase } from '@axrone/ecs-runtime';
 import type { ComponentRegistry } from '@axrone/ecs-runtime';
-import { SceneActorLifecycleRunner } from './actor-lifecycle-runner';
+import { SceneEntityLifecycleRunner } from './entity-lifecycle-runner';
 import { SceneComponentCatalog } from './component-catalog';
 import { createSceneLoopSystems } from './loop-bridge';
 import type { SceneBatchRuntimeFactory } from './rendering/batch-runtime-contract';
@@ -11,7 +11,7 @@ import type { SceneTilemapRenderRuntimeLike } from './rendering/tilemap-render-r
 import { SceneRenderRuntime } from './rendering/scene-render-runtime';
 import { resolveSceneSurface } from './scene-surface-resolver';
 import type { SceneLoopState, SceneOptions, SceneRegistry } from './types';
-import { SceneActorRuntime } from './scene-actor-runtime';
+import { SceneEntityRuntime } from './scene-entity-runtime';
 import { SceneAssetRuntime } from './scene-asset-runtime';
 import { SceneLifecycleRuntime } from './scene-lifecycle-runtime';
 import { getCoreSceneRuntimeProfile } from './scene-core-profile';
@@ -158,9 +158,9 @@ export class SceneRuntimeKernel<R extends ComponentRegistry = Record<string, nev
     readonly world: World<RuntimeRegistry<R>>;
     readonly systems: SystemManager<RuntimeRegistry<R>>;
     readonly loop: GameLoop<SceneLoopState>;
-    readonly actors: SceneActorRuntime<R>;
+    readonly entities: SceneEntityRuntime<R>;
     readonly assets: SceneAssetRuntime;
-    readonly actorLifecycleRunner: SceneActorLifecycleRunner;
+    readonly entityLifecycleRunner: SceneEntityLifecycleRunner;
     readonly renderRuntime: SceneRenderRuntime;
     readonly snapshots: SceneSnapshotRuntime;
     readonly lifecycle: SceneLifecycleRuntime;
@@ -175,9 +175,9 @@ export class SceneRuntimeKernel<R extends ComponentRegistry = Record<string, nev
     readonly renderCapabilities: SceneRenderCapabilities;
 
     private readonly _executePhaseCallback: (phase: SystemPhase, delta: number) => void;
-    private readonly _fixedUpdateActorsCallback: (delta: number) => void;
-    private readonly _updateActorsCallback: (delta: number) => void;
-    private readonly _lateUpdateActorsCallback: (delta: number) => void;
+    private readonly _fixedUpdateEntitiesCallback: (delta: number) => void;
+    private readonly _updateEntitiesCallback: (delta: number) => void;
+    private readonly _lateUpdateEntitiesCallback: (delta: number) => void;
     private readonly _renderCallback: (delta: number) => void;
 
     private _currentDelta = 0;
@@ -226,12 +226,12 @@ export class SceneRuntimeKernel<R extends ComponentRegistry = Record<string, nev
 
         this.world = new World(registry, sceneOptions.worldConfig);
         this.systems = new SystemManager(this.world);
-        this.actors = new SceneActorRuntime({
+        this.entities = new SceneEntityRuntime({
             world: this.world,
             componentCatalog,
         });
-        this.actorLifecycleRunner = new SceneActorLifecycleRunner({
-            getActors: () => this.world.getAllActors(),
+        this.entityLifecycleRunner = new SceneEntityLifecycleRunner({
+            getEntitys: () => this.world.getAllEntities(),
         });
         renderRuntime = new SceneRenderRuntime({
             gl: this.gl,
@@ -247,7 +247,7 @@ export class SceneRuntimeKernel<R extends ComponentRegistry = Record<string, nev
             instancing: sceneOptions.instancing,
             batchRuntimes: sceneOptions.composition?.createRenderBatchRuntimes,
             tilemapRuntimes: sceneOptions.composition?.createTilemapRuntimes,
-            getActors: () => this.world.getAllActors(),
+            getEntitys: () => this.world.getAllEntities(),
             createMeshResource: (definition) => this.assets.createMeshResource(definition),
             disposeMesh: (mesh) => this.assets.disposeMesh(mesh),
             applyMissingVertexAttributeDefaults: (mesh) =>
@@ -258,7 +258,7 @@ export class SceneRuntimeKernel<R extends ComponentRegistry = Record<string, nev
             sceneId: options.sceneId,
             defaultRenderPassId: DEFAULT_SCENE_RENDER_PASS_ID,
             defaultClearColor,
-            actors: this.actors,
+            entities: this.entities,
             assets: this.assets,
         });
         this.snapshots.initializeRenderPasses(sceneOptions.renderPasses);
@@ -292,9 +292,9 @@ export class SceneRuntimeKernel<R extends ComponentRegistry = Record<string, nev
         });
 
         this._executePhaseInner = () => this.systems.executePhase(this._currentSystemPhase!, this._currentDelta);
-        this._fixedUpdateInner = () => this.actorLifecycleRunner.fixedUpdate(this._currentDelta);
-        this._updateInner = () => this.actorLifecycleRunner.update(this._currentDelta);
-        this._lateUpdateInner = () => this.actorLifecycleRunner.lateUpdate(this._currentDelta);
+        this._fixedUpdateInner = () => this.entityLifecycleRunner.fixedUpdate(this._currentDelta);
+        this._updateInner = () => this.entityLifecycleRunner.update(this._currentDelta);
+        this._lateUpdateInner = () => this.entityLifecycleRunner.lateUpdate(this._currentDelta);
         this._renderInner = () => this.render(this._currentDelta);
 
         this._executePhaseCallback = (phase, delta) => {
@@ -309,19 +309,19 @@ export class SceneRuntimeKernel<R extends ComponentRegistry = Record<string, nev
             this.profiler.timePhase(profilerPhase, this._executePhaseInner);
         };
 
-        this._fixedUpdateActorsCallback = (delta) => {
+        this._fixedUpdateEntitiesCallback = (delta) => {
             this._currentDelta = delta;
             this.profiler.capturePhaseSample('fixedUpdate');
             this.profiler.timePhase('fixedUpdate', this._fixedUpdateInner);
         };
 
-        this._updateActorsCallback = (delta) => {
+        this._updateEntitiesCallback = (delta) => {
             this._currentDelta = delta;
             this.profiler.capturePhaseSample('update');
             this.profiler.timePhase('update', this._updateInner);
         };
 
-        this._lateUpdateActorsCallback = (delta) => {
+        this._lateUpdateEntitiesCallback = (delta) => {
             this._currentDelta = delta;
             this.profiler.capturePhaseSample('update');
             this.profiler.timePhase('update', this._lateUpdateInner);
@@ -340,9 +340,9 @@ export class SceneRuntimeKernel<R extends ComponentRegistry = Record<string, nev
 
         const baseLoopSystems = createSceneLoopSystems({
             executePhase: this._executePhaseCallback,
-            fixedUpdateActors: this._fixedUpdateActorsCallback,
-            updateActors: this._updateActorsCallback,
-            lateUpdateActors: this._lateUpdateActorsCallback,
+            fixedUpdateEntities: this._fixedUpdateEntitiesCallback,
+            updateEntities: this._updateEntitiesCallback,
+            lateUpdateEntities: this._lateUpdateEntitiesCallback,
             render: this._renderCallback,
         });
 

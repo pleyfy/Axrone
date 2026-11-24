@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { Transform, type Actor } from '@axrone/ecs-runtime';
+import { Transform, type EntityId } from '@axrone/ecs-runtime';
 import { Vec2 } from '@axrone/numeric';
 import {
     Rigidbody2D,
@@ -30,8 +30,8 @@ import { createSceneOptions, ManualScheduler } from '../../../../tests/shared/te
  * scene-runtime must not gain a reverse dependency on its own consumer.
  *
  * Every physics scene below is authored the way the Editor writes it: joint
- * references are entity/node id STRINGS, and the actor that owns the joint is
- * listed BEFORE the actor it points at.
+ * references are entity/node id STRINGS, and the entity that owns the joint is
+ * listed BEFORE the entity it points at.
  */
 
 const ENGINE_FIXED_DELTA_MS = 1000 / 60;
@@ -52,7 +52,7 @@ const SETTLE_DISTANCE_TOLERANCE = 0.35;
 const JOINTED_FALL_ARREST_Y = -1.4;
 const FREE_FALL_Y = -1.5;
 
-interface ActorSpec {
+interface EntitySpec {
     readonly nodeId: string;
     readonly name: string;
     readonly position: readonly [number, number];
@@ -64,11 +64,11 @@ interface ActorSpec {
 
 const createPrefabDefinition = (
     id: string,
-    specs: readonly ActorSpec[]
+    specs: readonly EntitySpec[]
 ): ScenePrefabDefinition => ({
     id,
     kind: 'prefab',
-    actors: specs.map((spec) => ({
+    entities: specs.map((spec) => ({
         nodeId: spec.nodeId,
         parentNodeId: null,
         name: spec.name,
@@ -136,7 +136,7 @@ const createSceneHarness = (sceneId: string): SceneHarness => {
     });
 
     for (const componentType of PHYSICS_COMPONENTS) {
-        kernel.actors.registerComponent(componentType);
+        kernel.entities.registerComponent(componentType);
     }
 
     const bridge = kernel.physicsBridge2D as unknown as PhysicsBridge2D;
@@ -166,14 +166,14 @@ const stepBridgeWorld = (bridge: PhysicsBridge2D, steps: number): void => {
     }
 };
 
-const findNodeActor = (actors: readonly Actor[], nodeId: string): Actor => {
-    const actor = actors.find(
+const findNodeEntity = (entities: readonly EntityId[], nodeId: string): EntityId => {
+    const entity = entities.find(
         (candidate) => candidate.getComponent(PrefabNodeBinding)?.nodeId === nodeId
     );
-    if (!actor) {
-        throw new Error(`scene snapshot produced no actor for node '${nodeId}'`);
+    if (!entity) {
+        throw new Error(`scene snapshot produced no entity for node '${nodeId}'`);
     }
-    return actor;
+    return entity;
 };
 
 interface PendulumHandle {
@@ -209,7 +209,7 @@ const createPendulumSnapshot = (spec: PendulumSpec): ScenePrefabDefinition => {
         });
     }
 
-    const actors: ActorSpec[] = [
+    const entities: EntitySpec[] = [
         { nodeId: 'node-bob', name: 'Bob', position: [ARM_LENGTH, 0], components: bobComponents },
         {
             nodeId: 'node-anchor',
@@ -222,7 +222,7 @@ const createPendulumSnapshot = (spec: PendulumSpec): ScenePrefabDefinition => {
         },
     ];
     if (spec.withPhysicsWorldComponent) {
-        actors.push({
+        entities.push({
             nodeId: 'node-physics-world',
             name: 'PhysicsWorld2D',
             position: [0, 0],
@@ -230,7 +230,7 @@ const createPendulumSnapshot = (spec: PendulumSpec): ScenePrefabDefinition => {
         });
     }
 
-    return createPrefabDefinition('prefab/2d-joint-pendulum', actors);
+    return createPrefabDefinition('prefab/2d-joint-pendulum', entities);
 };
 
 interface PendulumScene extends SceneHarness {
@@ -239,19 +239,19 @@ interface PendulumScene extends SceneHarness {
 
 const loadPendulum = async (sceneId: string, spec: PendulumSpec): Promise<PendulumScene> => {
     const harness = createSceneHarness(sceneId);
-    const actors = await harness.kernel.snapshots.loadScene(
+    const entities = await harness.kernel.snapshots.loadScene(
         createSnapshot(createPendulumSnapshot(spec))
     );
 
-    const bobActor = findNodeActor(actors, 'node-bob');
-    const anchorActor = findNodeActor(actors, 'node-anchor');
+    const bobEntity = findNodeEntity(entities, 'node-bob');
+    const anchorEntity = findNodeEntity(entities, 'node-anchor');
 
     const pendulum: PendulumHandle = {
-        bobTransform: bobActor.getComponent(Transform)!,
-        bobRigidbody: bobActor.getComponent(Rigidbody2D)!,
-        bobCollider: bobActor.getComponent(CircleCollider2D)!,
-        hinge: bobActor.getComponent(HingeJoint2D) ?? null,
-        anchorRigidbody: anchorActor.getComponent(Rigidbody2D)!,
+        bobTransform: bobEntity.getComponent(Transform)!,
+        bobRigidbody: bobEntity.getComponent(Rigidbody2D)!,
+        bobCollider: bobEntity.getComponent(CircleCollider2D)!,
+        hinge: bobEntity.getComponent(HingeJoint2D) ?? null,
+        anchorRigidbody: anchorEntity.getComponent(Rigidbody2D)!,
     };
 
     return { ...harness, pendulum };
@@ -285,7 +285,7 @@ afterEach(() => {
 });
 
 describe('PhysicsBridge2D 2D joint end-to-end', () => {
-    it('creates hinge and shape constraints when the connected-body actor is declared after the joint actor', async () => {
+    it('creates hinge and shape constraints when the connected-body entity is declared after the joint entity', async () => {
         const scene = await loadPendulum('2d-joints-e2e/shipped-path', {
             withHinge: true,
             withPhysicsWorldComponent: true,
@@ -338,8 +338,8 @@ describe('PhysicsBridge2D 2D joint end-to-end', () => {
         // this scene carries no explicit world component and the bridge world
         // still produced every constraint.
         const sceneOwnsWorldComponent = scene.kernel.world
-            .getAllActors()
-            .some((actor) => actor.getComponent(PhysicsWorld2DComponent));
+            .getAllEntities()
+            .some((entity) => entity.getComponent(PhysicsWorld2DComponent));
         expect(sceneOwnsWorldComponent).toBe(false);
         expect(scene.pendulum.hinge!.constraintId).not.toBeNull();
         expect(scene.pendulum.bobCollider.shapeId).not.toBeNull();
@@ -378,7 +378,7 @@ describe('PhysicsBridge2D 2D joint end-to-end', () => {
         expect(Math.abs(distanceToPivot(scene.pendulum) - ARM_LENGTH)).toBeGreaterThan(0.5);
     });
 
-    it('resolves GearJoint2D node references to the plain joints its actors own', async () => {
+    it('resolves GearJoint2D node references to the plain joints its entities own', async () => {
         const scene = createSceneHarness('2d-joints-e2e/gear-refs');
         activeKernels.push(scene.kernel);
 
@@ -423,10 +423,10 @@ describe('PhysicsBridge2D 2D joint end-to-end', () => {
             },
         ]);
 
-        const actors = await scene.kernel.snapshots.loadScene(createSnapshot(prefab));
+        const entities = await scene.kernel.snapshots.loadScene(createSnapshot(prefab));
 
-        const armA = findNodeActor(actors, 'node-arm-a');
-        const armB = findNodeActor(actors, 'node-arm-b');
+        const armA = findNodeEntity(entities, 'node-arm-a');
+        const armB = findNodeEntity(entities, 'node-arm-b');
         const hingeA = armA.getComponent(HingeJoint2D)!;
         const hingeB = armB.getComponent(HingeJoint2D)!;
         const gear = armA.getComponent(GearJoint2D)!;
@@ -439,7 +439,7 @@ describe('PhysicsBridge2D 2D joint end-to-end', () => {
         expect(scene.bridge.pendingJointCount).toBe(0);
 
         // The gear's authored node ids must have coupled the *hinges* of those
-        // actors, not the gear joint itself (node-arm-a owns both).
+        // entities, not the gear joint itself (node-arm-a owns both).
         const constraintManager = (
             scene.bridge.physicsWorld as unknown as {
                 getConstraintManager(): unknown;
@@ -467,7 +467,7 @@ describe('PhysicsBridge2D 2D joint end-to-end', () => {
         expect(scene.pendulum.hinge!.connectedBody).toBe(scene.pendulum.anchorRigidbody);
     });
 
-    it('keeps an unresolved id as authored and resolves it once the target actor exists', async () => {
+    it('keeps an unresolved id as authored and resolves it once the target entity exists', async () => {
         const scene = await loadPendulum('2d-joints-e2e/late-target', {
             withHinge: true,
             withPhysicsWorldComponent: true,
@@ -475,7 +475,7 @@ describe('PhysicsBridge2D 2D joint end-to-end', () => {
         activeKernels.push(scene.kernel);
 
         // Re-author the hinge the way a partially loaded scene graph arrives:
-        // the id is a string because its target actor does not exist yet.
+        // the id is a string because its target entity does not exist yet.
         scene.pendulum.hinge!.deserialize({ connectedBody: 'node-late-anchor' });
 
         scene.advanceFrames(2);
@@ -500,12 +500,12 @@ describe('PhysicsBridge2D 2D joint end-to-end', () => {
         );
         scene.advanceFrames(2);
 
-        const lateActor = scene.kernel.world
-            .getAllActors()
-            .find((actor) => actor.getComponent(PrefabNodeBinding)?.nodeId === 'node-late-anchor');
-        expect(lateActor).toBeDefined();
+        const lateEntity = scene.kernel.world
+            .getAllEntities()
+            .find((entity) => entity.getComponent(PrefabNodeBinding)?.nodeId === 'node-late-anchor');
+        expect(lateEntity).toBeDefined();
 
-        expect(scene.pendulum.hinge!.connectedBody).toBe(lateActor!.getComponent(Rigidbody2D));
+        expect(scene.pendulum.hinge!.connectedBody).toBe(lateEntity!.getComponent(Rigidbody2D));
         expect(scene.pendulum.hinge!.constraintId).not.toBeNull();
         expect(scene.bridge.pendingJointCount).toBe(0);
     });
@@ -531,7 +531,7 @@ describe('PhysicsBridge2D 2D joint end-to-end', () => {
     });
 
     it('hands the world-provider slots back in bridge creation order', () => {
-        const ecsWorld = { getAllActors: () => [] } as never;
+        const ecsWorld = { getAllEntities: () => [] } as never;
 
         const first = new PhysicsBridge2D(ecsWorld);
         const second = new PhysicsBridge2D(ecsWorld);
@@ -579,7 +579,7 @@ describe('PhysicsBridge2D 2D joint end-to-end', () => {
         });
 
         const bridges = getDefaultSceneRuntimeComposition().createPhysicsBridges?.({
-            world: { getAllActors: () => [] } as never,
+            world: { getAllEntities: () => [] } as never,
             profileId: 'scene/custom-2d-playable',
             enableProfiler: false,
         });

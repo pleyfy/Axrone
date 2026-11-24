@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vec3 } from '@axrone/numeric';
-import { Actor, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Transform, World } from '@axrone/ecs-runtime';
 import {
     createPointLightDefinition,
     createLightingUniformLayout,
@@ -239,16 +239,16 @@ describe('PointLight — post-fix verification tests', () => {
             const world = new World(createSceneRegistry());
             const collector = new SceneLightingCollector(4);
 
-            const actor = new Actor(world);
-            actor.addComponent(PointLight, {
+            const entity = new Entity(world);
+            entity.addComponent(PointLight, {
                 color: [1, 0.5, 0.25],
                 intensity: 5,
                 range: 12,
                 attenuation: 3.5,
             });
-            actor.requireComponent(Transform).position = new Vec3(4, 0, 0);
+            entity.requireComponent(Transform).position = new Vec3(4, 0, 0);
 
-            const state = collector.collect(world.getAllActors(), Vec3.ZERO);
+            const state = collector.collect(world.getAllEntities(), Vec3.ZERO);
 
             expect(state.stats.selectedPointCount).toBe(1);
             expect(state.pointAttenuations[0]).toBeCloseTo(3.5);

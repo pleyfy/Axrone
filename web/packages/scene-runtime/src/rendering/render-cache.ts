@@ -1,4 +1,4 @@
-import type { Actor, Transform } from '@axrone/ecs-runtime';
+import type { EntityId, Transform } from '@axrone/ecs-runtime';
 import { Transform as TransformComponent } from '@axrone/ecs-runtime';
 import type { RenderPrimitiveInstance } from '@axrone/render-core/types';
 import type { SceneCameraFrameState } from '../camera-frame-state';
@@ -19,7 +19,7 @@ export interface SceneRenderListCacheParams {
     readonly rendererPassId: string;
     /** Pass resource identity — re-registering a pass replaces the object. */
     readonly renderPass: object;
-    readonly actors: readonly Actor[];
+    readonly entities: readonly EntityId[];
     readonly cameraFrame: SceneCameraFrameState;
     readonly viewportWidth: number;
     readonly viewportHeight: number;
@@ -37,7 +37,7 @@ export interface SceneRenderListCacheResult {
 
 interface SceneRenderListCacheEntry extends SceneRenderListCacheResult {
     hit: boolean;
-    actorsRef: readonly Actor[] | null;
+    entitysRef: readonly EntityId[] | null;
     renderPassRef: object | null;
     cameraKey: string | null;
     viewportWidth: number;
@@ -45,11 +45,11 @@ interface SceneRenderListCacheEntry extends SceneRenderListCacheResult {
     materialRevision: number;
     meshRevision: number;
     shaderRevision: number;
-    actorCount: number;
-    actorRefs: Actor[];
+    registeredEntityCount: number;
+    entityRefs: EntityId[];
     transforms: (Transform | null)[];
     renderers: (MeshRenderer | null)[];
-    actorRevisions: Uint32Array;
+    entityRevisions: Uint32Array;
     transformRevisions: Uint32Array;
     rendererRevisions: Uint32Array;
     items: SceneRenderItem[];
@@ -57,7 +57,7 @@ interface SceneRenderListCacheEntry extends SceneRenderListCacheResult {
 
 const createRenderListCacheEntry = (): SceneRenderListCacheEntry => ({
     hit: false,
-    actorsRef: null,
+    entitysRef: null,
     renderPassRef: null,
     cameraKey: null,
     viewportWidth: 0,
@@ -65,11 +65,11 @@ const createRenderListCacheEntry = (): SceneRenderListCacheEntry => ({
     materialRevision: -1,
     meshRevision: -1,
     shaderRevision: -1,
-    actorCount: 0,
-    actorRefs: [],
+    registeredEntityCount: 0,
+    entityRefs: [],
     transforms: [],
     renderers: [],
-    actorRevisions: new Uint32Array(0),
+    entityRevisions: new Uint32Array(0),
     transformRevisions: new Uint32Array(0),
     rendererRevisions: new Uint32Array(0),
     items: [],
@@ -80,7 +80,7 @@ const createRenderListCacheEntry = (): SceneRenderListCacheEntry => ({
  * cheap revision comparisons instead of re-running collection, frustum culling
  * and sorting every frame.
  *
- * Snapshots cover *every* actor (not only the collected items) so an actor or
+ * Snapshots cover *every* entity (not only the collected items) so an entity or
  * renderer that was filtered out last frame (inactive, invisible, wrong pass,
  * culled) still invalidates the cache when it becomes renderable again.
  */
@@ -111,8 +111,8 @@ export class SceneRenderListCache {
             items[index] = collected[index]!;
         }
 
-        this._snapshotActors(entry, params.actors);
-        entry.actorsRef = params.actors;
+        this._snapshotEntities(entry, params.entities);
+        entry.entitysRef = params.entities;
         entry.renderPassRef = params.renderPass;
         entry.cameraKey = cameraKey;
         entry.viewportWidth = params.viewportWidth;
@@ -134,7 +134,7 @@ export class SceneRenderListCache {
         cameraKey: string
     ): boolean {
         if (
-            entry.actorsRef !== params.actors ||
+            entry.entitysRef !== params.entities ||
             entry.renderPassRef !== params.renderPass ||
             entry.cameraKey !== cameraKey ||
             entry.viewportWidth !== params.viewportWidth ||
@@ -146,17 +146,17 @@ export class SceneRenderListCache {
             return false;
         }
 
-        const actors = params.actors;
-        if (entry.actorCount !== actors.length) {
+        const entities = params.entities;
+        if (entry.registeredEntityCount !== entities.length) {
             return false;
         }
 
-        for (let index = 0; index < actors.length; index += 1) {
-            const actor = actors[index]!;
-            if (entry.actorRefs[index] !== actor || !actor.active) {
+        for (let index = 0; index < entities.length; index += 1) {
+            const entity = entities[index]!;
+            if (entry.entityRefs[index] !== entity || !entity.active) {
                 return false;
             }
-            if (entry.actorRevisions[index] !== actor.revision) {
+            if (entry.entityRevisions[index] !== entity.revision) {
                 return false;
             }
 
@@ -174,43 +174,43 @@ export class SceneRenderListCache {
         return true;
     }
 
-    private _snapshotActors(entry: SceneRenderListCacheEntry, actors: readonly Actor[]): void {
-        const count = actors.length;
-        entry.actorRevisions = growUint32(entry.actorRevisions, count);
+    private _snapshotEntities(entry: SceneRenderListCacheEntry, entities: readonly EntityId[]): void {
+        const count = entities.length;
+        entry.entityRevisions = growUint32(entry.entityRevisions, count);
         entry.transformRevisions = growUint32(entry.transformRevisions, count);
         entry.rendererRevisions = growUint32(entry.rendererRevisions, count);
 
-        const sameActors = entry.actorsRef === actors && entry.actorCount === count;
-        const actorRefs = entry.actorRefs;
+        const sameEntities = entry.entitysRef === entities && entry.registeredEntityCount === count;
+        const entityRefs = entry.entityRefs;
         const transforms = entry.transforms;
         const renderers = entry.renderers;
-        actorRefs.length = count;
+        entityRefs.length = count;
         transforms.length = count;
         renderers.length = count;
 
         for (let index = 0; index < count; index += 1) {
-            const actor = actors[index]!;
-            const actorRevision = actor.revision;
-            let transform = sameActors ? transforms[index] : null;
-            let renderer = sameActors ? renderers[index] : null;
+            const entity = entities[index]!;
+            const entityRevision = entity.revision;
+            let transform = sameEntities ? transforms[index] : null;
+            let renderer = sameEntities ? renderers[index] : null;
 
-            // Re-query only when the actor's component set changed. Dynamic
+            // Re-query only when the entity's component set changed. Dynamic
             // transform-only motion keeps the same graph and avoids two
-            // component lookups per actor on every miss frame.
-            if (!sameActors || entry.actorRevisions[index] !== actorRevision) {
-                transform = actor.getComponent(TransformComponent) ?? null;
-                renderer = actor.getComponent(MeshRenderer) ?? null;
+            // component lookups per entity on every miss frame.
+            if (!sameEntities || entry.entityRevisions[index] !== entityRevision) {
+                transform = entity.getComponent(TransformComponent) ?? null;
+                renderer = entity.getComponent(MeshRenderer) ?? null;
             }
 
-            actorRefs[index] = actor;
+            entityRefs[index] = entity;
             transforms[index] = transform;
             renderers[index] = renderer;
-            entry.actorRevisions[index] = actorRevision;
+            entry.entityRevisions[index] = entityRevision;
             entry.transformRevisions[index] = transform ? transform.revision : 0;
             entry.rendererRevisions[index] = renderer ? renderer.revision : 0;
         }
 
-        entry.actorCount = count;
+        entry.registeredEntityCount = count;
     }
 }
 

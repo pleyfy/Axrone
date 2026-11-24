@@ -1,5 +1,5 @@
 import type { GameLoopSystem, BeforeUpdateContext } from '@axrone/game-loop';
-import type { World, Actor, Component } from '@axrone/ecs-runtime';
+import type { World, Entity, Component } from '@axrone/ecs-runtime';
 import type { SceneLoopState } from '../types';
 import {
     PhysicsWorld2D,
@@ -31,7 +31,7 @@ import {
 } from '../physics-reference-contract';
 
 type AnyWorld = World<any>;
-type AnyActor = Actor<AnyWorld>;
+type AnyEntity = Entity<AnyWorld>;
 
 /**
  * Type alias for 2D physics collision handler used by user @script components.
@@ -102,11 +102,11 @@ function installBridgeWorld2DProviders(owner: PhysicsBridge2D | null): void {
  * own bodies in start() and sync in fixedUpdate()). The bridge's role is:
  *   1. Own the PhysicsWorld2D instance and expose it to components
  *   2. Set the contact listener so collision/sensor events reach user scripts
- *   3. Track body→component→actor mappings for event dispatch
+ *   3. Track body→component→entity mappings for event dispatch
  *   4. Track active contact/trigger pairs for begin/stay/exit semantics
  *   5. Close the ordering gaps the self-managing lifecycle cannot cover alone:
  *      deferred body/shape creation, and the entity-id joint references the
- *      Editor authors, which stay strings until the actors they name exist.
+ *      Editor authors, which stay strings until the entities they name exist.
  */
 export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContactListener2D {
     readonly id = 'scene.physics-bridge-2d';
@@ -120,19 +120,19 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
     private readonly _registeredColliders = new WeakSet<Collider2D>();
     private readonly _resolvedJoints = new WeakSet<Joint2D>();
     private readonly _bodyIdToComponent = new Map<BodyId, Rigidbody2D>();
-    private readonly _componentToActor = new Map<Rigidbody2D, AnyActor>();
+    private readonly _componentToEntity = new Map<Rigidbody2D, AnyEntity>();
     private readonly _activeContactPairs = new Set<number>();
     private readonly _activeTriggerPairs = new Set<number>();
 
-    private readonly _jointOwners = new Map<Joint2D, AnyActor>();
+    private readonly _jointOwners = new Map<Joint2D, AnyEntity>();
     private readonly _pendingJoints = new Set<Joint2D>();
-    private readonly _actorRefIndex = new Map<string, AnyActor>();
+    private readonly _entityRefIndex = new Map<string, AnyEntity>();
     private readonly _componentRefIndex = new Map<string, Component>();
-    private readonly _componentOwnerIndex = new Map<string, AnyActor>();
+    private readonly _componentOwnerIndex = new Map<string, AnyEntity>();
 
     private _structureVersion = 0;
     private _resolvedStructureVersion = -1;
-    private _lastActorCount = -1;
+    private _lastEntityCount = -1;
 
     private _disposed = false;
 
@@ -298,12 +298,12 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
 
         this._physicsWorld.setContactListener(null);
         this._bodyIdToComponent.clear();
-        this._componentToActor.clear();
+        this._componentToEntity.clear();
         this._activeContactPairs.clear();
         this._activeTriggerPairs.clear();
         this._jointOwners.clear();
         this._pendingJoints.clear();
-        this._actorRefIndex.clear();
+        this._entityRefIndex.clear();
         this._componentRefIndex.clear();
         this._componentOwnerIndex.clear();
         this._physicsWorld[Symbol.dispose]();
@@ -314,30 +314,30 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
     private _registerNewComponents(): void {
         this._pruneDestroyedState();
 
-        const actors = this._ecsWorld.getAllActors();
-        if (actors.length !== this._lastActorCount) {
-            this._lastActorCount = actors.length;
+        const entities = this._ecsWorld.getAllEntities();
+        if (entities.length !== this._lastEntityCount) {
+            this._lastEntityCount = entities.length;
             this._structureVersion += 1;
         }
 
-        for (let index = 0; index < actors.length; index += 1) {
-            const actor = actors[index] as unknown as AnyActor;
-            if (!actor.active || actor.isDestroyed) continue;
+        for (let index = 0; index < entities.length; index += 1) {
+            const entity = entities[index] as unknown as AnyEntity;
+            if (!entity.active || entity.isDestroyed) continue;
 
-            // Resolved up front: component order inside an actor is not
+            // Resolved up front: component order inside an entity is not
             // guaranteed, and a collider added before its rigidbody must still
             // find the body it belongs to.
-            const rigidbody = actor.getComponent(Rigidbody2D) ?? null;
+            const rigidbody = entity.getComponent(Rigidbody2D) ?? null;
             if (rigidbody) {
                 if (ensureRigidbodyBody(rigidbody)) {
                     this._structureVersion += 1;
                 }
-                this._registerBody(rigidbody, actor);
+                this._registerBody(rigidbody, entity);
             }
 
             // Colliders are tracked for completeness but event dispatch
-            // goes through the actor's component list (same as 3D bridge).
-            const components = actor.getAllComponents();
+            // goes through the entity's component list (same as 3D bridge).
+            const components = entity.getAllComponents();
             for (let componentIndex = 0; componentIndex < components.length; componentIndex += 1) {
                 const component = components[componentIndex] as unknown;
 
@@ -347,7 +347,7 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
                     }
                     this._registeredColliders.add(component);
                 } else if (component instanceof Joint2D) {
-                    if (this._trackJoint(component, actor)) {
+                    if (this._trackJoint(component, entity)) {
                         this._structureVersion += 1;
                     }
                 }
@@ -363,19 +363,19 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
      * physics components have no onDisable hook of their own).
      */
     private _pruneDestroyedState(): void {
-        // Entries whose actor died — the strong maps would otherwise
+        // Entries whose entity died — the strong maps would otherwise
         // retain destroyed bodies until bridge disposal.
-        for (const [rigidbody, actor] of this._componentToActor) {
-            if (actor.isDestroyed) {
-                this._componentToActor.delete(rigidbody);
+        for (const [rigidbody, entity] of this._componentToEntity) {
+            if (entity.isDestroyed) {
+                this._componentToEntity.delete(rigidbody);
                 if (rigidbody.bodyId != null) {
                     this._bodyIdToComponent.delete(rigidbody.bodyId);
                 }
             }
         }
 
-        for (const [joint, actor] of this._jointOwners) {
-            if (!actor.isDestroyed && !this._isDestroyed(joint)) {
+        for (const [joint, entity] of this._jointOwners) {
+            if (!entity.isDestroyed && !this._isDestroyed(joint)) {
                 continue;
             }
 
@@ -391,7 +391,7 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
         return (component as unknown as DestroyStateProbe).state === 'destroyed';
     }
 
-    private _registerBody(rigidbody: Rigidbody2D, actor: AnyActor): void {
+    private _registerBody(rigidbody: Rigidbody2D, entity: AnyEntity): void {
         const bodyId = rigidbody.bodyId;
         if (bodyId == null || this._registeredBodies.has(rigidbody)) {
             return;
@@ -399,7 +399,7 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
 
         this._registeredBodies.add(rigidbody);
         this._bodyIdToComponent.set(bodyId, rigidbody);
-        this._componentToActor.set(rigidbody, actor);
+        this._componentToEntity.set(rigidbody, entity);
     }
 
     /**
@@ -408,10 +408,10 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
      * @returns true when the pending or resolved bookkeeping changed, which is
      *   the signal that reference resolution is worth retrying.
      */
-    private _trackJoint(joint: Joint2D, actor: AnyActor): boolean {
-        let changed = this._jointOwners.get(joint) !== actor;
+    private _trackJoint(joint: Joint2D, entity: AnyEntity): boolean {
+        let changed = this._jointOwners.get(joint) !== entity;
         if (changed) {
-            this._jointOwners.set(joint, actor);
+            this._jointOwners.set(joint, entity);
         }
 
         if (!joint.enabled) {
@@ -470,7 +470,7 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
      * Resolves entity-id joint references and creates the constraints that the
      * components' own `start()` could not.
      *
-     * Runs on structural change only. Actor/component creation and any real
+     * Runs on structural change only. Entity/component creation and any real
      * progress on a joint are the events that can make an impossible constraint
      * possible, so a pending set that stopped making progress costs nothing to
      * leave in place.
@@ -497,19 +497,19 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
     }
 
     private _rebuildReferenceIndex(): void {
-        this._actorRefIndex.clear();
+        this._entityRefIndex.clear();
         this._componentRefIndex.clear();
         this._componentOwnerIndex.clear();
 
-        const actors = this._ecsWorld.getAllActors();
-        for (let index = 0; index < actors.length; index += 1) {
-            const actor = actors[index] as unknown as AnyActor;
-            if (actor.isDestroyed) continue;
+        const entities = this._ecsWorld.getAllEntities();
+        for (let index = 0; index < entities.length; index += 1) {
+            const entity = entities[index] as unknown as AnyEntity;
+            if (entity.isDestroyed) continue;
 
-            this._indexActorKey(actor.id, actor);
-            this._indexActorKey(actor.getComponent(PrefabNodeBinding)?.nodeId, actor);
+            this._indexEntityKey(entity.id, entity);
+            this._indexEntityKey(entity.getComponent(PrefabNodeBinding)?.nodeId, entity);
 
-            const components = actor.getAllComponents();
+            const components = entity.getAllComponents();
             for (let componentIndex = 0; componentIndex < components.length; componentIndex += 1) {
                 const component = components[componentIndex];
                 const componentId = component.id;
@@ -517,30 +517,30 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
                     continue;
                 }
                 this._componentRefIndex.set(componentId, component);
-                this._componentOwnerIndex.set(componentId, actor);
+                this._componentOwnerIndex.set(componentId, entity);
             }
         }
     }
 
-    private _indexActorKey(key: unknown, actor: AnyActor): void {
-        if (typeof key === 'string' && key.length > 0 && !this._actorRefIndex.has(key)) {
-            this._actorRefIndex.set(key, actor);
+    private _indexEntityKey(key: unknown, entity: AnyEntity): void {
+        if (typeof key === 'string' && key.length > 0 && !this._entityRefIndex.has(key)) {
+            this._entityRefIndex.set(key, entity);
         }
     }
 
-    private _findReferencedActor(reference: string): AnyActor | null {
-        return this._actorRefIndex.get(reference) ?? this._componentOwnerIndex.get(reference) ?? null;
+    private _findReferencedEntity(reference: string): AnyEntity | null {
+        return this._entityRefIndex.get(reference) ?? this._componentOwnerIndex.get(reference) ?? null;
     }
 
     private _resolveJoint(joint: Joint2D): void {
-        const actor = this._jointOwners.get(joint);
-        if (!actor || actor.isDestroyed) {
+        const entity = this._jointOwners.get(joint);
+        if (!entity || entity.isDestroyed) {
             this._jointOwners.delete(joint);
             this._pendingJoints.delete(joint);
             return;
         }
 
-        if (!actor.active || !joint.enabled) {
+        if (!entity.active || !joint.enabled) {
             return;
         }
 
@@ -577,12 +577,12 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
             return direct;
         }
 
-        const actor = this._findReferencedActor(reference);
-        if (!actor) {
+        const entity = this._findReferencedEntity(reference);
+        if (!entity) {
             return null;
         }
 
-        return actor.getComponent(Rigidbody2D) ?? null;
+        return entity.getComponent(Rigidbody2D) ?? null;
     }
 
     private _resolveGearRefs(gear: GearJoint2D): boolean {
@@ -612,12 +612,12 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
             return direct;
         }
 
-        const actor = this._findReferencedActor(reference);
-        if (!actor) {
+        const entity = this._findReferencedEntity(reference);
+        if (!entity) {
             return null;
         }
 
-        const components = actor.getAllComponents();
+        const components = entity.getAllComponents();
 
         // A gear joint coupling another gear joint is never what an authored
         // node reference meant, so a plain joint wins when both exist.
@@ -649,8 +649,8 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
         handler: 'onCollisionBegin' | 'onCollisionStay'
     ): void {
         const method = handler === 'onCollisionBegin' ? 'onCollisionEnter' : 'onCollisionStay';
-        this._notifyActor(self, method, other, event);
-        this._notifyActor(other, method, self, event);
+        this._notifyEntity(self, method, other, event);
+        this._notifyEntity(other, method, self, event);
     }
 
     private _dispatchCollisionEndEvent(
@@ -658,8 +658,8 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
         other: Rigidbody2D,
         event: ICollisionEvent2D
     ): void {
-        this._notifyActor(self, 'onCollisionExit', other, event);
-        this._notifyActor(other, 'onCollisionExit', self, event);
+        this._notifyEntity(self, 'onCollisionExit', other, event);
+        this._notifyEntity(other, 'onCollisionExit', self, event);
     }
 
     private _dispatchSensorEvent(
@@ -668,8 +668,8 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
         event: ISensorEvent2D,
         handler: 'onSensorEnter' | 'onSensorExit'
     ): void {
-        this._notifySensorActor(self, handler, other, event);
-        this._notifySensorActor(other, handler, self, event);
+        this._notifySensorEntity(self, handler, other, event);
+        this._notifySensorEntity(other, handler, self, event);
     }
 
     private _dispatchSensorStayEvent(
@@ -677,20 +677,20 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
         other: Rigidbody2D,
         event: ISensorEvent2D
     ): void {
-        this._notifySensorActor(self, 'onSensorStay', other, event);
-        this._notifySensorActor(other, 'onSensorStay', self, event);
+        this._notifySensorEntity(self, 'onSensorStay', other, event);
+        this._notifySensorEntity(other, 'onSensorStay', self, event);
     }
 
-    private _notifyActor(
+    private _notifyEntity(
         rigidbody: Rigidbody2D,
         method: 'onCollisionEnter' | 'onCollisionStay' | 'onCollisionExit',
         other: Rigidbody2D,
         event: ICollisionEvent2D
     ): void {
-        const actor = this._componentToActor.get(rigidbody);
-        if (!actor) return;
+        const entity = this._componentToEntity.get(rigidbody);
+        if (!entity) return;
 
-        for (const component of actor.getAllComponents()) {
+        for (const component of entity.getAllComponents()) {
             const handler = component as unknown as IPhysicsCollisionHandler2D;
             const fn = handler[method];
             if (typeof fn === 'function') {
@@ -699,16 +699,16 @@ export class PhysicsBridge2D implements GameLoopSystem<SceneLoopState>, IContact
         }
     }
 
-    private _notifySensorActor(
+    private _notifySensorEntity(
         rigidbody: Rigidbody2D,
         method: 'onSensorEnter' | 'onSensorStay' | 'onSensorExit',
         other: Rigidbody2D,
         event: ISensorEvent2D
     ): void {
-        const actor = this._componentToActor.get(rigidbody);
-        if (!actor) return;
+        const entity = this._componentToEntity.get(rigidbody);
+        if (!entity) return;
 
-        for (const component of actor.getAllComponents()) {
+        for (const component of entity.getAllComponents()) {
             const handler = component as unknown as IPhysicsCollisionHandler2D;
             const fn = handler[method];
             if (typeof fn === 'function') {

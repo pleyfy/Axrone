@@ -41,7 +41,7 @@ export interface PathAgentPath {
  *     angularSpeed: 120,
  *     stoppingDistance: 0.5,
  * });
- * actor.addComponent(PathAgent, agent);
+ * entity.addComponent(PathAgent, agent);
  *
  * // Set destination
  * agent.setDestination(new Vec3(10, 0, 5));

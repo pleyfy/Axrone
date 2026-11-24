@@ -1,5 +1,5 @@
 import { Camera3D } from '@axrone/geometry';
-import { Hierarchy, Transform, type Actor } from '@axrone/ecs-runtime';
+import { Hierarchy, Transform, type EntityId } from '@axrone/ecs-runtime';
 import { Vec3, Quat } from '@axrone/numeric';
 import { describe, expect, it } from 'vitest';
 import { SpriteMask } from '../components/sprite-mask';
@@ -11,16 +11,16 @@ import {
 } from '../rendering/sprite-instance-buffer-renderer';
 import { SceneSpriteInstanceRegistry } from '../rendering/sprite-instance-registry';
 
-interface MockActorOptions {
+interface MockEntityOptions {
     readonly transform: Transform;
     readonly renderer: SpriteRenderer;
     readonly hierarchy?: Hierarchy | null;
-    readonly parent?: Actor;
+    readonly parent?: EntityId;
     readonly mask?: SpriteMask;
 }
 
-const createMockActor = (options: MockActorOptions): Actor => {
-    const actor = {
+const createMockEntity = (options: MockEntityOptions): EntityId => {
+    const entity = {
         active: true,
         revision: 0,
         parent: options.parent,
@@ -33,7 +33,7 @@ const createMockActor = (options: MockActorOptions): Actor => {
             return undefined;
         },
     };
-    return actor as unknown as Actor;
+    return entity as unknown as EntityId;
 };
 
 const createCameraFrame = (camera: Camera3D): SceneCameraFrameState =>
@@ -67,12 +67,12 @@ const createSprite = (
     y: number,
     textureId = 'tex',
     size: readonly [number, number] = [1, 1]
-): { transform: Transform; renderer: SpriteRenderer; actor: Actor } => {
+): { transform: Transform; renderer: SpriteRenderer; entity: EntityId } => {
     const transform = new Transform();
     transform.position = new Vec3(x, y, 0);
     const renderer = new SpriteRenderer({ textureId, size, anchor: [0.5, 0.5] });
-    const actor = createMockActor({ transform, renderer });
-    return { transform, renderer, actor };
+    const entity = createMockEntity({ transform, renderer });
+    return { transform, renderer, entity };
 };
 
 const readTranslation = (registry: SceneSpriteInstanceRegistry, slot: number): [number, number] => {
@@ -112,7 +112,7 @@ describe('SceneSpriteInstanceRegistry', () => {
         const sprites = [createSprite(-1, 0), createSprite(0, 0), createSprite(1, 0)];
         const registry = new SceneSpriteInstanceRegistry();
 
-        expect(registry.sync(sprites.map((sprite) => sprite.actor), 'main')).toBe('ready');
+        expect(registry.sync(sprites.map((sprite) => sprite.entity), 'main')).toBe('ready');
         expect(registry.textureId).toBe('tex');
         expect(registry.drawCount).toBe(3);
         expect(registry.refresh(frame)).toBe(true);
@@ -131,9 +131,9 @@ describe('SceneSpriteInstanceRegistry', () => {
         const frame = createCameraFrame(createOrthoCamera());
         const sprites = [createSprite(0, 0), createSprite(1, 0)];
         const registry = new SceneSpriteInstanceRegistry();
-        const actors = sprites.map((sprite) => sprite.actor);
+        const entities = sprites.map((sprite) => sprite.entity);
 
-        registry.sync(actors, 'main');
+        registry.sync(entities, 'main');
         registry.refresh(frame);
         registry.commit();
 
@@ -149,9 +149,9 @@ describe('SceneSpriteInstanceRegistry', () => {
         const frame = createCameraFrame(createOrthoCamera());
         const sprite = createSprite(0, 0);
         const registry = new SceneSpriteInstanceRegistry();
-        const actors = [sprite.actor];
+        const entities = [sprite.entity];
 
-        registry.sync(actors, 'main');
+        registry.sync(entities, 'main');
         registry.refresh(frame);
         registry.commit();
 
@@ -167,9 +167,9 @@ describe('SceneSpriteInstanceRegistry', () => {
         const frame = createCameraFrame(createOrthoCamera());
         const sprites = [createSprite(0, 0), createSprite(1, 1)];
         const registry = new SceneSpriteInstanceRegistry();
-        const actors = sprites.map((sprite) => sprite.actor);
+        const entities = sprites.map((sprite) => sprite.entity);
 
-        registry.sync(actors, 'main');
+        registry.sync(entities, 'main');
         registry.refresh(frame);
         registry.commit();
         expect(registry.drawCount).toBe(2);
@@ -183,18 +183,18 @@ describe('SceneSpriteInstanceRegistry', () => {
         expect(registry.drawCount).toBe(2);
     });
 
-    it('asks for a rebuild when an actor or component set changes', () => {
+    it('asks for a rebuild when an entity or component set changes', () => {
         const frame = createCameraFrame(createOrthoCamera());
         const sprite = createSprite(0, 0);
         const registry = new SceneSpriteInstanceRegistry();
-        const actor = sprite.actor as Actor & { revision: number };
+        const entity = sprite.entity as EntityId & { revision: number };
 
-        registry.sync([actor], 'main');
+        registry.sync([entity], 'main');
         registry.refresh(frame);
 
-        actor.revision += 1;
+        entity.revision += 1;
         expect(registry.refresh(frame)).toBe(false);
-        expect(registry.sync([actor], 'main')).toBe('ready');
+        expect(registry.sync([entity], 'main')).toBe('ready');
     });
 
     it('matches Mat4.fromTRS for root rotation and scale', () => {
@@ -204,10 +204,10 @@ describe('SceneSpriteInstanceRegistry', () => {
         transform.rotation = Quat.fromAxisAngle(new Vec3(0, 0, 1), Math.PI / 2, new Quat());
         transform.scale = new Vec3(2, 3, 1);
         const renderer = new SpriteRenderer({ textureId: 'tex', size: [1, 1] });
-        const actor = createMockActor({ transform, renderer });
+        const entity = createMockEntity({ transform, renderer });
 
         const registry = new SceneSpriteInstanceRegistry();
-        registry.sync([actor], 'main');
+        registry.sync([entity], 'main');
         registry.refresh(frame);
 
         const matrix = transform.worldMatrix.data;
@@ -225,7 +225,7 @@ describe('SceneSpriteInstanceRegistry', () => {
         const sprite = createSprite(0, 0);
         sprite.renderer.flipX = true;
         const registry = new SceneSpriteInstanceRegistry();
-        registry.sync([sprite.actor], 'main');
+        registry.sync([sprite.entity], 'main');
         registry.refresh(frame);
 
         // Static layout: [w, h, ax, ay, u0, v0, du, dv, r, g, b, a].
@@ -241,9 +241,9 @@ describe('SceneSpriteInstanceRegistry', () => {
         const inside = createSprite(0, 0);
         const outside = createSprite(500, 0);
         const registry = new SceneSpriteInstanceRegistry();
-        const actors = [inside.actor, outside.actor];
+        const entities = [inside.entity, outside.entity];
 
-        registry.sync(actors, 'main');
+        registry.sync(entities, 'main');
         registry.refresh(frame);
         expect(registry.drawCount).toBe(1);
 
@@ -274,32 +274,32 @@ describe('SceneSpriteInstanceRegistry', () => {
         childTransform.position = new Vec3(1, 2, 0);
         const childHierarchy = new Hierarchy();
 
-        const parentActor = createMockActor({
+        const parentEntity = createMockEntity({
             transform: parentTransform,
             renderer: new SpriteRenderer({ textureId: 'tex' }),
             hierarchy: parentHierarchy,
         });
-        (parentHierarchy as unknown as { actor: Actor }).actor = parentActor;
+        (parentHierarchy as unknown as { entity: EntityId }).entity = parentEntity;
         childHierarchy.parent = parentHierarchy;
-        const childActor = createMockActor({
+        const childEntity = createMockEntity({
             transform: childTransform,
             renderer: new SpriteRenderer({ textureId: 'tex' }),
             hierarchy: childHierarchy,
-            parent: parentActor,
+            parent: parentEntity,
         });
-        (childHierarchy as unknown as { actor: Actor }).actor = childActor;
+        (childHierarchy as unknown as { entity: EntityId }).entity = childEntity;
         // Standalone Transforms resolve their hierarchy through the world
         // registry; give the mocks a minimal one so world matrices compose.
         const fakeWorld = { registry: { Hierarchy, Transform } };
         (parentHierarchy as unknown as { world: unknown }).world = fakeWorld;
         (childHierarchy as unknown as { world: unknown }).world = fakeWorld;
-        (childTransform as unknown as { actor: Actor; world: unknown }).actor = childActor;
+        (childTransform as unknown as { entity: EntityId; world: unknown }).entity = childEntity;
         (childTransform as unknown as { world: unknown }).world = fakeWorld;
-        (parentTransform as unknown as { actor: Actor; world: unknown }).actor = parentActor;
+        (parentTransform as unknown as { entity: EntityId; world: unknown }).entity = parentEntity;
         (parentTransform as unknown as { world: unknown }).world = fakeWorld;
 
         const registry = new SceneSpriteInstanceRegistry();
-        expect(registry.sync([childActor], 'main')).toBe('ready');
+        expect(registry.sync([childEntity], 'main')).toBe('ready');
         registry.refresh(frame);
 
         const offset = 0;
@@ -314,35 +314,35 @@ describe('SceneSpriteInstanceRegistry', () => {
 
         const materialSprite = createSprite(0, 0);
         const materialRenderer = new SpriteRenderer({ materialId: 'mat' });
-        const materialActor = createMockActor({
+        const materialEntity = createMockEntity({
             transform: materialSprite.transform,
             renderer: materialRenderer,
         });
         const materialRegistry = new SceneSpriteInstanceRegistry();
-        expect(materialRegistry.sync([materialActor], 'main')).toBe('ineligible');
-        // Ineligibility is cached for the same actor set/pass.
-        expect(materialRegistry.sync([materialActor], 'main')).toBe('ineligible');
+        expect(materialRegistry.sync([materialEntity], 'main')).toBe('ineligible');
+        // Ineligibility is cached for the same entity set/pass.
+        expect(materialRegistry.sync([materialEntity], 'main')).toBe('ineligible');
 
         const masked = createSprite(0, 0);
         const mask = new SpriteMask({ size: [4, 4], shape: 'circle' });
-        const maskedActor = createMockActor({
+        const maskedEntity = createMockEntity({
             transform: masked.transform,
             renderer: masked.renderer,
             mask,
         });
         const maskRegistry = new SceneSpriteInstanceRegistry();
-        expect(maskRegistry.sync([maskedActor], 'main')).toBe('ineligible');
+        expect(maskRegistry.sync([maskedEntity], 'main')).toBe('ineligible');
 
         const sliced = new SpriteRenderer({
             textureId: 'tex',
             sliceBorder: [1, 1, 1, 1],
         });
-        const slicedActor = createMockActor({
+        const slicedEntity = createMockEntity({
             transform: new Transform(),
             renderer: sliced,
         });
         const sliceRegistry = new SceneSpriteInstanceRegistry();
-        expect(sliceRegistry.sync([slicedActor], 'main')).toBe('ineligible');
+        expect(sliceRegistry.sync([slicedEntity], 'main')).toBe('ineligible');
     });
 
     describe('multi-texture grouping', () => {
@@ -355,9 +355,9 @@ describe('SceneSpriteInstanceRegistry', () => {
                 createSprite(1, 0, 'tex-c'),
             ];
             const registry = new SceneSpriteInstanceRegistry(16);
-            const actors = sprites.map((sprite) => sprite.actor);
+            const entities = sprites.map((sprite) => sprite.entity);
 
-            expect(registry.sync(actors, 'main')).toBe('ready');
+            expect(registry.sync(entities, 'main')).toBe('ready');
             expect(registry.refresh(frame)).toBe(true);
             expect(registry.drawCount).toBe(4);
             expect(registry.groupCount).toBe(1);
@@ -382,9 +382,9 @@ describe('SceneSpriteInstanceRegistry', () => {
                 createSprite(1, 0, 'b'),
             ];
             const registry = new SceneSpriteInstanceRegistry(2);
-            const actors = sprites.map((sprite) => sprite.actor);
+            const entities = sprites.map((sprite) => sprite.entity);
 
-            expect(registry.sync(actors, 'main')).toBe('ready');
+            expect(registry.sync(entities, 'main')).toBe('ready');
             registry.refresh(frame);
             expect(groupSlices(registry)).toEqual([
                 { start: 0, count: 2, ids: ['a', 'b'] },
@@ -395,14 +395,14 @@ describe('SceneSpriteInstanceRegistry', () => {
 
         it('preserves the ordered stream across groups (contiguous, gapless)', () => {
             const frame = createCameraFrame(createOrthoCamera());
-            const sprites: Array<{ actor: Actor }> = [];
+            const sprites: Array<{ entity: EntityId }> = [];
             const palette = ['t0', 't1', 't2', 't3', 't4', 't5', 't6', 't7'];
             for (let index = 0; index < 40; index += 1) {
                 sprites.push(createSprite(-19 + index, 0, palette[index % palette.length]!));
             }
             const registry = new SceneSpriteInstanceRegistry(3);
             registry.sync(
-                sprites.map((sprite) => sprite.actor),
+                sprites.map((sprite) => sprite.entity),
                 'main'
             );
             registry.refresh(frame);
@@ -423,9 +423,9 @@ describe('SceneSpriteInstanceRegistry', () => {
             const first = createSprite(0, 0, 'a');
             const second = createSprite(1, 0, 'b');
             const registry = new SceneSpriteInstanceRegistry(16);
-            const actors = [first.actor, second.actor];
+            const entities = [first.entity, second.entity];
 
-            expect(registry.sync(actors, 'main')).toBe('ready');
+            expect(registry.sync(entities, 'main')).toBe('ready');
             registry.refresh(frame);
             registry.commit();
             expect(registry.groupCount).toBe(1);
@@ -448,7 +448,7 @@ describe('SceneSpriteInstanceRegistry', () => {
             const frame = createCameraFrame(createOrthoCamera());
             const mixed = [createSprite(-2, 0, 'a'), createSprite(-1, 0, 'b')];
             const mask = new SpriteMask({ size: [4, 4], shape: 'rect' });
-            const maskedActor = createMockActor({
+            const maskedEntity = createMockEntity({
                 transform: createSprite(0, 0, 'a').transform,
                 renderer: new SpriteRenderer({ textureId: 'a', size: [1, 1] }),
                 mask,
@@ -456,7 +456,7 @@ describe('SceneSpriteInstanceRegistry', () => {
             const registry = new SceneSpriteInstanceRegistry(16);
             expect(
                 registry.sync(
-                    [...mixed.map((sprite) => sprite.actor), maskedActor],
+                    [...mixed.map((sprite) => sprite.entity), maskedEntity],
                     'main'
                 )
             ).toBe('ineligible');

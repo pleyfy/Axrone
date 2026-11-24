@@ -1,4 +1,4 @@
-import { Actor, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Transform, World } from '@axrone/ecs-runtime';
 import { Vec3, Vec4 } from '@axrone/numeric';
 import { describe, expect, it, vi } from 'vitest';
 import { Camera } from '../components/camera';
@@ -173,46 +173,46 @@ describe('SceneRenderRuntime lighting integration', () => {
         const { gl, uniformWrites } = createMockGL();
         const world = new World(createSceneRegistry());
 
-        const fallbackCameraActor = new Actor(world);
-        fallbackCameraActor.addComponent(Camera, { primary: false });
-        fallbackCameraActor.requireComponent(Transform).position = new Vec3(20, 0, 0);
+        const fallbackCameraEntity = new Entity(world);
+        fallbackCameraEntity.addComponent(Camera, { primary: false });
+        fallbackCameraEntity.requireComponent(Transform).position = new Vec3(20, 0, 0);
 
-        const primaryCameraActor = new Actor(world);
-        primaryCameraActor.addComponent(Camera, { primary: true });
-        primaryCameraActor.requireComponent(Transform).position = Vec3.ZERO.clone();
+        const primaryCameraEntity = new Entity(world);
+        primaryCameraEntity.addComponent(Camera, { primary: true });
+        primaryCameraEntity.requireComponent(Transform).position = Vec3.ZERO.clone();
 
-        const farLightActor = new Actor(world);
-        farLightActor.addComponent(PointLight, {
+        const farLightEntity = new Entity(world);
+        farLightEntity.addComponent(PointLight, {
             color: [1, 0, 0],
             intensity: 8,
             range: 5,
         });
-        farLightActor.requireComponent(Transform).position = new Vec3(20, 0, 0);
+        farLightEntity.requireComponent(Transform).position = new Vec3(20, 0, 0);
 
-        const nearLightActor = new Actor(world);
-        nearLightActor.addComponent(PointLight, {
+        const nearLightEntity = new Entity(world);
+        nearLightEntity.addComponent(PointLight, {
             color: [0, 1, 0],
             intensity: 2,
             range: 8,
         });
-        nearLightActor.requireComponent(Transform).position = new Vec3(1, 0, 0);
+        nearLightEntity.requireComponent(Transform).position = new Vec3(1, 0, 0);
 
-        const directionalLightActor = new Actor(world);
-        directionalLightActor.addComponent(DirectionalLight, {
+        const directionalLightEntity = new Entity(world);
+        directionalLightEntity.addComponent(DirectionalLight, {
             color: [0.9, 0.8, 0.7],
             intensity: 3,
             primary: true,
         });
-        directionalLightActor.requireComponent(Transform);
+        directionalLightEntity.requireComponent(Transform);
 
-        const rendererActor = new Actor(world);
-        rendererActor.addComponent(MeshRenderer, {
+        const rendererEntity = new Entity(world);
+        rendererEntity.addComponent(MeshRenderer, {
             meshId: 'mesh',
             materialId: 'material',
             passId: 'main',
             receiveLighting: true,
         });
-        rendererActor.requireComponent(Transform);
+        rendererEntity.requireComponent(Transform);
 
         const mesh: SceneMeshResource = {
             id: 'mesh',
@@ -300,7 +300,7 @@ describe('SceneRenderRuntime lighting integration', () => {
             skyLight: Vec3.ZERO.clone(),
             groundLight: Vec3.ZERO.clone(),
             defaultClearColor: new Vec4(0, 0, 0, 1),
-            getActors: () => world.getAllActors(),
+            getEntitys: () => world.getAllEntities(),
             createMeshResource: vi.fn(() => mesh),
             disposeMesh: vi.fn(),
             applyMissingVertexAttributeDefaults: vi.fn(),
@@ -339,36 +339,36 @@ describe('SceneRenderRuntime lighting integration', () => {
         const { gl } = createMockGL();
         const world = new World(createSceneRegistry());
 
-        const cameraActor = new Actor(world);
-        cameraActor.addComponent(Camera, { primary: true });
-        cameraActor.requireComponent(Transform);
+        const cameraEntity = new Entity(world);
+        cameraEntity.addComponent(Camera, { primary: true });
+        cameraEntity.requireComponent(Transform);
 
-        const opaqueActor = new Actor(world);
-        opaqueActor.addComponent(MeshRenderer, {
+        const opaqueEntity = new Entity(world);
+        opaqueEntity.addComponent(MeshRenderer, {
             meshId: 'mesh',
             materialId: 'opaque-material',
             passId: 'main',
             receiveLighting: false,
         });
-        opaqueActor.requireComponent(Transform);
+        opaqueEntity.requireComponent(Transform);
 
-        const transparentActorA = new Actor(world);
-        transparentActorA.addComponent(MeshRenderer, {
+        const transparentEntityA = new Entity(world);
+        transparentEntityA.addComponent(MeshRenderer, {
             meshId: 'mesh',
             materialId: 'transparent-material-a',
             passId: 'main',
             receiveLighting: false,
         });
-        transparentActorA.requireComponent(Transform);
+        transparentEntityA.requireComponent(Transform);
 
-        const transparentActorB = new Actor(world);
-        transparentActorB.addComponent(MeshRenderer, {
+        const transparentEntityB = new Entity(world);
+        transparentEntityB.addComponent(MeshRenderer, {
             meshId: 'mesh',
             materialId: 'transparent-material-b',
             passId: 'main',
             receiveLighting: false,
         });
-        transparentActorB.requireComponent(Transform);
+        transparentEntityB.requireComponent(Transform);
 
         const mesh: SceneMeshResource = {
             id: 'mesh',
@@ -493,7 +493,7 @@ describe('SceneRenderRuntime lighting integration', () => {
             planning: {
                 maxTransparentPrimitives: 1,
             },
-            getActors: () => world.getAllActors(),
+            getEntitys: () => world.getAllEntities(),
             createMeshResource: vi.fn(() => mesh),
             disposeMesh: vi.fn(),
             applyMissingVertexAttributeDefaults: vi.fn(),

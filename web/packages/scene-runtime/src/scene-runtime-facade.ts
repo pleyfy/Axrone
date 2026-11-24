@@ -1,5 +1,5 @@
 import type { GameLoop } from '@axrone/game-loop';
-import { Actor, type ActorConfig } from '@axrone/ecs-runtime';
+import { Entity, type EntityConfig } from '@axrone/ecs-runtime';
 import { World } from '@axrone/ecs-runtime';
 import { SystemManager, SystemPhase } from '@axrone/ecs-runtime';
 import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs-runtime';
@@ -46,23 +46,23 @@ export class SceneRuntimeFacade<R extends ComponentRegistry = Record<string, nev
 
     registerComponent<T extends ComponentConstructor>(componentType: T): this {
         this.assertNotDisposed();
-        this._kernel.actors.registerComponent(componentType);
+        this._kernel.entities.registerComponent(componentType);
         return this;
     }
 
     isComponentRegistered(componentTypeOrName: string | ComponentConstructor): boolean {
         this.assertNotDisposed();
-        return this._kernel.actors.isComponentRegistered(componentTypeOrName);
+        return this._kernel.entities.isComponentRegistered(componentTypeOrName);
     }
 
     getRegisteredComponentNames(): readonly string[] {
         this.assertNotDisposed();
-        return this._kernel.actors.getRegisteredComponentNames();
+        return this._kernel.entities.getRegisteredComponentNames();
     }
 
-    createActor(config: ActorConfig = {}): Actor<World<RuntimeRegistry<R>>> {
+    createEntity(config: EntityConfig = {}): EntityId<World<RuntimeRegistry<R>>> {
         this.assertNotDisposed();
-        return this._kernel.actors.createActor(config);
+        return this._kernel.entities.createEntity(config);
     }
 
     addSystem<Q extends SystemQuery<RuntimeRegistry<R>>>(

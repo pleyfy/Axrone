@@ -1,25 +1,25 @@
 import { blendWorldPose } from '@axrone/animation';
 import { Transform } from '@axrone/ecs-runtime';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { EntityId } from '@axrone/ecs-runtime';
 import type { Animator } from './animator';
 
 interface SceneRagdollBinding {
     readonly animator: Animator;
-    readonly boneActors: readonly Actor[];
+    readonly boneEntities: readonly EntityId[];
     readonly positions: Float32Array;
     readonly rotations: Float32Array;
     captured: boolean;
 }
 
 /**
- * Binds one animated actor's bones to scene actors driven by physics and blends
+ * Binds one animated entity's bones to scene entities driven by physics and blends
  * their world transforms into the animation pose.
  *
  * The physics layer creates the bodies and joints; this source only reads the
- * resulting actor transforms, so it stays independent of a specific ragdoll
+ * resulting entity transforms, so it stays independent of a specific ragdoll
  * solver. The call order is explicit because it matters:
  *
- * 1. the physics step writes the bone actors,
+ * 1. the physics step writes the bone entities,
  * 2. {@link capture} reads their world pose,
  * 3. the animator advances its own pose,
  * 4. {@link apply} blends the captured pose into the animator frame and
@@ -34,25 +34,25 @@ export class SceneRagdollPoseSource {
     }
 
     /**
-     * Binds bone actors in rig order. The array length must equal the rig's
+     * Binds bone entities in rig order. The array length must equal the rig's
      * bone count at apply time; rebinding replaces the previous mapping.
      */
-    bind(animator: Animator, boneActors: readonly Actor[]): void {
+    bind(animator: Animator, boneEntities: readonly EntityId[]): void {
         const controller = animator.controller;
         if (!controller) {
             throw new Error('Cannot bind a ragdoll to an animator without a controller');
         }
 
         const boneCount = controller.rig.boneCount;
-        if (boneActors.length !== boneCount) {
+        if (boneEntities.length !== boneCount) {
             throw new Error(
-                `Ragdoll binding requires ${boneCount} bone actors but received ${boneActors.length}`
+                `Ragdoll binding requires ${boneCount} bone entities but received ${boneEntities.length}`
             );
         }
 
         this._bindings.set(animator, {
             animator,
-            boneActors: Object.freeze([...boneActors]),
+            boneEntities: Object.freeze([...boneEntities]),
             positions: new Float32Array(boneCount * 3),
             rotations: new Float32Array(boneCount * 4),
             captured: false,
@@ -70,7 +70,7 @@ export class SceneRagdollPoseSource {
     }
 
     /**
-     * Reads the physics-driven world pose of every bound bone actor. Call after
+     * Reads the physics-driven world pose of every bound bone entity. Call after
      * the physics step and before the animator writes its pose.
      */
     capture(): number {
@@ -128,16 +128,16 @@ export class SceneRagdollPoseSource {
         }
 
         const boneCount = controller.rig.boneCount;
-        if (binding.boneActors.length !== boneCount) {
+        if (binding.boneEntities.length !== boneCount) {
             return false;
         }
 
         for (let index = 0; index < boneCount; index += 1) {
-            const actor = binding.boneActors[index]!;
-            if (!actor || actor.isDestroyed) {
+            const entity = binding.boneEntities[index]!;
+            if (!entity || entity.isDestroyed) {
                 return false;
             }
-            const transform = actor.getComponent(Transform);
+            const transform = entity.getComponent(Transform);
             if (!transform) {
                 return false;
             }

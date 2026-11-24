@@ -4,9 +4,9 @@ import type { SceneLoopState } from './types';
 
 export interface SceneLoopBridgeHost {
     executePhase(phase: SystemPhase, delta: number): void;
-    fixedUpdateActors(delta: number): void;
-    updateActors(delta: number): void;
-    lateUpdateActors(delta: number): void;
+    fixedUpdateEntities(delta: number): void;
+    updateEntities(delta: number): void;
+    lateUpdateEntities(delta: number): void;
     render(delta: number): void;
 }
 
@@ -22,15 +22,15 @@ export const createSceneLoopSystems = (
     {
         id: 'scene.fixed-update',
         fixedUpdate: (context) => {
-            host.fixedUpdateActors(context.fixedDelta);
+            host.fixedUpdateEntities(context.fixedDelta);
         },
     },
     {
         id: 'scene.update',
         update: (context) => {
-            host.updateActors(context.delta);
+            host.updateEntities(context.delta);
             host.executePhase(SystemPhase.Update, context.delta);
-            host.lateUpdateActors(context.delta);
+            host.lateUpdateEntities(context.delta);
             host.executePhase(SystemPhase.PostUpdate, context.delta);
         },
     },

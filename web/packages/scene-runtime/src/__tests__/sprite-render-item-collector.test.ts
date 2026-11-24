@@ -1,12 +1,12 @@
 import { Camera3D } from '@axrone/geometry';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { EntityId } from '@axrone/ecs-runtime';
 import { Transform } from '@axrone/ecs-runtime';
 import { Vec3 } from '@axrone/numeric';
 import { describe, expect, it } from 'vitest';
 import { SpriteRenderer } from '../components/sprite-renderer';
 import { SceneSpriteRenderItemCollector } from '../rendering/sprite-render-item-collector';
 
-const createMockActor = (transform: Transform, renderer: SpriteRenderer): Actor =>
+const createMockEntity = (transform: Transform, renderer: SpriteRenderer): EntityId =>
     ({
         active: true,
         getComponent(componentType: unknown) {
@@ -18,7 +18,7 @@ const createMockActor = (transform: Transform, renderer: SpriteRenderer): Actor 
             }
             return undefined;
         },
-    } as unknown as Actor);
+    } as unknown as EntityId);
 
 describe('SceneSpriteRenderItemCollector', () => {
     it('culls sprites outside the active camera frustum before batching', () => {
@@ -56,8 +56,8 @@ describe('SceneSpriteRenderItemCollector', () => {
         const collector = new SceneSpriteRenderItemCollector();
         const items = collector.collect(
             [
-                createMockActor(insideTransform, insideRenderer),
-                createMockActor(outsideTransform, outsideRenderer),
+                createMockEntity(insideTransform, insideRenderer),
+                createMockEntity(outsideTransform, outsideRenderer),
             ],
             'main',
             { cameraFrustum: camera.frustum }

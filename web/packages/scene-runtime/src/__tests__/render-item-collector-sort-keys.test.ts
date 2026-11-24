@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Vec3 } from '@axrone/numeric';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { EntityId } from '@axrone/ecs-runtime';
 import { Transform } from '@axrone/ecs-runtime';
 import { MeshRenderer } from '../components/mesh-renderer';
 import { SceneRenderItemCollector } from '../rendering/render-item-collector';
 
-const createActor = (transform: Transform, renderer: MeshRenderer): Actor =>
+const createEntity = (transform: Transform, renderer: MeshRenderer): EntityId =>
     ({
         active: true,
         getComponent(componentType: unknown) {
@@ -17,7 +17,7 @@ const createActor = (transform: Transform, renderer: MeshRenderer): Actor =>
             }
             return undefined;
         },
-    }) as unknown as Actor;
+    }) as unknown as EntityId;
 
 const createRenderer = (
     materialId: string,
@@ -27,7 +27,7 @@ const createRenderer = (
     const transform = new Transform();
     transform.position = new Vec3(position[0], position[1], position[2]);
     const renderer = new MeshRenderer({ materialId, renderOrder, passId: 'main' });
-    return { transform, renderer, actor: createActor(transform, renderer) };
+    return { transform, renderer, entity: createEntity(transform, renderer) };
 };
 
 describe('SceneRenderItemCollector sort keys', () => {
@@ -39,7 +39,7 @@ describe('SceneRenderItemCollector sort keys', () => {
         const isBlended = vi.fn(() => false);
 
         collector.collect(
-            entries.map((entry) => entry.actor),
+            entries.map((entry) => entry.entity),
             'main',
             { isBlended }
         );
@@ -56,7 +56,7 @@ describe('SceneRenderItemCollector sort keys', () => {
         ];
 
         const items = collector.collect(
-            entries.map((entry) => entry.actor),
+            entries.map((entry) => entry.entity),
             'main',
             { isBlended: () => false, cameraPosition: new Vec3() }
         );
@@ -73,7 +73,7 @@ describe('SceneRenderItemCollector sort keys', () => {
         ];
 
         const items = collector.collect(
-            entries.map((entry) => entry.actor),
+            entries.map((entry) => entry.entity),
             'main',
             { isBlended: () => false }
         );
@@ -94,7 +94,7 @@ describe('SceneRenderItemCollector sort keys', () => {
         ];
 
         const items = collector.collect(
-            entries.map((entry) => entry.actor),
+            entries.map((entry) => entry.entity),
             'main',
             { isBlended: () => true, cameraPosition: new Vec3(0, 0, 0) }
         );
@@ -114,7 +114,7 @@ describe('SceneRenderItemCollector sort keys', () => {
         ];
 
         const items = collector.collect(
-            entries.map((entry) => entry.actor),
+            entries.map((entry) => entry.entity),
             'main',
             {
                 isBlended: (renderer) => renderer.materialId === 'blend',

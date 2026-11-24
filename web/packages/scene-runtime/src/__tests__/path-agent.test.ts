@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { Vec3 } from '@axrone/numeric';
-import { Actor, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Transform, World } from '@axrone/ecs-runtime';
 import { PathAgent } from '../components/path-agent';
 import { createSceneRegistry } from '../scene-registry';
 
 function createAgent(config: Record<string, unknown> = {}) {
     const world = new World(createSceneRegistry());
-    const actor = new Actor(world);
-    const transform = actor.getComponent(Transform)!;
+    const entity = new Entity(world);
+    const transform = entity.getComponent(Transform)!;
     transform.position = new Vec3(0, 0, 0);
-    const agent = actor.addComponent(PathAgent, {
+    const agent = entity.addComponent(PathAgent, {
         speed: 5,
         angularSpeed: 120,
         stoppingDistance: 0.5,
         ...config,
     });
-    return { world, actor, transform, agent };
+    return { world, entity, transform, agent };
 }
 
 describe('PathAgent movement', () => {

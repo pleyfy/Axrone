@@ -1,98 +1,98 @@
 import { describe, expect, it } from 'vitest';
 import { selectSceneCamera } from '../camera-selector';
 import { Camera } from '../components/camera';
-import { Actor, World } from '@axrone/ecs-runtime';
+import { Entity, World } from '@axrone/ecs-runtime';
 import { createSceneRegistry } from '../scene-registry';
 
-const createWorldWithActors = (...cameraConfigs: Array<{ primary?: boolean; enabled?: boolean; active?: boolean }>): { world: World; actors: Actor[] } => {
+const createWorldWithEntities = (...cameraConfigs: Array<{ primary?: boolean; enabled?: boolean; active?: boolean }>): { world: World; entities: EntityId[] } => {
     const world = new World(createSceneRegistry());
-    const actors: Actor[] = [];
+    const entities: EntityId[] = [];
 
     for (const config of cameraConfigs) {
-        const actor = new Actor(world);
-        const camera = actor.addComponent(Camera, {
+        const entity = new Entity(world);
+        const camera = entity.addComponent(Camera, {
             primary: config.primary ?? false,
         });
         if (config.enabled === false) {
             camera.enabled = false;
         }
         if (config.active === false) {
-            actor.active = false;
+            entity.active = false;
         }
-        actors.push(actor);
+        entities.push(entity);
     }
 
-    return { world, actors };
+    return { world, entities };
 };
 
 describe('selectSceneCamera', () => {
-    it('returns undefined for empty actor list', () => {
+    it('returns undefined for empty entity list', () => {
         expect(selectSceneCamera([])).toBeUndefined();
     });
 
     it('returns the primary camera when one exists', () => {
-        const { actors } = createWorldWithActors(
+        const { entities } = createWorldWithEntities(
             { primary: false },
             { primary: true },
             { primary: false }
         );
-        const selected = selectSceneCamera(actors);
+        const selected = selectSceneCamera(entities);
         expect(selected).toBeDefined();
         expect(selected!.primary).toBe(true);
     });
 
     it('returns the first enabled camera as fallback when no primary', () => {
-        const { actors } = createWorldWithActors(
+        const { entities } = createWorldWithEntities(
             { primary: false },
             { primary: false }
         );
-        const selected = selectSceneCamera(actors);
+        const selected = selectSceneCamera(entities);
         expect(selected).toBeDefined();
         expect(selected!.primary).toBe(false);
     });
 
     it('skips disabled cameras', () => {
-        const { actors } = createWorldWithActors(
+        const { entities } = createWorldWithEntities(
             { enabled: false },
             { primary: false }
         );
-        const selected = selectSceneCamera(actors);
+        const selected = selectSceneCamera(entities);
         expect(selected).toBeDefined();
         expect(selected!.enabled).toBe(true);
     });
 
-    it('skips inactive actors', () => {
-        const { actors } = createWorldWithActors(
+    it('skips inactive entities', () => {
+        const { entities } = createWorldWithEntities(
             { active: false, primary: true },
             { primary: false }
         );
-        const selected = selectSceneCamera(actors);
+        const selected = selectSceneCamera(entities);
         expect(selected).toBeDefined();
         expect(selected!.primary).toBe(false);
     });
 
     it('returns undefined when all cameras are disabled', () => {
-        const { actors } = createWorldWithActors(
+        const { entities } = createWorldWithEntities(
             { enabled: false },
             { enabled: false }
         );
-        expect(selectSceneCamera(actors)).toBeUndefined();
+        expect(selectSceneCamera(entities)).toBeUndefined();
     });
 
-    it('returns undefined when all actors are inactive', () => {
-        const { actors } = createWorldWithActors(
+    it('returns undefined when all entities are inactive', () => {
+        const { entities } = createWorldWithEntities(
             { active: false },
             { active: false }
         );
-        expect(selectSceneCamera(actors)).toBeUndefined();
+        expect(selectSceneCamera(entities)).toBeUndefined();
     });
 
     it('prefers primary over non-primary even if non-primary comes first', () => {
-        const { actors } = createWorldWithActors(
+        const { entities } = createWorldWithEntities(
             { primary: false },
             { primary: true }
         );
-        const selected = selectSceneCamera(actors);
+        const selected = selectSceneCamera(entities);
         expect(selected!.primary).toBe(true);
     });
 });

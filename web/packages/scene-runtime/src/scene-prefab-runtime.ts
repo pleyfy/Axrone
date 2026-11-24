@@ -1,5 +1,5 @@
 import { Hierarchy } from '@axrone/ecs-runtime';
-import { Actor, type ActorConfig, type ActorLayer, type ActorTag } from '@axrone/ecs-runtime';
+import { Entity, type EntityConfig, type EntityLayer, type EntityTag } from '@axrone/ecs-runtime';
 import { Component } from '@axrone/ecs-runtime';
 import type { ComponentConstructor } from '@axrone/ecs-runtime';
 import { Transform, getComponentPropertyMetadata } from '@axrone/ecs-runtime';
@@ -30,7 +30,7 @@ import {
     readResolvedJointReference,
 } from './physics-reference-contract';
 import type {
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     SceneComponentSnapshot,
     ScenePrefabDefinition,
 } from '@axrone/scene-prefab';
@@ -38,8 +38,8 @@ import type { ScenePrefabInstantiateOptions } from './types';
 
 interface ScenePrefabHost {
     readonly componentCatalog: SceneComponentTypeResolver;
-    createActor(config: ActorConfig): Actor;
-    getAllActors(): readonly Actor[];
+    createEntity(config: EntityConfig): EntityId;
+    getAllEntities(): readonly EntityId[];
 }
 
 const EDITOR_SCRIPT_METADATA_KEYS = new Set([
@@ -200,7 +200,7 @@ const normalizePropertyTypeId = (
         return undefined;
     }
 
-    if (type === Actor) {
+    if (type === EntityId) {
         return 'entity';
     }
 
@@ -234,7 +234,7 @@ const normalizePropertyTypeId = (
 
     if (typeof type === 'function') {
         const name = type.name.toLowerCase();
-        if (name === 'actor' || name === 'entity') {
+        if (name === 'entity' || name === 'entity') {
             return 'entity';
         }
 
@@ -280,7 +280,6 @@ const normalizePropertyTypeId = (
         case 'rect':
         case 'rectangle':
             return 'rect';
-        case 'actor':
         case 'entity':
             return 'entity';
         case 'transform':
@@ -313,61 +312,61 @@ export class ScenePrefabRuntime {
 
     createPrefab(
         id: string,
-        actors: readonly Actor[] = this._host.getAllActors()
+        entities: readonly EntityId[] = this._host.getAllEntities()
     ): ScenePrefabDefinition {
         return {
             id,
             kind: 'prefab',
-            actors: actors.map((actor) => this._createActorSnapshot(actor, id)),
+            entities: entities.map((entity) => this._createEntitySnapshot(entity, id)),
         };
     }
 
     instantiatePrefab(
         prefab: ScenePrefabDefinition,
         options: ScenePrefabInstantiateOptions = {}
-    ): readonly Actor[] {
+    ): readonly EntityId[] {
         const resolvedPrefab = this._resolvePrefab(prefab, options);
-        const createdActors: Actor[] = [];
-        const createdByNodeId = new Map<string, Actor>();
+        const createdEntities: EntityId[] = [];
+        const createdByNodeId = new Map<string, EntityId>();
         const instanceId = createPrefabInstanceId();
         const pendingComponentHydration: Array<{
-            readonly actor: Actor;
+            readonly entity: EntityId;
             readonly components: readonly SceneComponentSnapshot[];
         }> = [];
         const pendingHierarchyLinks: Array<{
-            readonly actor: Actor;
+            readonly entity: EntityId;
             readonly parentNodeId?: string | null;
         }> = [];
 
-        for (const actorSnapshot of resolvedPrefab.actors) {
-            const actor = this._host.createActor({
-                name: `${options.namePrefix ?? ''}${actorSnapshot.name}`,
-                layer: actorSnapshot.layer as unknown as ActorLayer,
-                tag: actorSnapshot.tag as unknown as ActorTag,
+        for (const entitySnapshot of resolvedPrefab.entities) {
+            const entity = this._host.createEntity({
+                name: `${options.namePrefix ?? ''}${entitySnapshot.name}`,
+                layer: entitySnapshot.layer as unknown as EntityLayer,
+                tag: entitySnapshot.tag as unknown as EntityTag,
                 active: false,
-                persistent: actorSnapshot.persistent,
-                pooled: actorSnapshot.pooled,
+                persistent: entitySnapshot.persistent,
+                pooled: entitySnapshot.pooled,
                 autoStart: false,
             });
 
-            createdActors.push(actor);
+            createdEntities.push(entity);
 
-            if (actorSnapshot.nodeId) {
-                actor.addComponent(PrefabNodeBinding, {
-                    nodeId: actorSnapshot.nodeId,
+            if (entitySnapshot.nodeId) {
+                entity.addComponent(PrefabNodeBinding, {
+                    nodeId: entitySnapshot.nodeId,
                     instanceId,
                 });
-                createdByNodeId.set(actorSnapshot.nodeId, actor);
+                createdByNodeId.set(entitySnapshot.nodeId, entity);
             }
 
             pendingComponentHydration.push({
-                actor,
-                components: actorSnapshot.components,
+                entity,
+                components: entitySnapshot.components,
             });
 
             pendingHierarchyLinks.push({
-                actor,
-                parentNodeId: actorSnapshot.parentNodeId,
+                entity,
+                parentNodeId: entitySnapshot.parentNodeId,
             });
         }
 
@@ -376,15 +375,15 @@ export class ScenePrefabRuntime {
                 continue;
             }
 
-            const parentActor = createdByNodeId.get(pendingLink.parentNodeId);
-            if (parentActor) {
-                pendingLink.actor.setParent(parentActor);
+            const parentEntity = createdByNodeId.get(pendingLink.parentNodeId);
+            if (parentEntity) {
+                pendingLink.entity.setParent(parentEntity);
             }
         }
 
-        // Pass 1: add every component across all actors first, so that
-        // component references can resolve against fully-populated actors in
-        // pass 2 regardless of actor/component ordering.
+        // Pass 1: add every component across all entities first, so that
+        // component references can resolve against fully-populated entities in
+        // pass 2 regardless of entity/component ordering.
         const pendingComponentData: Array<{
             readonly component: Component;
             readonly snapshot: SceneComponentSnapshot;
@@ -392,7 +391,7 @@ export class ScenePrefabRuntime {
         for (const pendingHydration of pendingComponentHydration) {
             for (const componentSnapshot of pendingHydration.components) {
                 const component = this._instantiateComponent(
-                    pendingHydration.actor,
+                    pendingHydration.entity,
                     componentSnapshot,
                     options,
                 );
@@ -407,34 +406,34 @@ export class ScenePrefabRuntime {
                 pending.component,
                 pending.snapshot,
                 createdByNodeId,
-                createdActors,
+                createdEntities,
             );
         }
 
-        for (let index = 0; index < resolvedPrefab.actors.length; index += 1) {
-            const actor = createdActors[index]!;
-            const actorSnapshot = resolvedPrefab.actors[index]!;
+        for (let index = 0; index < resolvedPrefab.entities.length; index += 1) {
+            const entity = createdEntities[index]!;
+            const entitySnapshot = resolvedPrefab.entities[index]!;
 
-            actor.start();
-            actor.active = actorSnapshot.active;
+            entity.start();
+            entity.active = entitySnapshot.active;
         }
 
-        this._reconcileDeferredPhysicsReferences(createdActors, createdByNodeId);
+        this._reconcileDeferredPhysicsReferences(createdEntities, createdByNodeId);
 
-        return createdActors;
+        return createdEntities;
     }
 
-    destroyAllActors(): void {
-        const actors = [...this._host.getAllActors()];
-        for (const actor of actors) {
-            actor.destroy(true);
+    destroyAllEntities(): void {
+        const entities = [...this._host.getAllEntities()];
+        for (const entity of entities) {
+            entity.destroy(true);
         }
     }
 
-    private _createActorSnapshot(actor: Actor, prefabId: string): SceneActorSnapshot {
-        const binding = actor.getComponent(PrefabNodeBinding);
-        const hierarchy = actor.getComponent(Hierarchy);
-        const components = actor
+    private _createEntitySnapshot(entity: EntityId, prefabId: string): SceneEntitySnapshot {
+        const binding = entity.getComponent(PrefabNodeBinding);
+        const hierarchy = entity.getComponent(Hierarchy);
+        const components = entity
             .getAllComponents()
             .filter(
                 (component) =>
@@ -443,21 +442,21 @@ export class ScenePrefabRuntime {
             )
             .map((component) => this._createComponentSnapshot(component));
 
-        const parentActor = hierarchy?.parentActor;
-        const parentNodeId = parentActor?.getComponent(PrefabNodeBinding)?.nodeId ?? parentActor?.id ?? null;
+        const parentEntity = hierarchy?.parentEntity;
+        const parentNodeId = parentEntity?.getComponent(PrefabNodeBinding)?.nodeId ?? parentEntity?.id ?? null;
 
         return {
-            nodeId: binding?.nodeId ?? actor.id,
+            nodeId: binding?.nodeId ?? entity.id,
             parentNodeId,
-            name: actor.name,
-            layer: actor.layer,
-            tag: actor.tag,
-            active: actor.active,
-            persistent: actor.persistent,
-            pooled: actor.pooled,
+            name: entity.name,
+            layer: entity.layer,
+            tag: entity.tag,
+            active: entity.active,
+            persistent: entity.persistent,
+            pooled: entity.pooled,
             source: {
                 prefabId,
-                nodeId: binding?.nodeId ?? actor.id,
+                nodeId: binding?.nodeId ?? entity.id,
                 lineage: [prefabId],
             },
             components,
@@ -495,7 +494,7 @@ export class ScenePrefabRuntime {
     }
 
     private _instantiateComponent(
-        actor: Actor,
+        entity: EntityId,
         snapshot: SceneComponentSnapshot,
         options: ScenePrefabInstantiateOptions,
     ): Component {
@@ -506,13 +505,13 @@ export class ScenePrefabRuntime {
             );
         }
 
-        const existingComponent = actor
+        const existingComponent = entity
             .getAllComponents()
             .find((component) => component.constructor === componentType);
 
         return (
             existingComponent ??
-            actor.addComponent(
+            entity.addComponent(
                 componentType as new (...args: any[]) => Component,
                 ...(options.componentArgsResolver?.(snapshot.type, snapshot.data) ?? [])
             )
@@ -522,8 +521,8 @@ export class ScenePrefabRuntime {
     private _applyComponentData(
         component: Component,
         snapshot: SceneComponentSnapshot,
-        createdByNodeId: ReadonlyMap<string, Actor>,
-        createdActors: readonly Actor[]
+        createdByNodeId: ReadonlyMap<string, EntityId>,
+        createdEntities: readonly EntityId[]
     ): void {
         const componentType = component.constructor as ComponentConstructor;
         const decoded = decodeSceneValue(snapshot.data);
@@ -534,7 +533,7 @@ export class ScenePrefabRuntime {
                       component,
                       decoded as Record<string, unknown>,
                       createdByNodeId,
-                      createdActors,
+                      createdEntities,
                   )
                 : {};
         const deserialize = (component as {
@@ -601,8 +600,8 @@ export class ScenePrefabRuntime {
         componentType: ComponentConstructor,
         component: Component,
         decoded: Record<string, unknown>,
-        createdByNodeId: ReadonlyMap<string, Actor>,
-        createdActors: readonly Actor[],
+        createdByNodeId: ReadonlyMap<string, EntityId>,
+        createdEntities: readonly EntityId[],
     ): Record<string, unknown> {
         const propertyMetadata = getComponentPropertyMetadata(componentType as any);
         if (propertyMetadata.length === 0) {
@@ -613,7 +612,7 @@ export class ScenePrefabRuntime {
                 component,
                 decoded,
                 createdByNodeId,
-                createdActors,
+                createdEntities,
             );
         }
 
@@ -634,7 +633,7 @@ export class ScenePrefabRuntime {
                 metadata,
                 sourceValues[metadata.propertyKey],
                 createdByNodeId,
-                createdActors,
+                createdEntities,
             );
             resolvedPropertyKeys.add(metadata.propertyKey);
         }
@@ -650,7 +649,7 @@ export class ScenePrefabRuntime {
                     propertyKey,
                     value,
                     createdByNodeId,
-                    createdActors,
+                    createdEntities,
                 );
             }
         }
@@ -659,7 +658,7 @@ export class ScenePrefabRuntime {
             component,
             normalized,
             createdByNodeId,
-            createdActors,
+            createdEntities,
         );
     }
 
@@ -669,14 +668,14 @@ export class ScenePrefabRuntime {
      *
      * An id that cannot be resolved yet is left exactly as authored, because
      * `PhysicsBridge2D` retries unresolved references on a later pass — the
-     * actor it names may still be waiting for another prefab instance to
+     * entity it names may still be waiting for another prefab instance to
      * create it.
      */
     private _resolveComponentReferenceFields(
         component: Component,
         values: Record<string, unknown>,
-        createdByNodeId: ReadonlyMap<string, Actor>,
-        createdActors: readonly Actor[],
+        createdByNodeId: ReadonlyMap<string, EntityId>,
+        createdEntities: readonly EntityId[],
     ): Record<string, unknown> {
         let resolvedValues = values;
 
@@ -692,8 +691,8 @@ export class ScenePrefabRuntime {
 
             const target =
                 propertyKey === 'connectedBody'
-                    ? this._findRigidbodyReference(component, referenceId, createdByNodeId, createdActors)
-                    : this._findJointReference(component, referenceId, createdByNodeId, createdActors);
+                    ? this._findRigidbodyReference(component, referenceId, createdByNodeId, createdEntities)
+                    : this._findJointReference(component, referenceId, createdByNodeId, createdEntities);
             if (!target) {
                 continue;
             }
@@ -711,24 +710,24 @@ export class ScenePrefabRuntime {
     private _findRigidbodyReference(
         component: Component,
         referenceId: string,
-        createdByNodeId: ReadonlyMap<string, Actor>,
-        createdActors: readonly Actor[],
+        createdByNodeId: ReadonlyMap<string, EntityId>,
+        createdEntities: readonly EntityId[],
     ): Component | null {
         const preferSpatial = isJoint3DLike(component);
         const matchesDimension = (candidate: Component): boolean =>
             isRigidbodyLike(candidate) && isRigidbody3DLike(candidate) === preferSpatial;
 
-        const exact = this._findComponentById(referenceId, createdActors);
+        const exact = this._findComponentById(referenceId, createdEntities);
         if (exact && matchesDimension(exact)) {
             return exact;
         }
 
-        const actor = this._resolveActorReference(referenceId, createdByNodeId, createdActors);
-        if (!actor) {
+        const entity = this._resolveEntityReference(referenceId, createdByNodeId, createdEntities);
+        if (!entity) {
             return null;
         }
 
-        for (const candidate of actor.getAllComponents()) {
+        for (const candidate of entity.getAllComponents()) {
             if (matchesDimension(candidate)) {
                 return candidate;
             }
@@ -742,32 +741,32 @@ export class ScenePrefabRuntime {
 
     /**
      * Picks the joint a gear reference means: an exact component id wins, then
-     * the target actor's first plain joint, then any joint it has. Candidates
+     * the target entity's first plain joint, then any joint it has. Candidates
      * from the other physics dimension are skipped, and a gear joint never
      * resolves to itself.
      */
     private _findJointReference(
         component: Component,
         referenceId: string,
-        createdByNodeId: ReadonlyMap<string, Actor>,
-        createdActors: readonly Actor[],
+        createdByNodeId: ReadonlyMap<string, EntityId>,
+        createdEntities: readonly EntityId[],
     ): Component | null {
         const preferSpatial = isJoint3DLike(component);
         const matchesDimension = (candidate: Component): boolean =>
             isJointLike(candidate) && isJoint3DLike(candidate) === preferSpatial;
 
-        const exact = this._findComponentById(referenceId, createdActors);
+        const exact = this._findComponentById(referenceId, createdEntities);
         if (exact && matchesDimension(exact) && exact !== component) {
             return exact;
         }
 
-        const actor = this._resolveActorReference(referenceId, createdByNodeId, createdActors);
-        if (!actor) {
+        const entity = this._resolveEntityReference(referenceId, createdByNodeId, createdEntities);
+        if (!entity) {
             return null;
         }
 
         let gearFallback: Component | null = null;
-        for (const candidate of actor.getAllComponents()) {
+        for (const candidate of entity.getAllComponents()) {
             if (!matchesDimension(candidate) || candidate === component) {
                 continue;
             }
@@ -783,13 +782,13 @@ export class ScenePrefabRuntime {
 
     private _findComponentById(
         componentId: string,
-        createdActors: readonly Actor[],
+        createdEntities: readonly EntityId[],
     ): Component | null {
-        const actorSets: readonly (readonly Actor[])[] = [createdActors, this._host.getAllActors()];
+        const entitySets: readonly (readonly EntityId[])[] = [createdEntities, this._host.getAllEntities()];
 
-        for (const actors of actorSets) {
-            for (const actor of actors) {
-                for (const component of actor.getAllComponents()) {
+        for (const entities of entitySets) {
+            for (const entity of entities) {
+                for (const component of entity.getAllComponents()) {
                     if (component.id === componentId) {
                         return component;
                     }
@@ -801,9 +800,9 @@ export class ScenePrefabRuntime {
     }
 
     /**
-     * Second chance for joints whose prerequisites only exist after every actor
+     * Second chance for joints whose prerequisites only exist after every entity
      * has started: `Joint2D.start()` builds its constraint, but the connected
-     * body of the last-started actor has not produced its body id yet, and a
+     * body of the last-started entity has not produced its body id yet, and a
      * gear joint needs the constraints of the joints it couples.
      *
      * Plain joints run first so a gear joint can read their constraint ids in
@@ -811,19 +810,19 @@ export class ScenePrefabRuntime {
      * hook only decides how early a scene settles, not whether it does.
      */
     private _reconcileDeferredPhysicsReferences(
-        createdActors: readonly Actor[],
-        createdByNodeId: ReadonlyMap<string, Actor>,
+        createdEntities: readonly EntityId[],
+        createdByNodeId: ReadonlyMap<string, EntityId>,
     ): void {
         for (let pass = 0; pass < 2; pass += 1) {
             const gearPass = pass === 1;
             let progressed = false;
 
-            for (const actor of createdActors) {
-                if (!actor.active || actor.isDestroyed) {
+            for (const entity of createdEntities) {
+                if (!entity.active || entity.isDestroyed) {
                     continue;
                 }
 
-                for (const component of actor.getAllComponents()) {
+                for (const component of entity.getAllComponents()) {
                     if (!isJointLike(component) || isGearJointLike(component) !== gearPass) {
                         continue;
                     }
@@ -831,7 +830,7 @@ export class ScenePrefabRuntime {
                     const resolved = this._reconcileJoint(
                         component,
                         createdByNodeId,
-                        createdActors,
+                        createdEntities,
                     );
                     progressed = progressed || resolved;
                 }
@@ -845,12 +844,12 @@ export class ScenePrefabRuntime {
 
     private _reconcileJoint(
         joint: Component,
-        createdByNodeId: ReadonlyMap<string, Actor>,
-        createdActors: readonly Actor[],
+        createdByNodeId: ReadonlyMap<string, EntityId>,
+        createdEntities: readonly EntityId[],
     ): boolean {
         const pendingBodyRef = readPendingBodyReference(joint);
         if (pendingBodyRef !== null) {
-            const body = this._findRigidbodyReference(joint, pendingBodyRef, createdByNodeId, createdActors);
+            const body = this._findRigidbodyReference(joint, pendingBodyRef, createdByNodeId, createdEntities);
             if (body) {
                 applyBodyReference(joint, body);
             }
@@ -866,12 +865,12 @@ export class ScenePrefabRuntime {
                 coupledA ??
                 (pending.jointA === null
                     ? null
-                    : this._findJointReference(joint, pending.jointA, createdByNodeId, createdActors));
+                    : this._findJointReference(joint, pending.jointA, createdByNodeId, createdEntities));
             const resolvedB =
                 coupledB ??
                 (pending.jointB === null
                     ? null
-                    : this._findJointReference(joint, pending.jointB, createdByNodeId, createdActors));
+                    : this._findJointReference(joint, pending.jointB, createdByNodeId, createdEntities));
 
             applyJointReferences(joint, resolvedA, resolvedB, pending.jointA, pending.jointB);
         }
@@ -895,8 +894,8 @@ export class ScenePrefabRuntime {
         component: Component,
         metadata: PropertyMetadata,
         value: unknown,
-        createdByNodeId: ReadonlyMap<string, Actor>,
-        createdActors: readonly Actor[],
+        createdByNodeId: ReadonlyMap<string, EntityId>,
+        createdEntities: readonly EntityId[],
     ): unknown {
         const currentValue = (component as unknown as Record<string, unknown>)[metadata.propertyKey];
         const fallbackValue = currentValue ?? metadata.defaultValue;
@@ -915,18 +914,18 @@ export class ScenePrefabRuntime {
             case 'rect':
                 return toRect(value, fallbackValue);
             case 'entity':
-                return this._resolveActorReference(value, createdByNodeId, createdActors) ?? null;
+                return this._resolveEntityReference(value, createdByNodeId, createdEntities) ?? null;
             case 'transform': {
-                const targetActor = this._resolveActorReference(value, createdByNodeId, createdActors);
-                return targetActor?.getComponent(Transform) ?? null;
+                const targetEntity = this._resolveEntityReference(value, createdByNodeId, createdEntities);
+                return targetEntity?.getComponent(Transform) ?? null;
             }
             case 'component': {
                 const componentType = metadata.type;
                 if (typeof componentType !== 'function') {
                     return null;
                 }
-                const targetActor = this._resolveActorReference(value, createdByNodeId, createdActors);
-                return targetActor?.getComponent(componentType as ComponentConstructor) ?? null;
+                const targetEntity = this._resolveEntityReference(value, createdByNodeId, createdEntities);
+                return targetEntity?.getComponent(componentType as ComponentConstructor) ?? null;
             }
             case 'ui-widget': {
                 const objectValue = asRecord(value);
@@ -939,10 +938,10 @@ export class ScenePrefabRuntime {
                 // resolves lazily through the injected resolver on first use.
                 return createLazySceneUIWidgetRef(
                     () =>
-                        this._resolveActorReference(
+                        this._resolveEntityReference(
                             hostEntityId,
                             createdByNodeId,
-                            createdActors,
+                            createdEntities,
                         )?.getComponent(UIHost) ?? null,
                     widgetKey,
                 );
@@ -956,8 +955,8 @@ export class ScenePrefabRuntime {
         component: Component,
         propertyKey: string,
         value: unknown,
-        createdByNodeId: ReadonlyMap<string, Actor>,
-        createdActors: readonly Actor[],
+        createdByNodeId: ReadonlyMap<string, EntityId>,
+        createdEntities: readonly EntityId[],
     ): unknown {
         const currentValue = (component as unknown as Record<string, unknown>)[propertyKey];
         const normalizedKey = propertyKey.toLowerCase();
@@ -988,14 +987,14 @@ export class ScenePrefabRuntime {
 
         if (normalizedKey.includes('transform')) {
             return (
-                this._resolveActorReference(value, createdByNodeId, createdActors)?.getComponent(
+                this._resolveEntityReference(value, createdByNodeId, createdEntities)?.getComponent(
                     Transform,
                 ) ?? null
             );
         }
 
-        if (isReferenceLike(value) || normalizedKey.includes('actor') || normalizedKey.includes('entity')) {
-            return this._resolveActorReference(value, createdByNodeId, createdActors) ?? null;
+        if (isReferenceLike(value) || normalizedKey.includes('entity') || normalizedKey.includes('entity')) {
+            return this._resolveEntityReference(value, createdByNodeId, createdEntities) ?? null;
         }
 
         const objectValue = asRecord(value);
@@ -1010,21 +1009,21 @@ export class ScenePrefabRuntime {
         return value;
     }
 
-    private _resolveActorReference(
+    private _resolveEntityReference(
         value: unknown,
-        createdByNodeId: ReadonlyMap<string, Actor>,
-        createdActors: readonly Actor[],
-    ): Actor | undefined {
-        if (value instanceof Actor) {
+        createdByNodeId: ReadonlyMap<string, EntityId>,
+        createdEntities: readonly EntityId[],
+    ): EntityId | undefined {
+        if (value instanceof EntityId) {
             return value;
         }
 
         if (value instanceof Transform) {
-            return this._findActorByComponentId(value.id, createdActors);
+            return this._findEntityByComponentId(value.id, createdEntities);
         }
 
         if (typeof value === 'string') {
-            return this._findActorByReferenceTarget(value, createdByNodeId, createdActors);
+            return this._findEntityByReferenceTarget(value, createdByNodeId, createdEntities);
         }
 
         const referenceObject = asRecord(value);
@@ -1036,42 +1035,42 @@ export class ScenePrefabRuntime {
         }
 
         if (referenceKind === 'component') {
-            return this._findActorByComponentId(referenceTarget, createdActors);
+            return this._findEntityByComponentId(referenceTarget, createdEntities);
         }
 
-        return this._findActorByReferenceTarget(referenceTarget, createdByNodeId, createdActors);
+        return this._findEntityByReferenceTarget(referenceTarget, createdByNodeId, createdEntities);
     }
 
-    private _findActorByReferenceTarget(
+    private _findEntityByReferenceTarget(
         target: string,
-        createdByNodeId: ReadonlyMap<string, Actor>,
-        createdActors: readonly Actor[],
-    ): Actor | undefined {
+        createdByNodeId: ReadonlyMap<string, EntityId>,
+        createdEntities: readonly EntityId[],
+    ): EntityId | undefined {
         return (
             createdByNodeId.get(target) ??
-            createdActors.find((actor) => actor.id === target) ??
+            createdEntities.find((entity) => entity.id === target) ??
             this._host
-                .getAllActors()
+                .getAllEntities()
                 .find(
-                    (actor) =>
-                        actor.id === target ||
-                        actor.getComponent(PrefabNodeBinding)?.nodeId === target,
+                    (entity) =>
+                        entity.id === target ||
+                        entity.getComponent(PrefabNodeBinding)?.nodeId === target,
                 )
         );
     }
 
-    private _findActorByComponentId(
+    private _findEntityByComponentId(
         componentId: string,
-        createdActors: readonly Actor[],
-    ): Actor | undefined {
-        const actorSets = [createdActors, this._host.getAllActors()];
+        createdEntities: readonly EntityId[],
+    ): EntityId | undefined {
+        const entitySets = [createdEntities, this._host.getAllEntities()];
 
-        for (const actors of actorSets) {
-            const actor = actors.find((candidate) =>
+        for (const entities of entitySets) {
+            const entity = entities.find((candidate) =>
                 candidate.getAllComponents().some((component) => component.id === componentId),
             );
-            if (actor) {
-                return actor;
+            if (entity) {
+                return entity;
             }
         }
 

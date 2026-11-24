@@ -9,7 +9,7 @@
  * created resources in Set objects exposed as `_textures`, `_buffers`, etc.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { Component, World, Actor, Hierarchy, Transform } from '@axrone/ecs-runtime';
+import { Component, World, Entity, Hierarchy, Transform } from '@axrone/ecs-runtime';
 import { Vec4 } from '@axrone/numeric';
 import {
     createMockGL,
@@ -301,7 +301,7 @@ describe('Scene Disposal Cleanup', () => {
 
 describe('Component Lifecycle Cleanup', () => {
     let world: World<any>;
-    let actor: Actor<World<any>>;
+    let entity: EntityId<World<any>>;
 
     beforeEach(() => {
         world = new World({
@@ -311,45 +311,45 @@ describe('Component Lifecycle Cleanup', () => {
             ResourceTrackingComponent,
             SecondaryLifecycleComponent,
         });
-        actor = new Actor(world, { name: 'TestActor' });
+        entity = new Entity(world, { name: 'TestEntity' });
     });
 
-    it('calls onDestroy() when actor is removed from scene', () => {
-        const component = actor.addComponent(LifecycleEventComponent);
+    it('calls onDestroy() when entity is removed from scene', () => {
+        const component = entity.addComponent(LifecycleEventComponent);
 
         expect(component.events).not.toContain('onDestroy');
 
-        actor.destroy();
+        entity.destroy();
 
         expect(component.events).toContain('onDestroy');
     });
 
     it('releases cached references in onDestroy()', () => {
-        const component = actor.addComponent(ResourceTrackingComponent);
+        const component = entity.addComponent(ResourceTrackingComponent);
         component.resources = [{ data: 'heavy-resource' }, { data: 'another' }];
         expect(component.resources).toHaveLength(2);
 
-        actor.destroy();
+        entity.destroy();
 
         expect(component.destroyed).toBe(true);
         expect(component.resources).toHaveLength(0);
     });
 
-    it('all components on same actor receive onDestroy()', () => {
-        const comp1 = actor.addComponent(LifecycleEventComponent);
-        const comp2 = actor.addComponent(SecondaryLifecycleComponent);
-        const comp3 = actor.addComponent(ResourceTrackingComponent);
+    it('all components on same entity receive onDestroy()', () => {
+        const comp1 = entity.addComponent(LifecycleEventComponent);
+        const comp2 = entity.addComponent(SecondaryLifecycleComponent);
+        const comp3 = entity.addComponent(ResourceTrackingComponent);
 
-        actor.destroy();
+        entity.destroy();
 
         expect(comp1.events).toContain('onDestroy');
         expect(comp2.destroyed).toBe(true);
         expect(comp3.destroyed).toBe(true);
     });
 
-    it('child actors can be destroyed after parent is destroyed', () => {
-        const parent = new Actor(world, { name: 'Parent' });
-        const child = new Actor(world, { name: 'Child' });
+    it('child entities can be destroyed after parent is destroyed', () => {
+        const parent = new Entity(world, { name: 'Parent' });
+        const child = new Entity(world, { name: 'Child' });
         child.setParent(parent);
 
         expect(parent.children).toContain(child);
@@ -369,19 +369,19 @@ describe('Component Lifecycle Cleanup', () => {
         expect(childComp.destroyed).toBe(true);
     });
 
-    it('event subscriptions are cleaned up on actor disposal', () => {
+    it('event subscriptions are cleaned up on entity disposal', () => {
         const handler = vi.fn();
-        const unsubscribe = actor.on('test:event', handler);
+        const unsubscribe = entity.on('test:event', handler);
 
         // Verify subscription was registered
         expect(typeof unsubscribe).toBe('function');
 
-        // Destroy actor — this clears all event subscriptions
-        actor.destroy();
+        // Destroy entity — this clears all event subscriptions
+        entity.destroy();
 
         // After destruction, calling unsubscribe again is a no-op (already cleaned up)
         expect(() => unsubscribe()).not.toThrow();
-        expect(actor.isDestroyed).toBe(true);
+        expect(entity.isDestroyed).toBe(true);
     });
 });
 

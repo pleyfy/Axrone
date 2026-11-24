@@ -6,8 +6,8 @@ import {
     bindAnimationStreamingBridge,
     createFetchAnimationStreamingResolver,
 } from '../animation-streaming-bridge';
-import { SceneActorLifecycleRunner } from '../actor-lifecycle-runner';
-import { SceneActorRuntime } from '../scene-actor-runtime';
+import { SceneEntityLifecycleRunner } from '../entity-lifecycle-runner';
+import { SceneEntityRuntime } from '../scene-entity-runtime';
 import { createSceneRegistry } from '../scene-registry';
 import { encodeSceneValue } from '../serialization';
 import type { ScenePrefabDefinition } from '../types';
@@ -24,7 +24,7 @@ const createAnimatedRigPrefab = (
     animatorData: Record<string, unknown>
 ): ScenePrefabDefinition => ({
     id: 'prefab/animated-rig',
-    actors: [
+    entities: [
         {
             nodeId: 'node/0',
             parentNodeId: null,
@@ -121,7 +121,7 @@ const createAnimatedRigPrefab = (
 
 const createSiblingAnimatorPrefab = (): ScenePrefabDefinition => ({
     id: 'prefab/sibling-animators',
-    actors: [
+    entities: [
         {
             nodeId: 'character-a',
             parentNodeId: null,
@@ -235,7 +235,7 @@ const createSiblingAnimatorPrefab = (): ScenePrefabDefinition => ({
 
 const createWrappedChildRootAnimatorPrefab = (): ScenePrefabDefinition => ({
     id: 'prefab/wrapped-child-root-animator',
-    actors: [
+    entities: [
         {
             nodeId: 'wrapper',
             parentNodeId: null,
@@ -313,16 +313,16 @@ const createWrappedChildRootAnimatorPrefab = (): ScenePrefabDefinition => ({
 const createPrefabHarness = () => {
     const registry = createSceneRegistry();
     const world = new World(registry);
-    const actors = new SceneActorRuntime({
+    const entities = new SceneEntityRuntime({
         world,
         componentCatalog: new SceneComponentCatalog(registry),
     });
-    const lifecycle = new SceneActorLifecycleRunner({
-        getActors: () => world.getAllActors(),
+    const lifecycle = new SceneEntityLifecycleRunner({
+        getEntitys: () => world.getAllEntities(),
     });
 
     return {
-        actors,
+        entities,
         lifecycle,
         world,
     };
@@ -404,14 +404,14 @@ describe('scene-runtime prefab animation integration', () => {
             cullingMode: 'Cull Update Transforms',
         });
 
-        const firstInstance = harness.actors.instantiatePrefab(prefab, { namePrefix: 'A ' });
-        const secondInstance = harness.actors.instantiatePrefab(prefab, { namePrefix: 'B ' });
+        const firstInstance = harness.entities.instantiatePrefab(prefab, { namePrefix: 'A ' });
+        const secondInstance = harness.entities.instantiatePrefab(prefab, { namePrefix: 'B ' });
 
-        const firstRoot = firstInstance.find((actor) => actor.name === 'A Rig Root');
-        const firstHip = firstInstance.find((actor) => actor.name === 'A Hip');
-        const firstMesh = firstInstance.find((actor) => actor.name === 'A Skinned Mesh');
-        const secondRoot = secondInstance.find((actor) => actor.name === 'B Rig Root');
-        const secondHip = secondInstance.find((actor) => actor.name === 'B Hip');
+        const firstRoot = firstInstance.find((entity) => entity.name === 'A Rig Root');
+        const firstHip = firstInstance.find((entity) => entity.name === 'A Hip');
+        const firstMesh = firstInstance.find((entity) => entity.name === 'A Skinned Mesh');
+        const secondRoot = secondInstance.find((entity) => entity.name === 'B Rig Root');
+        const secondHip = secondInstance.find((entity) => entity.name === 'B Hip');
 
         const firstAnimator = firstRoot?.getComponent(Animator) ?? null;
         const secondAnimator = secondRoot?.getComponent(Animator) ?? null;
@@ -436,13 +436,13 @@ describe('scene-runtime prefab animation integration', () => {
 
     it('keeps sibling animators in the same prefab instance scoped to their own subtree', () => {
         const harness = createPrefabHarness();
-        const actors = harness.actors.instantiatePrefab(createSiblingAnimatorPrefab());
+        const entities = harness.entities.instantiatePrefab(createSiblingAnimatorPrefab());
 
         harness.lifecycle.update(16);
         harness.lifecycle.update(500);
 
-        const characterABone = actors.find((actor) => actor.name === 'Character A Bone');
-        const characterBBone = actors.find((actor) => actor.name === 'Character B Bone');
+        const characterABone = entities.find((entity) => entity.name === 'Character A Bone');
+        const characterBBone = entities.find((entity) => entity.name === 'Character B Bone');
         const characterABoneY = characterABone?.requireComponent(Transform).position.y ?? 0;
         const characterBBoneY = characterBBone?.requireComponent(Transform).position.y ?? 0;
 
@@ -453,12 +453,12 @@ describe('scene-runtime prefab animation integration', () => {
 
     it('supports animators mounted on child roots without inheriting wrapper parents into the rig', () => {
         const harness = createPrefabHarness();
-        const actors = harness.actors.instantiatePrefab(createWrappedChildRootAnimatorPrefab());
+        const entities = harness.entities.instantiatePrefab(createWrappedChildRootAnimatorPrefab());
 
         harness.lifecycle.update(16);
         harness.lifecycle.update(500);
 
-        const armatureBone = actors.find((actor) => actor.name === 'Armature Bone');
+        const armatureBone = entities.find((entity) => entity.name === 'Armature Bone');
         expect(armatureBone?.requireComponent(Transform).position.y).toBeGreaterThan(0.9);
     });
 
@@ -495,9 +495,9 @@ describe('scene-runtime prefab animation integration', () => {
             cullingMode: 'Cull Completely',
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((actor) => actor.name === 'Rig Root');
-        const hip = actors.find((actor) => actor.name === 'Hip');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((entity) => entity.name === 'Rig Root');
+        const hip = entities.find((entity) => entity.name === 'Hip');
         const animator = root?.getComponent(Animator) ?? null;
 
         harness.lifecycle.update(500);
@@ -545,9 +545,9 @@ describe('scene-runtime prefab animation integration', () => {
             cullingMode: 'Always Animate',
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((actor) => actor.name === 'Rig Root');
-        const hip = actors.find((actor) => actor.name === 'Hip');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((entity) => entity.name === 'Rig Root');
+        const hip = entities.find((entity) => entity.name === 'Hip');
         const animator = root?.getComponent(Animator) ?? null;
 
         harness.lifecycle.update(500);
@@ -588,10 +588,10 @@ describe('scene-runtime prefab animation integration', () => {
             cullingMode: 'Cull Completely',
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((actor) => actor.name === 'Rig Root');
-        const hip = actors.find((actor) => actor.name === 'Hip');
-        const mesh = actors.find((actor) => actor.name === 'Skinned Mesh');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((entity) => entity.name === 'Rig Root');
+        const hip = entities.find((entity) => entity.name === 'Hip');
+        const mesh = entities.find((entity) => entity.name === 'Skinned Mesh');
         const animator = root?.getComponent(Animator) ?? null;
         const renderer = mesh?.getComponent(MeshRenderer) ?? null;
 
@@ -637,10 +637,10 @@ describe('scene-runtime prefab animation integration', () => {
             cullingMode: 'Cull Update Transforms',
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((actor) => actor.name === 'Rig Root');
-        const hip = actors.find((actor) => actor.name === 'Hip');
-        const mesh = actors.find((actor) => actor.name === 'Skinned Mesh');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((entity) => entity.name === 'Rig Root');
+        const hip = entities.find((entity) => entity.name === 'Hip');
+        const mesh = entities.find((entity) => entity.name === 'Skinned Mesh');
         const animator = root?.getComponent(Animator) ?? null;
         const renderer = mesh?.getComponent(MeshRenderer) ?? null;
 
@@ -672,9 +672,9 @@ describe('scene-runtime prefab animation integration', () => {
             time: 0,
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const hip = actors.find((actor) => actor.name === 'Hip');
-        const mesh = actors.find((actor) => actor.name === 'Skinned Mesh');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const hip = entities.find((entity) => entity.name === 'Hip');
+        const mesh = entities.find((entity) => entity.name === 'Skinned Mesh');
         const hipTransform = hip?.getComponent(Transform) ?? null;
         const renderer = mesh?.getComponent(MeshRenderer) ?? null;
 
@@ -748,8 +748,8 @@ describe('scene-runtime prefab animation integration', () => {
             time: 0,
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const tip = actors.find((actor) => actor.name === 'Tip');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const tip = entities.find((entity) => entity.name === 'Tip');
 
         harness.lifecycle.update(16);
 
@@ -796,8 +796,8 @@ describe('scene-runtime prefab animation integration', () => {
             received.push(event as Record<string, unknown>);
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((actor) => actor.name === 'Rig Root');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((entity) => entity.name === 'Rig Root');
         const animator = root?.getComponent(Animator) ?? null;
 
         harness.lifecycle.update(750);
@@ -866,9 +866,9 @@ describe('scene-runtime prefab animation integration', () => {
             received.push(event as Record<string, unknown>);
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((actor) => actor.name === 'Rig Root');
-        const hip = actors.find((actor) => actor.name === 'Hip');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((entity) => entity.name === 'Rig Root');
+        const hip = entities.find((entity) => entity.name === 'Hip');
         const animator = root?.getComponent(Animator) ?? null;
 
         harness.lifecycle.update(16);
@@ -939,8 +939,8 @@ describe('scene-runtime prefab animation integration', () => {
             time: 0,
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((actor) => actor.name === 'Rig Root');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((entity) => entity.name === 'Rig Root');
         const animator = root?.getComponent(Animator) ?? null;
 
         expect(animator?.clipId).toBe('Idle');
@@ -1004,8 +1004,8 @@ describe('scene-runtime prefab animation integration', () => {
             time: 0,
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const hip = actors.find((actor) => actor.name === 'Hip');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const hip = entities.find((entity) => entity.name === 'Hip');
 
         harness.lifecycle.update(16);
         await bridge.waitForIdle();
@@ -1095,8 +1095,8 @@ describe('scene-runtime prefab animation integration', () => {
             time: 0,
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const hip = actors.find((actor) => actor.name === 'Hip');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const hip = entities.find((entity) => entity.name === 'Hip');
 
         harness.lifecycle.update(16);
         await bridge.waitForIdle();
@@ -1157,8 +1157,8 @@ describe('scene-runtime prefab animation integration', () => {
             time: 0,
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const hip = actors.find((actor) => actor.name === 'Hip');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const hip = entities.find((entity) => entity.name === 'Hip');
 
         harness.lifecycle.update(16);
         expect(hip?.requireComponent(Transform).position.x).toBeCloseTo(1, 5);

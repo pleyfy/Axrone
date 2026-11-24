@@ -28,8 +28,8 @@ import type {
     AnimationTransitionOperator,
 } from '@axrone/animation/types';
 import { World, Transform } from '@axrone/ecs-runtime';
-import { SceneActorRuntime } from '../scene-actor-runtime';
-import { SceneActorLifecycleRunner } from '../actor-lifecycle-runner';
+import { SceneEntityRuntime } from '../scene-entity-runtime';
+import { SceneEntityLifecycleRunner } from '../entity-lifecycle-runner';
 import { createSceneRegistry } from '../scene-registry';
 import { SceneComponentCatalog } from '../component-catalog';
 import { Animator } from '../components/animator';
@@ -127,7 +127,7 @@ const createPrefabComponent = (type: string, data: unknown) => ({
 
 const createAnimatorPrefab = (animatorData: Record<string, unknown>): ScenePrefabDefinition => ({
     id: 'prefab/animator-sm',
-    actors: [
+    entities: [
         {
             nodeId: 'node/0',
             parentNodeId: null,
@@ -169,14 +169,14 @@ const createAnimatorPrefab = (animatorData: Record<string, unknown>): ScenePrefa
 const createPrefabHarness = () => {
     const registry = createSceneRegistry();
     const world = new World(registry);
-    const actors = new SceneActorRuntime({
+    const entities = new SceneEntityRuntime({
         world,
         componentCatalog: new SceneComponentCatalog(registry),
     });
-    const lifecycle = new SceneActorLifecycleRunner({
-        getActors: () => world.getAllActors(),
+    const lifecycle = new SceneEntityLifecycleRunner({
+        getEntitys: () => world.getAllEntities(),
     });
-    return { actors, lifecycle, world };
+    return { entities, lifecycle, world };
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -679,8 +679,8 @@ describe('T-07.5: Animator Component Integration', () => {
             loop: true,
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((a) => a.name === 'Root');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((a) => a.name === 'Root');
         const animator = root?.getComponent(Animator) ?? null;
 
         expect(animator?.clipId).toBe('Idle');
@@ -707,8 +707,8 @@ describe('T-07.5: Animator Component Integration', () => {
             loop: true,
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((a) => a.name === 'Root');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((a) => a.name === 'Root');
         const animator = root?.getComponent(Animator) ?? null;
 
         animator?.crossFade('Run', 0.2);
@@ -735,8 +735,8 @@ describe('T-07.5: Animator Component Integration', () => {
             loop: true,
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((a) => a.name === 'Root');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((a) => a.name === 'Root');
         const animator = root?.getComponent(Animator) ?? null;
 
         animator?.setFloat('speed', 0.5);
@@ -763,8 +763,8 @@ describe('T-07.5: Animator Component Integration', () => {
             loop: true,
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((a) => a.name === 'Root');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((a) => a.name === 'Root');
         const animator = root?.getComponent(Animator) ?? null;
 
         harness.lifecycle.update(500);
@@ -790,8 +790,8 @@ describe('T-07.5: Animator Component Integration', () => {
             loop: true,
         });
 
-        const actors = harness.actors.instantiatePrefab(prefab);
-        const root = actors.find((a) => a.name === 'Root');
+        const entities = harness.entities.instantiatePrefab(prefab);
+        const root = entities.find((a) => a.name === 'Root');
         const animator = root?.getComponent(Animator) ?? null;
 
         harness.lifecycle.update(250);

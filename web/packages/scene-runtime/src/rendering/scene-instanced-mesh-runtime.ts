@@ -219,7 +219,7 @@ const toColorTuple = (
  * Derives an instanced draw plan for homogeneous opaque `MeshRenderer` passes.
  *
  * This is a render cache, not a second scene: every instance still points at
- * the actor's own `Transform`/`MeshRenderer`, culling and ordering are the ones
+ * the entity's own `Transform`/`MeshRenderer`, culling and ordering are the ones
  * produced by the existing scene pipeline, and the moment a renderer stops
  * being eligible (morph, skin, transparency, per-object uniforms, unsupported
  * shader shape) it is routed back through the individual draw path.

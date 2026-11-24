@@ -24,15 +24,15 @@ function createMockTransform(pos = { x: 0, y: 0 }): MockTransformData {
     };
 }
 
-// ─── Mock Actor ──────────────────────────────────────────────────────────────
-class MockActor {
+// ─── Mock Entity ──────────────────────────────────────────────────────────────
+class MockEntity {
     active = true;
     isDestroyed = false;
     private _components: any[] = [];
 
     addComponent(c: any): this {
         this._components.push(c);
-        if ('actor' in c) (c as any).actor = this;
+        if ('entity' in c) (c as any).entity = this;
         return this;
     }
 
@@ -47,12 +47,12 @@ class MockActor {
 
 // ─── Mock ECS World ──────────────────────────────────────────────────────────
 class MockEcsWorld {
-    private _actors: MockActor[] = [];
-    addActor(a: MockActor): void {
-        this._actors.push(a);
+    private _entities: MockEntity[] = [];
+    addEntity(a: MockEntity): void {
+        this._entities.push(a);
     }
-    getAllActors(): MockActor[] {
-        return [...this._actors];
+    getAllEntities(): MockEntity[] {
+        return [...this._entities];
     }
 }
 
@@ -104,8 +104,8 @@ function createHarness(gravity = { x: 0, y: GRAVITY_2D }) {
             isTrigger?: boolean;
             handler?: CollisionHandler;
         } = {}
-    ): { actor: MockActor; rb: Rigidbody2D } {
-        const actor = new MockActor();
+    ): { entity: MockEntity; rb: Rigidbody2D } {
+        const entity = new MockEntity();
 
         const rb = new Rigidbody2D();
         // Override transform getter to return our mock
@@ -121,7 +121,7 @@ function createHarness(gravity = { x: 0, y: GRAVITY_2D }) {
         if (opts.mass !== undefined) {
             (rb as any)._mass = opts.mass;
         }
-        actor.addComponent(rb);
+        entity.addComponent(rb);
 
         // Create physics body directly via body manager
         const bodyManager = bridge.physicsWorld.getBodyManager();
@@ -149,7 +149,7 @@ function createHarness(gravity = { x: 0, y: GRAVITY_2D }) {
             if (opts.isTrigger) col.isTrigger = true;
             (col as any)._physicsWorld = bridge.physicsWorld;
             (col as any)._rigidbody = rb;
-            actor.addComponent(col);
+            entity.addComponent(col);
 
             const shapeId = bridge.physicsWorld.createCircleShape(bodyId, {
                 center: { x: 0, y: 0 },
@@ -165,7 +165,7 @@ function createHarness(gravity = { x: 0, y: GRAVITY_2D }) {
             if (opts.isTrigger) col.isTrigger = true;
             (col as any)._physicsWorld = bridge.physicsWorld;
             (col as any)._rigidbody = rb;
-            actor.addComponent(col);
+            entity.addComponent(col);
 
             const hw = (opts.boxSize?.x ?? 1) * 0.5;
             const hh = (opts.boxSize?.y ?? 1) * 0.5;
@@ -182,17 +182,17 @@ function createHarness(gravity = { x: 0, y: GRAVITY_2D }) {
         }
 
         if (opts.handler) {
-            actor.addComponent(opts.handler);
+            entity.addComponent(opts.handler);
         }
 
-        ecsWorld.addActor(actor);
+        ecsWorld.addEntity(entity);
         rbodies.push(rb);
 
         // Immediately register with bridge so the body is tracked before the
         // next physics step (bypasses the one-frame beforeUpdate delay).
         bridge.registerNewComponents();
 
-        return { actor, rb };
+        return { entity, rb };
     }
 
     function step(n = 1): void {
@@ -719,12 +719,12 @@ describe('PhysicsBridge2D integration', () => {
             expect(bridge.isDisposed).toBe(true);
 
             const bodyIdMap = (bridge as any)._bodyIdToComponent as Map<any, any>;
-            const componentToActor = (bridge as any)._componentToActor as Map<any, any>;
+            const componentToEntity = (bridge as any)._componentToEntity as Map<any, any>;
             const activeContactPairs = (bridge as any)._activeContactPairs as Set<number>;
             const activeTriggerPairs = (bridge as any)._activeTriggerPairs as Set<number>;
 
             expect(bodyIdMap.size).toBe(0);
-            expect(componentToActor.size).toBe(0);
+            expect(componentToEntity.size).toBe(0);
             expect(activeContactPairs.size).toBe(0);
             expect(activeTriggerPairs.size).toBe(0);
         });

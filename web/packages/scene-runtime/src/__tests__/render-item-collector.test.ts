@@ -1,12 +1,12 @@
 import { Camera3D } from '@axrone/geometry';
 import { describe, expect, it } from 'vitest';
 import { Vec3 } from '@axrone/numeric';
-import type { Actor } from '@axrone/ecs-runtime';
+import type { EntityId } from '@axrone/ecs-runtime';
 import { Transform } from '@axrone/ecs-runtime';
 import { MeshRenderer } from '../components/mesh-renderer';
 import { SceneRenderItemCollector } from '../rendering/render-item-collector';
 
-const createMockActor = (transform: Transform, renderer: MeshRenderer): Actor =>
+const createMockEntity = (transform: Transform, renderer: MeshRenderer): EntityId =>
 	({
 		active: true,
 		getComponent(componentType: unknown) {
@@ -18,7 +18,7 @@ const createMockActor = (transform: Transform, renderer: MeshRenderer): Actor =>
 			}
 			return undefined;
 		},
-	} as unknown as Actor);
+	} as unknown as EntityId);
 
 describe('SceneRenderItemCollector', () => {
 	it('culls mesh renderers outside the active camera frustum before sorting', () => {
@@ -58,8 +58,8 @@ describe('SceneRenderItemCollector', () => {
 		const collector = new SceneRenderItemCollector();
 		const renderItems = collector.collect(
 			[
-				createMockActor(insideTransform, insideRenderer),
-				createMockActor(outsideTransform, outsideRenderer),
+				createMockEntity(insideTransform, insideRenderer),
+				createMockEntity(outsideTransform, outsideRenderer),
 			],
 			'main',
 			{
@@ -104,9 +104,9 @@ describe('SceneRenderItemCollector', () => {
 		const collector = new SceneRenderItemCollector();
 		const renderItems = collector.collect(
 			[
-				createMockActor(nearBlendTransform, nearBlendRenderer),
-				createMockActor(opaqueTransform, opaqueRenderer),
-				createMockActor(farBlendTransform, farBlendRenderer),
+				createMockEntity(nearBlendTransform, nearBlendRenderer),
+				createMockEntity(opaqueTransform, opaqueRenderer),
+				createMockEntity(farBlendTransform, farBlendRenderer),
 			],
 			'main',
 			{

@@ -153,7 +153,7 @@ export class SceneDrawExecutor {
      *
      * Consecutive draws that share a material binding the same texture/sampler
      * to the same unit are common (one shared material across thousands of
-     * actors). Re-binding and re-writing the sampler uniform for each of them
+     * entities). Re-binding and re-writing the sampler uniform for each of them
      * costs a handful of GL calls per draw, so the executor keeps the binding
      * alive and skips the whole bind path while the signature is unchanged.
      * The binding is released at the end of each draw pass

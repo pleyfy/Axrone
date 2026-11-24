@@ -1,6 +1,6 @@
 import type { BoundingSphere } from '@axrone/geometry';
 import type { Mat4, Quat, Vec2, Vec3, Vec4 } from '@axrone/numeric';
-import type { Actor, ActorConfig } from '@axrone/ecs-runtime';
+import type { EntityId, EntityConfig } from '@axrone/ecs-runtime';
 import type { World } from '@axrone/ecs-runtime';
 import type { ComponentConstructor, ComponentRegistry } from '@axrone/ecs-runtime';
 import type { System, SystemQuery } from '@axrone/ecs-runtime';
@@ -74,10 +74,10 @@ export type {
     ScenePrefabNodeSource,
     ScenePrefabMetadata,
     ScenePrefabComponentSelector,
-    ScenePrefabActorField,
-    ScenePrefabActorFieldValue,
+    ScenePrefabEntityField,
+    ScenePrefabEntityFieldValue,
     SceneComponentSnapshot,
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     ScenePrefabReference,
     ScenePrefabOverrideOperation,
     ScenePrefabNestedInstance,
@@ -479,10 +479,10 @@ export interface SceneOptions<R extends ComponentRegistry = Record<string, never
     readonly renderPipeline?: SceneRenderPipelineSettings;
     /**
      * Opt-in derived instanced draw path for homogeneous opaque `MeshRenderer`
-     * scenes. Default `off` keeps one draw call per actor; `auto` groups
-     * eligible actors by mesh/material/render state into one instanced draw
-     * per group while leaving the ECS/actor model, culling and per-component
-     * API untouched. Ineligible actors (morph, skin, transparency, per-object
+     * scenes. Default `off` keeps one draw call per entity; `auto` groups
+     * eligible entities by mesh/material/render state into one instanced draw
+     * per group while leaving the ECS/entity model, culling and per-component
+     * API untouched. Ineligible entities (morph, skin, transparency, per-object
      * uniforms, unsupported shader shapes) keep the individual draw path.
      */
     readonly instancing?: SceneInstancingMode;
@@ -614,8 +614,8 @@ export interface SceneRenderPlanningOptions {
 
 /**
  * Scene-level render mode for homogeneous `MeshRenderer` batching.
- * `off` (default) submits one draw per actor; `auto` derives instanced groups
- * for eligible opaque actors and falls back per actor otherwise.
+ * `off` (default) submits one draw per entity; `auto` derives instanced groups
+ * for eligible opaque entities and falls back per entity otherwise.
  */
 export type SceneInstancingMode = 'off' | 'auto';
 
@@ -648,7 +648,7 @@ export interface SceneRenderPlanningStats {
     readonly instancing?: SceneInstancingMode;
     /** Number of derived instance groups drawn (one draw call each). */
     readonly instancedGroupCount?: number;
-    /** Number of actors submitted through the instanced path. */
+    /** Number of entities submitted through the instanced path. */
     readonly instancedInstanceCount?: number;
     /** Draw calls issued by the instanced path this frame. */
     readonly instancedDrawCalls?: number;
@@ -664,12 +664,12 @@ export interface SceneRenderStats {
     readonly planning: SceneRenderPlanningStats;
 }
 
-export interface SceneActorFactory<R extends ComponentRegistry = Record<string, never>> {
-    createActor(config?: ActorConfig): Actor<World<SceneRegistry<R>>>;
+export interface SceneEntityFactory<R extends ComponentRegistry = Record<string, never>> {
+    createEntity(config?: EntityConfig): EntityId<World<SceneRegistry<R>>>;
 }
 
 export interface SceneLifecycle<R extends ComponentRegistry = Record<string, never>>
-    extends SceneActorFactory<R> {
+    extends SceneEntityFactory<R> {
     readonly status: GameLoopStatus;
     readonly isDisposed: boolean;
     readonly renderStats: SceneRenderStats;
@@ -705,16 +705,16 @@ export interface SceneTextureHost {
 }
 
 export interface SceneSerializationHost {
-    createPrefab(id: string, actors?: readonly Actor[]): ScenePrefabDefinition;
+    createPrefab(id: string, entities?: readonly EntityId[]): ScenePrefabDefinition;
     instantiatePrefab(
         prefab: ScenePrefabDefinition,
         options?: ScenePrefabInstantiateOptions
-    ): readonly Actor[];
+    ): readonly EntityId[];
     serializeScene(): SceneSnapshot;
     loadScene(
         snapshot: SceneSnapshot,
         options?: SceneSnapshotLoadOptions
-    ): Promise<readonly Actor[]>;
+    ): Promise<readonly EntityId[]>;
 }
 
 export interface SceneRenderPassHost {

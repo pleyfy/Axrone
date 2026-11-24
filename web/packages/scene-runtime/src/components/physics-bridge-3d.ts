@@ -1,5 +1,5 @@
 import type { GameLoopSystem, FixedUpdateContext, BeforeUpdateContext } from '@axrone/game-loop';
-import type { World, Actor } from '@axrone/ecs-runtime';
+import type { World, Entity } from '@axrone/ecs-runtime';
 import type { SceneLoopState } from '../types';
 import {
     PhysicsWorld3D,
@@ -18,7 +18,7 @@ import type {
 import { makeCollisionPairKey } from '@axrone/physics-core';
 
 type AnyWorld = World<any>;
-type AnyActor = Actor<AnyWorld>;
+type AnyEntity = Entity<AnyWorld>;
 
 /**
  * Interface for user script components that want to receive physics collision events.
@@ -69,7 +69,7 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
     private readonly _initializedJoints = new WeakSet<Joint3D>();
     private readonly _initializedCharacterControllers = new WeakSet<CharacterController>();
     private readonly _bodyIdToComponent = new Map<BodyId3D, Rigidbody3D>();
-    private readonly _componentToActor = new Map<Rigidbody3D, AnyActor>();
+    private readonly _componentToEntity = new Map<Rigidbody3D, AnyEntity>();
     private readonly _activeContactPairs = new Set<number>();
     private readonly _activeTriggerPairs = new Set<number>();
 
@@ -176,34 +176,34 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
         this._disposed = true;
         this._physicsWorld.setContactListener(null);
         this._bodyIdToComponent.clear();
-        this._componentToActor.clear();
+        this._componentToEntity.clear();
         this._activeContactPairs.clear();
         this._activeTriggerPairs.clear();
         this._physicsWorld[Symbol.dispose]();
     }
 
     private _initializeNewComponents(): void {
-        const actors = this._ecsWorld.getAllActors();
+        const entities = this._ecsWorld.getAllEntities();
 
-        for (const actor of actors) {
-            if (!actor.active || actor.isDestroyed) continue;
+        for (const entity of entities) {
+            if (!entity.active || entity.isDestroyed) continue;
 
-            const rigidbody = actor.getComponent(Rigidbody3D);
+            const rigidbody = entity.getComponent(Rigidbody3D);
             if (rigidbody && !this._initializedBodies.has(rigidbody)) {
                 rigidbody.initialize(this._physicsWorld);
                 this._initializedBodies.add(rigidbody);
                 this._bodyIdToComponent.set(rigidbody.bodyId, rigidbody);
-                this._componentToActor.set(rigidbody, actor as unknown as AnyActor);
+                this._componentToEntity.set(rigidbody, entity as unknown as AnyEntity);
             }
 
-            const colliders = this._getCollidersFromActor(actor);
+            const colliders = this._getCollidersFromEntity(entity);
             for (const collider of colliders) {
                 if (this._initializedColliders.has(collider)) continue;
                 collider.initialize(this._physicsWorld, rigidbody ?? undefined);
                 this._initializedColliders.add(collider);
             }
 
-            const joints = this._getJointsFromActor(actor);
+            const joints = this._getJointsFromEntity(entity);
             for (const joint of joints) {
                 if (this._initializedJoints.has(joint)) continue;
                 if (!rigidbody) continue;
@@ -213,7 +213,7 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
                 this._initializedJoints.add(joint);
             }
 
-            const characterController = actor.getComponent(CharacterController);
+            const characterController = entity.getComponent(CharacterController);
             if (characterController && !this._initializedCharacterControllers.has(characterController)) {
                 characterController.initialize(this._physicsWorld);
                 this._initializedCharacterControllers.add(characterController);
@@ -221,9 +221,9 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
         }
     }
 
-    private _getCollidersFromActor(actor: ReturnType<AnyWorld['getAllActors']>[number]): Collider3D[] {
+    private _getCollidersFromEntity(entity: ReturnType<AnyWorld['getAllEntities']>[number]): Collider3D[] {
         const result: Collider3D[] = [];
-        for (const component of actor.getAllComponents()) {
+        for (const component of entity.getAllComponents()) {
             if (component instanceof Collider3D) {
                 result.push(component);
             }
@@ -231,9 +231,9 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
         return result;
     }
 
-    private _getJointsFromActor(actor: ReturnType<AnyWorld['getAllActors']>[number]): Joint3D[] {
+    private _getJointsFromEntity(entity: ReturnType<AnyWorld['getAllEntities']>[number]): Joint3D[] {
         const result: Joint3D[] = [];
-        for (const component of actor.getAllComponents()) {
+        for (const component of entity.getAllComponents()) {
             if (component instanceof Joint3D) {
                 result.push(component);
             }
@@ -250,18 +250,18 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
     }
 
     private _syncAllTransforms(): void {
-        // Iterate tracked bodies instead of scanning every actor: every
-        // initialized rigidbody is registered in _componentToActor, so this
-        // is O(bodies) rather than O(actors x components) per fixed step.
-        // Entries whose actor died are pruned — the strong maps would
+        // Iterate tracked bodies instead of scanning every entity: every
+        // initialized rigidbody is registered in _componentToEntity, so this
+        // is O(bodies) rather than O(entities x components) per fixed step.
+        // Entries whose entity died are pruned — the strong maps would
         // otherwise retain destroyed bodies until bridge disposal.
-        for (const [rigidbody, actor] of this._componentToActor) {
-            if (actor.isDestroyed) {
-                this._componentToActor.delete(rigidbody);
+        for (const [rigidbody, entity] of this._componentToEntity) {
+            if (entity.isDestroyed) {
+                this._componentToEntity.delete(rigidbody);
                 this._bodyIdToComponent.delete(rigidbody.bodyId);
                 continue;
             }
-            if (!actor.active) continue;
+            if (!entity.active) continue;
             if (this._initializedBodies.has(rigidbody)) {
                 rigidbody.syncTransformFromWorld();
             }
@@ -275,8 +275,8 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
         handler: 'onCollisionBegin' | 'onCollisionStay'
     ): void {
         const method = handler === 'onCollisionBegin' ? 'onCollisionEnter' : 'onCollisionStay';
-        this._notifyActor(self, method, other, event);
-        this._notifyActor(other, method, self, event);
+        this._notifyEntity(self, method, other, event);
+        this._notifyEntity(other, method, self, event);
     }
 
     private _dispatchCollisionEndEvent(
@@ -284,8 +284,8 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
         other: Rigidbody3D,
         event: ICollisionEvent3D
     ): void {
-        this._notifyActor(self, 'onCollisionExit', other, event);
-        this._notifyActor(other, 'onCollisionExit', self, event);
+        this._notifyEntity(self, 'onCollisionExit', other, event);
+        this._notifyEntity(other, 'onCollisionExit', self, event);
     }
 
     private _dispatchSensorEvent(
@@ -294,20 +294,20 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
         event: ISensorEvent3D,
         handler: 'onSensorEnter' | 'onSensorExit'
     ): void {
-        this._notifySensorActor(self, handler, other, event);
-        this._notifySensorActor(other, handler, self, event);
+        this._notifySensorEntity(self, handler, other, event);
+        this._notifySensorEntity(other, handler, self, event);
     }
 
-    private _notifyActor(
+    private _notifyEntity(
         rigidbody: Rigidbody3D,
         method: 'onCollisionEnter' | 'onCollisionStay' | 'onCollisionExit',
         other: Rigidbody3D,
         event: ICollisionEvent3D
     ): void {
-        const actor = this._componentToActor.get(rigidbody);
-        if (!actor) return;
+        const entity = this._componentToEntity.get(rigidbody);
+        if (!entity) return;
 
-        for (const component of actor.getAllComponents()) {
+        for (const component of entity.getAllComponents()) {
             const handler = component as unknown as IPhysicsCollisionHandler;
             const fn = handler[method];
             if (typeof fn === 'function') {
@@ -316,16 +316,16 @@ export class PhysicsBridge3D implements GameLoopSystem<SceneLoopState>, IContact
         }
     }
 
-    private _notifySensorActor(
+    private _notifySensorEntity(
         rigidbody: Rigidbody3D,
         method: 'onSensorEnter' | 'onSensorExit',
         other: Rigidbody3D,
         event: ISensorEvent3D
     ): void {
-        const actor = this._componentToActor.get(rigidbody);
-        if (!actor) return;
+        const entity = this._componentToEntity.get(rigidbody);
+        if (!entity) return;
 
-        for (const component of actor.getAllComponents()) {
+        for (const component of entity.getAllComponents()) {
             const handler = component as unknown as IPhysicsCollisionHandler;
             const fn = handler[method];
             if (typeof fn === 'function') {

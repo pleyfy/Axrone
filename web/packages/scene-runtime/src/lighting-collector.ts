@@ -6,7 +6,7 @@ import {
     LightSortMode,
 } from '@axrone/lighting';
 import type { LightingSelectionState } from '@axrone/lighting';
-import type { Actor, Transform } from '@axrone/ecs-runtime';
+import type { EntityId, Transform } from '@axrone/ecs-runtime';
 import { DirectionalLight } from './components/directional-light';
 import { PointLight } from './components/point-light';
 import { SpotLight } from './components/spot-light';
@@ -50,7 +50,7 @@ export class SceneLightingCollector {
     }
 
     collect(
-        actors: readonly Actor[],
+        entities: readonly EntityId[],
         ambientBase: Readonly<Vec3>,
         skyLightBase: Readonly<Vec3> = Vec3.ZERO,
         groundLightBase: Readonly<Vec3> = Vec3.ZERO,
@@ -58,27 +58,27 @@ export class SceneLightingCollector {
     ): SceneLightingState {
         this._seenLightIds.clear();
 
-        for (const actor of actors) {
-            if (!actor.active) {
+        for (const entity of entities) {
+            if (!entity.active) {
                 continue;
             }
 
-            const directional = actor.getComponent(DirectionalLight);
+            const directional = entity.getComponent(DirectionalLight);
             if (directional && directional.enabled) {
                 this._syncDirectionalLight(directional);
             }
 
-            const point = actor.getComponent(PointLight);
+            const point = entity.getComponent(PointLight);
             if (point && point.enabled) {
                 this._syncPointLight(point);
             }
 
-            const spot = actor.getComponent(SpotLight);
+            const spot = entity.getComponent(SpotLight);
             if (spot && spot.enabled) {
                 this._syncSpotLight(spot);
             }
 
-            const areaLight = actor.getComponent(AreaLight);
+            const areaLight = entity.getComponent(AreaLight);
             if (areaLight && areaLight.enabled) {
                 this._syncAreaLight(areaLight);
             }

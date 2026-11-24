@@ -1,10 +1,10 @@
 import {
-    Actor,
+    Entity,
     Component,
     Hierarchy,
     Transform,
     getComponentMetadata,
-    type ActorConfig,
+    type EntityConfig,
     type ComponentMetadata,
 } from '@axrone/ecs-runtime';
 import { World } from '@axrone/ecs-runtime';
@@ -20,38 +20,38 @@ import type {
     SceneRegistry,
 } from './types';
 
-export interface SceneActorRuntimeOptions<
+export interface SceneEntityRuntimeOptions<
     R extends ComponentRegistry = Record<string, never>,
 > {
     readonly world: World<SceneRegistry<R>>;
     readonly componentCatalog: SceneComponentCatalog;
 }
 
-interface SceneActorComponentCreateEntry {
+interface SceneEntityComponentCreateEntry {
     readonly type: ComponentConstructor;
     readonly args?: readonly unknown[];
 }
 
-interface SceneActorCreateWithComponentsConfig {
-    readonly actorConfig?: ActorConfig;
-    readonly components?: readonly SceneActorComponentCreateEntry[];
+interface SceneEntityCreateWithComponentsConfig {
+    readonly entityConfig?: EntityConfig;
+    readonly components?: readonly SceneEntityComponentCreateEntry[];
 }
 
-interface PreparedActorComponentType {
+interface PreparedEntityComponentType {
     readonly type: ComponentConstructor;
     readonly componentName: string;
     readonly metadata?: ComponentMetadata;
 }
 
-interface PreparedActorComponentEntry {
-    readonly preparedType: PreparedActorComponentType;
+interface PreparedEntityComponentEntry {
+    readonly preparedType: PreparedEntityComponentType;
     readonly args?: readonly unknown[];
 }
 
-type SceneActorBatchProfiling = Record<string, number>;
+type SceneEntityBatchProfiling = Record<string, number>;
 
 const captureProfilePhase = <T>(
-    profiling: SceneActorBatchProfiling | undefined,
+    profiling: SceneEntityBatchProfiling | undefined,
     phaseName: string,
     action: () => T
 ): T => {
@@ -68,18 +68,18 @@ const captureProfilePhase = <T>(
     }
 };
 
-export class SceneActorRuntime<R extends ComponentRegistry = Record<string, never>> {
+export class SceneEntityRuntime<R extends ComponentRegistry = Record<string, never>> {
     private readonly _world: World<SceneRegistry<R>>;
     private readonly _componentCatalog: SceneComponentCatalog;
     private readonly _prefabs: ScenePrefabRuntime;
 
-    constructor(options: SceneActorRuntimeOptions<R>) {
+    constructor(options: SceneEntityRuntimeOptions<R>) {
         this._world = options.world;
         this._componentCatalog = options.componentCatalog;
         this._prefabs = new ScenePrefabRuntime({
             componentCatalog: this._componentCatalog,
-            createActor: (config) => this.createActor(config),
-            getAllActors: () => this._world.getAllActors(),
+            createEntity: (config) => this.createEntity(config),
+            getAllEntities: () => this._world.getAllEntities(),
         });
     }
 
@@ -100,14 +100,14 @@ export class SceneActorRuntime<R extends ComponentRegistry = Record<string, neve
         return this._world.batchStructureChanges(callback);
     }
 
-    createActor(config: ActorConfig = {}): Actor<World<SceneRegistry<R>>> {
-        return new Actor(this._world, config);
+    createEntity(config: EntityConfig = {}): EntityId<World<SceneRegistry<R>>> {
+        return new Entity(this._world, config);
     }
 
-    createActorsWithComponents(
-        configs: readonly SceneActorCreateWithComponentsConfig[],
-        profiling?: SceneActorBatchProfiling
-    ): readonly Actor<World<SceneRegistry<R>>>[] {
+    createEntitiesWithComponents(
+        configs: readonly SceneEntityCreateWithComponentsConfig[],
+        profiling?: SceneEntityBatchProfiling
+    ): readonly Entity<World<SceneRegistry<R>>>[] {
         if (configs.length === 0) {
             return [];
         }
@@ -115,8 +115,8 @@ export class SceneActorRuntime<R extends ComponentRegistry = Record<string, neve
         const worldRegistry = this._world.registry as Record<string, ComponentConstructor>;
         const hierarchyType = (worldRegistry.Hierarchy ?? Hierarchy) as ComponentConstructor;
         const transformType = (worldRegistry.Transform ?? Transform) as ComponentConstructor;
-        const preparedTypes = new Map<ComponentConstructor, PreparedActorComponentType>();
-        const prepareType = (componentType: ComponentConstructor): PreparedActorComponentType => {
+        const preparedTypes = new Map<ComponentConstructor, PreparedEntityComponentType>();
+        const prepareType = (componentType: ComponentConstructor): PreparedEntityComponentType => {
             const existing = preparedTypes.get(componentType);
             if (existing) {
                 return existing;
@@ -130,7 +130,7 @@ export class SceneActorRuntime<R extends ComponentRegistry = Record<string, neve
                 type: componentType,
                 componentName: getComponentMetadata(componentType)?.scriptName ?? componentType.name,
                 metadata: getComponentMetadata(componentType),
-            } satisfies PreparedActorComponentType;
+            } satisfies PreparedEntityComponentType;
             preparedTypes.set(componentType, prepared);
             return prepared;
         };
@@ -140,7 +140,7 @@ export class SceneActorRuntime<R extends ComponentRegistry = Record<string, neve
             const transformPrepared = prepareType(transformType);
 
             return configs.map((config) => ({
-                actorConfig: config.actorConfig ?? {},
+                entityConfig: config.entityConfig ?? {},
                 preparedEntries: [
                     {
                         preparedType: hierarchyPrepared,
@@ -154,7 +154,7 @@ export class SceneActorRuntime<R extends ComponentRegistry = Record<string, neve
                         preparedType: prepareType(entry.type),
                         args: entry.args,
                     })),
-                ] satisfies readonly PreparedActorComponentEntry[],
+                ] satisfies readonly PreparedEntityComponentEntry[],
             }));
         });
 
@@ -170,22 +170,22 @@ export class SceneActorRuntime<R extends ComponentRegistry = Record<string, neve
                 }))
             );
 
-            return captureProfilePhase(profiling, 'actorCreateMs', () =>
-                Actor.createWithComponents(this._world, config.actorConfig, preloadedEntries)
+            return captureProfilePhase(profiling, 'entityCreateMs', () =>
+                Entity.createWithComponents(this._world, config.entityConfig, preloadedEntries)
             );
         });
     }
 
-    createActorWithComponents(
-        config: ActorConfig = {},
+    createEntityWithComponents(
+        config: EntityConfig = {},
         components: readonly {
             readonly type: ComponentConstructor;
             readonly args?: readonly unknown[];
         }[] = []
-    ): Actor<World<SceneRegistry<R>>> {
-        return this.createActorsWithComponents([
+    ): EntityId<World<SceneRegistry<R>>> {
+        return this.createEntitiesWithComponents([
             {
-                actorConfig: config,
+                entityConfig: config,
                 components,
             },
         ])[0]!;
@@ -193,19 +193,19 @@ export class SceneActorRuntime<R extends ComponentRegistry = Record<string, neve
 
     createPrefab(
         id: string,
-        actors: readonly Actor[] = this._world.getAllActors()
+        entities: readonly EntityId[] = this._world.getAllEntities()
     ): ScenePrefabDefinition {
-        return this._prefabs.createPrefab(id, actors);
+        return this._prefabs.createPrefab(id, entities);
     }
 
     instantiatePrefab(
         prefab: ScenePrefabDefinition,
         options: ScenePrefabInstantiateOptions = {}
-    ): readonly Actor[] {
+    ): readonly EntityId[] {
         return this._prefabs.instantiatePrefab(prefab, options);
     }
 
-    destroyAllActors(): void {
-        this._prefabs.destroyAllActors();
+    destroyAllEntities(): void {
+        this._prefabs.destroyAllEntities();
     }
 }

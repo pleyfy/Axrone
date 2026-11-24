@@ -1,4 +1,4 @@
-import type { Actor } from '@axrone/ecs-runtime';
+import type { EntityId } from '@axrone/ecs-runtime';
 import { RenderPipeline } from '@axrone/render-core';
 import type {
     AnyPostProcessEffect,
@@ -58,7 +58,7 @@ import type {
 } from '../types';
 
 export interface SceneRenderPipelineParams {
-    readonly actors?: readonly Actor[];
+    readonly entities?: readonly EntityId[];
     readonly frame: number;
     readonly deltaSeconds: number;
     readonly viewportWidth: number;
@@ -364,7 +364,7 @@ interface SceneRenderPipelineOptions {
     readonly pipeline?: SceneRenderPipelineSettings;
     /**
      * Opt-in derived instanced draw path. `off` (default) keeps the individual
-     * per-actor draw path byte-for-byte; `auto` groups homogeneous opaque
+     * per-entity draw path byte-for-byte; `auto` groups homogeneous opaque
      * `MeshRenderer`s into one instanced draw per mesh/material/render-state.
      */
     readonly instancing?: SceneInstancingMode;
@@ -373,7 +373,7 @@ interface SceneRenderPipelineOptions {
     /**
      * Render families the scene registry can produce. When a family is absent
      * its collector/batch runtime is skipped for the frame instead of scanning
-     * every actor and finding nothing.
+     * every entity and finding nothing.
      */
     readonly capabilities?: SceneRenderCapabilities;
 }
@@ -587,7 +587,7 @@ export class SceneRenderPipeline {
         // When every render item in this pass is instanced the derived plan
         // owns the draws; otherwise the remaining items keep the individual
         // path. Building the plan first also lets the primitive cache and the
-        // render-core classifier skip work for instanced actors.
+        // render-core classifier skip work for instanced entities.
         let instancedPlan: SceneInstancedPassPlan | null = null;
         let instancedDrawParams: Parameters<SceneInstancedMeshRuntime['draw']>[1] | null = null;
         let renderItems = params.renderItems;
@@ -702,9 +702,9 @@ export class SceneRenderPipeline {
             const meshTransparentCount = result.statistics.transparentCount;
             const warnings = [...result.warnings];
             const spriteStats =
-                this._capabilities.sprites && this._options.spriteBatchRuntime && params.actors
+                this._capabilities.sprites && this._options.spriteBatchRuntime && params.entities
                     ? this._options.spriteBatchRuntime.render({
-                          actors: params.actors,
+                          entities: params.entities,
                           cameraFrame: params.cameraFrame,
                           renderPass: params.renderPass,
                           frameState: params.frameState,
@@ -729,9 +729,9 @@ export class SceneRenderPipeline {
                 pushUniqueWarnings(warnings, spriteStats.warnings);
             }
 
-            if (this._capabilities.particles && this._options.particleBatchRuntime && params.actors) {
+            if (this._capabilities.particles && this._options.particleBatchRuntime && params.entities) {
                 this._options.particleBatchRuntime.render({
-                    actors: params.actors,
+                    entities: params.entities,
                     cameraFrame: params.cameraFrame,
                     frameState: params.frameState,
                     viewportWidth: params.viewportWidth,
@@ -739,17 +739,17 @@ export class SceneRenderPipeline {
                 });
             }
 
-            if (this._capabilities.lines && this._options.lineBatchRuntime && params.actors) {
+            if (this._capabilities.lines && this._options.lineBatchRuntime && params.entities) {
                 this._options.lineBatchRuntime.render({
-                    actors: params.actors,
+                    entities: params.entities,
                     cameraFrame: params.cameraFrame,
                     frameState: params.frameState,
                 });
             }
 
-            if (this._capabilities.billboards && this._options.billboardBatchRuntime && params.actors) {
+            if (this._capabilities.billboards && this._options.billboardBatchRuntime && params.entities) {
                 this._options.billboardBatchRuntime.render({
-                    actors: params.actors,
+                    entities: params.entities,
                     cameraFrame: params.cameraFrame,
                     frameState: params.frameState,
                 });

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Mat4, Vec3 } from '@axrone/numeric';
-import { Actor, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Transform, World } from '@axrone/ecs-runtime';
 import {
     createMockGL,
     installWebGL2Constants,
@@ -44,15 +44,15 @@ describe('SceneBillboardBatchRuntime batching', () => {
         world = new World(createSceneRegistry());
     });
 
-    const addBillboard = (options: { x?: number; depthWrite?: boolean } = {}): Actor => {
-        const actor = new Actor(world);
-        actor.getComponent(Transform)!.position = new Vec3(options.x ?? 0, 0, 0);
-        actor.addComponent(BillboardRenderer, {
+    const addBillboard = (options: { x?: number; depthWrite?: boolean } = {}): EntityId => {
+        const entity = new Entity(world);
+        entity.getComponent(Transform)!.position = new Vec3(options.x ?? 0, 0, 0);
+        entity.addComponent(BillboardRenderer, {
             width: 1,
             height: 1,
             ...(options.depthWrite !== undefined ? { depthWrite: options.depthWrite } : {}),
         });
-        return actor;
+        return entity;
     };
 
     const createRuntime = (): SceneBillboardBatchRuntime =>
@@ -62,10 +62,10 @@ describe('SceneBillboardBatchRuntime batching', () => {
             renderStateApplier: { reset: vi.fn() },
         });
 
-    const renderAll = (runtime: SceneBillboardBatchRuntime, actors: readonly Actor[]) => {
+    const renderAll = (runtime: SceneBillboardBatchRuntime, entities: readonly EntityId[]) => {
         const frameState = new SceneRenderFrameState().begin(1);
         const stats = runtime.render({
-            actors,
+            entities,
             cameraFrame: createCameraFrame(),
             frameState,
         });
@@ -74,9 +74,9 @@ describe('SceneBillboardBatchRuntime batching', () => {
 
     it('collapses billboards with identical state into a single draw', () => {
         const runtime = createRuntime();
-        const actors = [addBillboard({ x: -1 }), addBillboard(), addBillboard({ x: 1 })];
+        const entities = [addBillboard({ x: -1 }), addBillboard(), addBillboard({ x: 1 })];
 
-        const { stats, frameState } = renderAll(runtime, actors);
+        const { stats, frameState } = renderAll(runtime, entities);
 
         expect(stats.drawnBillboardCount).toBe(3);
         expect(stats.totalVertexCount).toBe(12);
@@ -90,13 +90,13 @@ describe('SceneBillboardBatchRuntime batching', () => {
 
     it('splits runs when per-subject state differs, preserving order', () => {
         const runtime = createRuntime();
-        const actors = [
+        const entities = [
             addBillboard({ depthWrite: true }),
             addBillboard({ depthWrite: false }),
             addBillboard({ depthWrite: true }),
         ];
 
-        const { stats } = renderAll(runtime, actors);
+        const { stats } = renderAll(runtime, entities);
 
         expect(stats.drawnBillboardCount).toBe(3);
         expect(stats.totalVertexCount).toBe(12);
@@ -105,10 +105,10 @@ describe('SceneBillboardBatchRuntime batching', () => {
 
     it('skips degenerate billboards without issuing draws', () => {
         const runtime = createRuntime();
-        const actor = new Actor(world);
-        actor.addComponent(BillboardRenderer, { width: 0, height: 1 });
+        const entity = new Entity(world);
+        entity.addComponent(BillboardRenderer, { width: 0, height: 1 });
 
-        const { stats } = renderAll(runtime, [actor]);
+        const { stats } = renderAll(runtime, [entity]);
 
         expect(stats.drawnBillboardCount).toBe(0);
         expect(gl.drawElements).not.toHaveBeenCalled();

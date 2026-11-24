@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Vec3, Vec4, Quat } from '@axrone/numeric';
-import { Actor, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Transform, World } from '@axrone/ecs-runtime';
 import { OrbitCameraController } from '../components/orbit-camera-controller';
 import { TrailRenderer } from '../components/trail-renderer';
 import { PathAgent } from '../components/path-agent';
@@ -13,11 +13,11 @@ import { createSceneRegistry } from '../scene-registry';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createActorWithTransform(): { world: World; actor: Actor; transform: Transform } {
+function createEntityWithTransform(): { world: World; entity: EntityId; transform: Transform } {
     const world = new World(createSceneRegistry());
-    const actor = new Actor(world);
-    const transform = actor.getComponent(Transform)!;
-    return { world, actor, transform };
+    const entity = new Entity(world);
+    const transform = entity.getComponent(Transform)!;
+    return { world, entity, transform };
 }
 
 function getPrivateField<T>(obj: object, field: string): T {
@@ -309,16 +309,16 @@ describe('T-11: Production Script Verification — CharacterMovement (source-lev
 
 describe('T-11: Production Script Verification — OrbitCameraController (runtime)', () => {
     function createController(config: Record<string, unknown> = {}) {
-        const { world, actor, transform } = createActorWithTransform();
+        const { world, entity, transform } = createEntityWithTransform();
         transform.position = new Vec3(0, 5, 10);
-        const controller = actor.addComponent(OrbitCameraController, {
+        const controller = entity.addComponent(OrbitCameraController, {
             target: [0, 0, 0],
             distance: 10,
             azimuth: 0.5,
             elevation: 0.35,
             ...config,
         });
-        return { world, actor, transform, controller };
+        return { world, entity, transform, controller };
     }
 
     it('is an instance of OrbitCameraController extending Component', () => {
@@ -435,15 +435,15 @@ describe('T-11: Production Script Verification — OrbitCameraController (runtim
 
 describe('T-11: Production Script Verification — TrailRenderer (runtime)', () => {
     function createTrail(config: Record<string, unknown> = {}) {
-        const { world, actor, transform } = createActorWithTransform();
-        const trail = actor.addComponent(TrailRenderer, {
+        const { world, entity, transform } = createEntityWithTransform();
+        const trail = entity.addComponent(TrailRenderer, {
             lifetime: 2,
             minVertexDistance: 0.5,
             startWidth: 1,
             endWidth: 0,
             ...config,
         });
-        return { world, actor, transform, trail };
+        return { world, entity, transform, trail };
     }
 
     it('is an instance of TrailRenderer extending Component', () => {
@@ -564,15 +564,15 @@ describe('T-11: Production Script Verification — TrailRenderer (runtime)', () 
 
 describe('T-11: Production Script Verification — PathAgent (runtime)', () => {
     function createAgent(config: Record<string, unknown> = {}) {
-        const { world, actor, transform } = createActorWithTransform();
+        const { world, entity, transform } = createEntityWithTransform();
         transform.position = new Vec3(0, 0, 0);
-        const agent = actor.addComponent(PathAgent, {
+        const agent = entity.addComponent(PathAgent, {
             speed: 5,
             angularSpeed: 120,
             stoppingDistance: 0.5,
             ...config,
         });
-        return { world, actor, transform, agent };
+        return { world, entity, transform, agent };
     }
 
     it('is an instance of PathAgent extending Component', () => {
@@ -659,13 +659,13 @@ describe('T-11: Production Script Verification — PathAgent (runtime)', () => {
 
 describe('T-11: Production Script Verification — BillboardRenderer (runtime)', () => {
     function createBillboard(config: Record<string, unknown> = {}) {
-        const { world, actor, transform } = createActorWithTransform();
-        const billboard = actor.addComponent(BillboardRenderer, {
+        const { world, entity, transform } = createEntityWithTransform();
+        const billboard = entity.addComponent(BillboardRenderer, {
             width: 2,
             height: 4,
             ...config,
         });
-        return { world, actor, transform, billboard };
+        return { world, entity, transform, billboard };
     }
 
     it('is an instance of BillboardRenderer extending Component', () => {

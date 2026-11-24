@@ -1,4 +1,4 @@
-import { Actor, Transform, World } from '@axrone/ecs-runtime';
+import { Entity, Transform, World } from '@axrone/ecs-runtime';
 import { Vec3 } from '@axrone/numeric';
 import { describe, expect, it } from 'vitest';
 import { DirectionalLight } from '../components/directional-light';
@@ -14,41 +14,41 @@ describe('SceneLightingCollector', () => {
         const world = createWorld();
         const collector = new SceneLightingCollector(4);
 
-        const directionalActor = new Actor(world);
-        directionalActor.addComponent(DirectionalLight, {
+        const directionalEntity = new Entity(world);
+        directionalEntity.addComponent(DirectionalLight, {
             color: [0.8, 0.7, 0.6],
             ambientColor: [0.05, 0.04, 0.03],
             intensity: 2,
             primary: true,
         });
 
-        const pointActor = new Actor(world);
-        pointActor.addComponent(PointLight, {
+        const pointEntity = new Entity(world);
+        pointEntity.addComponent(PointLight, {
             color: [1, 0.5, 0.25],
             intensity: 3,
             range: 9,
         });
-        pointActor.requireComponent(Transform).position = new Vec3(1, 2, 3);
+        pointEntity.requireComponent(Transform).position = new Vec3(1, 2, 3);
 
-        const spotActor = new Actor(world);
-        spotActor.addComponent(SpotLight, {
+        const spotEntity = new Entity(world);
+        spotEntity.addComponent(SpotLight, {
             color: [0.2, 0.4, 1],
             intensity: 8,
             range: 18,
             innerConeAngle: 0.15,
             outerConeAngle: 0.5,
         });
-        spotActor.requireComponent(Transform).position = new Vec3(-1, 5, 2);
+        spotEntity.requireComponent(Transform).position = new Vec3(-1, 5, 2);
 
         const first = collector.collect(
-            world.getAllActors(),
+            world.getAllEntities(),
             new Vec3(0.1, 0.2, 0.3),
             Vec3.ZERO,
             Vec3.ZERO,
             new Vec3(0, 2, 0)
         );
         const second = collector.collect(
-            world.getAllActors(),
+            world.getAllEntities(),
             new Vec3(0.1, 0.2, 0.3),
             Vec3.ZERO,
             Vec3.ZERO,
@@ -76,21 +76,21 @@ describe('SceneLightingCollector', () => {
         const world = createWorld();
         const collector = new SceneLightingCollector(4);
 
-        const fallback = new Actor(world);
+        const fallback = new Entity(world);
         fallback.addComponent(DirectionalLight, {
             color: [1, 0, 0],
             intensity: 1,
             primary: false,
         });
 
-        const primary = new Actor(world);
+        const primary = new Entity(world);
         primary.addComponent(DirectionalLight, {
             color: [0, 1, 0],
             intensity: 4,
             primary: true,
         });
 
-        const lighting = collector.collect(world.getAllActors(), Vec3.ZERO);
+        const lighting = collector.collect(world.getAllEntities(), Vec3.ZERO);
 
         expect(lighting.stats.selectedDirectionalCount).toBe(1);
         expect(lighting.directionalColors[0]).toBe(0);
@@ -102,23 +102,23 @@ describe('SceneLightingCollector', () => {
         const world = createWorld();
         const collector = new SceneLightingCollector(1);
 
-        const farPointActor = new Actor(world);
-        farPointActor.addComponent(PointLight, {
+        const farPointEntity = new Entity(world);
+        farPointEntity.addComponent(PointLight, {
             color: [1, 0, 0],
             intensity: 8,
             range: 5,
         });
-        farPointActor.requireComponent(Transform).position = new Vec3(20, 0, 0);
+        farPointEntity.requireComponent(Transform).position = new Vec3(20, 0, 0);
 
-        const nearPointActor = new Actor(world);
-        nearPointActor.addComponent(PointLight, {
+        const nearPointEntity = new Entity(world);
+        nearPointEntity.addComponent(PointLight, {
             color: [0, 1, 0],
             intensity: 2,
             range: 8,
         });
-        nearPointActor.requireComponent(Transform).position = new Vec3(1, 0, 0);
+        nearPointEntity.requireComponent(Transform).position = new Vec3(1, 0, 0);
 
-        const lighting = collector.collect(world.getAllActors(), Vec3.ZERO, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO);
+        const lighting = collector.collect(world.getAllEntities(), Vec3.ZERO, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO);
 
         expect(lighting.stats.selectedLocalLightCount).toBe(1);
         expect(lighting.stats.selectedPointCount).toBe(1);
@@ -132,17 +132,17 @@ describe('SceneLightingCollector', () => {
         const world = createWorld();
         const collector = new SceneLightingCollector(2);
 
-        const spotActor = new Actor(world);
-        const spotLight = spotActor.addComponent(SpotLight, {
+        const spotEntity = new Entity(world);
+        const spotLight = spotEntity.addComponent(SpotLight, {
             color: [0.25, 0.5, 1],
             intensity: 6,
             range: 12,
             innerConeAngle: 0.2,
             outerConeAngle: 0.6,
         });
-        spotActor.requireComponent(Transform).position = new Vec3(4, 0, 0);
+        spotEntity.requireComponent(Transform).position = new Vec3(4, 0, 0);
 
-        const first = collector.collect(world.getAllActors(), Vec3.ZERO);
+        const first = collector.collect(world.getAllEntities(), Vec3.ZERO);
 
         expect(first.stats.selectedLocalLightCount).toBe(1);
         expect(first.stats.selectedSpotCount).toBe(1);
@@ -153,7 +153,7 @@ describe('SceneLightingCollector', () => {
 
         spotLight.enabled = false;
 
-        const second = collector.collect(world.getAllActors(), Vec3.ZERO);
+        const second = collector.collect(world.getAllEntities(), Vec3.ZERO);
 
         expect(second.stats.totalSpotCount).toBe(0);
         expect(second.stats.selectedLocalLightCount).toBe(0);

@@ -82,8 +82,8 @@ export {
 	resolveSceneRenderCapabilities,
 } from './scene-render-capabilities';
 
-export type { SceneActorRuntimeOptions } from './scene-actor-runtime';
-export { SceneActorRuntime } from './scene-actor-runtime';
+export type { SceneEntityRuntimeOptions } from './scene-entity-runtime';
+export { SceneEntityRuntime } from './scene-entity-runtime';
 export type {
 	AnimationStreamingBridgeOptions,
 	AnimationStreamingBridgeWorld,
@@ -114,7 +114,7 @@ export {
 	resolveSceneSkyLight,
 } from './scene-runtime-defaults';
 export type {
-	SceneSnapshotActorHost,
+	SceneSnapshotEntityHost,
 	SceneSnapshotAssetHost,
 	SceneSnapshotRuntimeOptions,
 } from './scene-snapshot-runtime';
@@ -194,8 +194,8 @@ export type {
 	SceneMeshTopology,
 	SceneInstancingMode,
 	SceneOptions,
-	ScenePrefabActorField,
-	ScenePrefabActorFieldValue,
+	ScenePrefabEntityField,
+	ScenePrefabEntityFieldValue,
 	ScenePrefabComponentId,
 	ScenePrefabComponentSelector,
 	ScenePrefabConflict,
