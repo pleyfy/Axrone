@@ -1,6 +1,6 @@
 import { ScenePrefabValidationError } from './errors';
 import type {
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     SceneComponentSnapshot,
     ScenePrefabComponentSelector,
     ScenePrefabDefinition,
@@ -154,61 +154,61 @@ export const copySceneComponentSnapshot = (
 });
 
 /**
- * Shallow view copy of an actor snapshot — shares component `data` references.
+ * Shallow view copy of an entity snapshot — shares component `data` references.
  * For diff/indexing passes that never mutate the view.
  */
-export const copySceneActorSnapshot = (actor: SceneActorSnapshot): SceneActorSnapshot => ({
-    ...(actor.nodeId ? { nodeId: actor.nodeId } : {}),
-    ...(actor.parentNodeId !== undefined ? { parentNodeId: actor.parentNodeId ?? null } : {}),
-    name: actor.name,
-    layer: actor.layer,
-    tag: actor.tag,
-    active: actor.active,
-    persistent: actor.persistent,
-    pooled: actor.pooled,
-    ...(actor.source ? { source: actor.source } : {}),
-    components: actor.components.map((component) => copySceneComponentSnapshot(component)),
+export const copySceneEntitySnapshot = (entity: SceneEntitySnapshot): SceneEntitySnapshot => ({
+    ...(entity.nodeId ? { nodeId: entity.nodeId } : {}),
+    ...(entity.parentNodeId !== undefined ? { parentNodeId: entity.parentNodeId ?? null } : {}),
+    name: entity.name,
+    layer: entity.layer,
+    tag: entity.tag,
+    active: entity.active,
+    persistent: entity.persistent,
+    pooled: entity.pooled,
+    ...(entity.source ? { source: entity.source } : {}),
+    components: entity.components.map((component) => copySceneComponentSnapshot(component)),
 });
 
-export const cloneSceneActorSnapshot = (actor: SceneActorSnapshot): SceneActorSnapshot => ({
-    ...(actor.nodeId ? { nodeId: actor.nodeId } : {}),
-    ...(actor.parentNodeId !== undefined ? { parentNodeId: actor.parentNodeId ?? null } : {}),
-    name: actor.name,
-    layer: actor.layer,
-    tag: actor.tag,
-    active: actor.active,
-    persistent: actor.persistent,
-    pooled: actor.pooled,
-    ...(actor.source ? { source: cloneScenePrefabNodeSource(actor.source) } : {}),
-    components: actor.components.map((component) => cloneSceneComponentSnapshot(component)),
+export const cloneSceneEntitySnapshot = (entity: SceneEntitySnapshot): SceneEntitySnapshot => ({
+    ...(entity.nodeId ? { nodeId: entity.nodeId } : {}),
+    ...(entity.parentNodeId !== undefined ? { parentNodeId: entity.parentNodeId ?? null } : {}),
+    name: entity.name,
+    layer: entity.layer,
+    tag: entity.tag,
+    active: entity.active,
+    persistent: entity.persistent,
+    pooled: entity.pooled,
+    ...(entity.source ? { source: cloneScenePrefabNodeSource(entity.source) } : {}),
+    components: entity.components.map((component) => cloneSceneComponentSnapshot(component)),
 });
 
 export const cloneScenePrefabOverrideOperation = (
     operation: ScenePrefabOverrideOperation,
 ): ScenePrefabOverrideOperation => {
     switch (operation.kind) {
-        case 'add-actor':
+        case 'add-entity':
             return {
-                kind: 'add-actor',
-                actor: cloneSceneActorSnapshot(operation.actor),
+                kind: 'add-entity',
+                entity: cloneSceneEntitySnapshot(operation.entity),
                 ...(operation.afterNodeId ? { afterNodeId: operation.afterNodeId } : {}),
             };
-        case 'remove-actor':
+        case 'remove-entity':
             return {
-                kind: 'remove-actor',
+                kind: 'remove-entity',
                 nodeId: operation.nodeId,
             };
-        case 'reparent-actor':
+        case 'reparent-entity':
             return {
-                kind: 'reparent-actor',
+                kind: 'reparent-entity',
                 nodeId: operation.nodeId,
                 ...(operation.parentNodeId !== undefined
                     ? { parentNodeId: operation.parentNodeId ?? null }
                     : {}),
             };
-        case 'set-actor-field':
+        case 'set-entity-field':
             return {
-                kind: 'set-actor-field',
+                kind: 'set-entity-field',
                 nodeId: operation.nodeId,
                 field: operation.field,
                 value: operation.value,
@@ -294,7 +294,7 @@ export const cloneScenePrefabDefinition = (
 
     const clone: {
         id: string;
-        actors: readonly SceneActorSnapshot[];
+        entities: readonly SceneEntitySnapshot[];
         kind?: ScenePrefabDefinition['kind'];
         base?: ScenePrefabReference;
         nested?: readonly ScenePrefabNestedInstance[];
@@ -303,7 +303,7 @@ export const cloneScenePrefabDefinition = (
         lineage?: readonly string[];
     } = {
         id: definition.id,
-        actors: [],
+        entities: [],
     };
 
     seen.set(definition, clone as ScenePrefabDefinition);
@@ -312,7 +312,7 @@ export const cloneScenePrefabDefinition = (
         clone.kind = definition.kind;
     }
 
-    clone.actors = definition.actors.map((actor) => cloneSceneActorSnapshot(actor));
+    clone.entities = definition.entities.map((entity) => cloneSceneEntitySnapshot(entity));
 
     if ('lineage' in definition && Array.isArray(definition.lineage)) {
         clone.lineage = cloneStringArray(definition.lineage);
@@ -448,17 +448,17 @@ export const findScenePrefabComponentIndex = (
 };
 
 export const ensureScenePrefabNodeId = (
-    actor: SceneActorSnapshot,
+    entity: SceneEntitySnapshot,
     prefabId: string,
     index: number,
 ): string => {
-    const nodeId = actor.nodeId?.trim();
+    const nodeId = entity.nodeId?.trim();
     if (nodeId) {
         return nodeId;
     }
 
     throw new ScenePrefabValidationError(
-        `Prefab '${prefabId}' actor at index ${index} is missing a stable nodeId`,
+        `Prefab '${prefabId}' entity at index ${index} is missing a stable nodeId`,
     );
 };
 

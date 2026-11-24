@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
-    Actor,
+    Entity,
     Component,
     Hierarchy,
     Transform,
@@ -11,11 +11,11 @@ import {
 import { Vec3 } from '@axrone/numeric';
 import { PrefabNodeBinding } from '../prefab-node-binding';
 import { ScenePrefabWorkflow } from '../scene-prefab-workflow';
-import { SceneActorRuntime, createSceneRegistry } from '@axrone/scene-runtime';
+import { SceneEntityRuntime, createSceneRegistry } from '@axrone/scene-runtime';
 import { SceneComponentCatalog } from '@axrone/scene-runtime/component-catalog';
 import { encodeSceneValue } from '@axrone/scene-runtime/serialization';
 import type {
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     SceneComponentSnapshot,
     ScenePrefabDefinition,
 } from '../types';
@@ -42,8 +42,8 @@ class TestWeapon extends Component {
     @property({ type: 'string' })
     public weaponName = 'Sword';
 
-    @property({ type: Actor })
-    public targetActor: Actor | null = null;
+    @property({ type: EntityId })
+    public targetEntity: EntityId | null = null;
 
     @property({ type: Transform })
     public targetTransform: Transform | null = null;
@@ -51,8 +51,8 @@ class TestWeapon extends Component {
 
 @script({ scriptName: 'TestFollowTarget' })
 class TestFollowTarget extends Component {
-    @property({ type: Actor })
-    public leader: Actor | null = null;
+    @property({ type: EntityId })
+    public leader: EntityId | null = null;
 
     @property({ type: Transform })
     public leaderTransform: Transform | null = null;
@@ -64,7 +64,7 @@ class TestFollowTarget extends Component {
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 interface PrefabTestHarness {
-    readonly actorRuntime: SceneActorRuntime<any>;
+    readonly entityRuntime: SceneEntityRuntime<any>;
     readonly world: World<any>;
     readonly componentCatalog: SceneComponentCatalog;
 }
@@ -79,16 +79,16 @@ const createPrefabTestHarness = (): PrefabTestHarness => {
     });
     const world = new World(registry);
     const componentCatalog = new SceneComponentCatalog(registry);
-    const actorRuntime = new SceneActorRuntime({
+    const entityRuntime = new SceneEntityRuntime({
         world,
         componentCatalog,
     });
 
-    actorRuntime.registerComponent(TestHealth);
-    actorRuntime.registerComponent(TestWeapon);
-    actorRuntime.registerComponent(TestFollowTarget);
+    entityRuntime.registerComponent(TestHealth);
+    entityRuntime.registerComponent(TestWeapon);
+    entityRuntime.registerComponent(TestFollowTarget);
 
-    return { actorRuntime, world, componentCatalog };
+    return { entityRuntime, world, componentCatalog };
 };
 
 const makeComponent = (
@@ -108,7 +108,7 @@ const makeTransformComponent = (
 ): SceneComponentSnapshot =>
     makeComponent('Transform', { position, rotation, scale });
 
-const makeActorSnapshot = (
+const makeEntitySnapshot = (
     nodeId: string,
     name: string,
     options: {
@@ -118,7 +118,7 @@ const makeActorSnapshot = (
         layer?: number;
         tag?: string;
     } = {},
-): SceneActorSnapshot => ({
+): SceneEntitySnapshot => ({
     nodeId,
     parentNodeId: options.parentNodeId ?? null,
     name,
@@ -132,11 +132,11 @@ const makeActorSnapshot = (
 
 const makeSimplePrefab = (
     id = 'prefab/simple',
-    actorName = 'Cube',
+    entityName = 'Cube',
 ): ScenePrefabDefinition => ({
     id,
     kind: 'prefab',
-    actors: [makeActorSnapshot('root', actorName)],
+    entities: [makeEntitySnapshot('root', entityName)],
 });
 
 // ---------------------------------------------------------------------------
@@ -149,80 +149,80 @@ describe('Prefab Instantiation — Simple Prefab', () => {
         harness = createPrefabTestHarness();
     });
 
-    it('creates an actor with the correct name from a minimal prefab', () => {
+    it('creates an entity with the correct name from a minimal prefab', () => {
         const prefab = makeSimplePrefab('prefab/cube', 'Cube');
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
 
-        expect(actors).toHaveLength(1);
-        expect(actors[0]!.name).toBe('Cube');
+        expect(entities).toHaveLength(1);
+        expect(entities[0]!.name).toBe('Cube');
     });
 
-    it('adds a Transform component to the instantiated actor', () => {
+    it('adds a Transform component to the instantiated entity', () => {
         const prefab = makeSimplePrefab();
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const actor = actors[0]!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const entity = entities[0]!;
 
-        const transform = actor.getComponent(Transform);
+        const transform = entity.getComponent(Transform);
         expect(transform).toBeDefined();
         expect(transform).toBeInstanceOf(Transform);
     });
 
-    it('sets the actor to active after instantiation when snapshot says active', () => {
+    it('sets the entity to active after instantiation when snapshot says active', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/active-test',
             kind: 'prefab',
-            actors: [makeActorSnapshot('root', 'ActiveActor', { active: true })],
+            entities: [makeEntitySnapshot('root', 'ActiveEntity', { active: true })],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        expect(actors[0]!.active).toBe(true);
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        expect(entities[0]!.active).toBe(true);
     });
 
-    it('sets the actor to inactive when snapshot says inactive', () => {
+    it('sets the entity to inactive when snapshot says inactive', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/inactive-test',
             kind: 'prefab',
-            actors: [makeActorSnapshot('root', 'InactiveActor', { active: false })],
+            entities: [makeEntitySnapshot('root', 'InactiveEntity', { active: false })],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        expect(actors[0]!.active).toBe(false);
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        expect(entities[0]!.active).toBe(false);
     });
 
-    it('attaches PrefabNodeBinding that maps nodeId to actor', () => {
+    it('attaches PrefabNodeBinding that maps nodeId to entity', () => {
         const prefab = makeSimplePrefab('prefab/binding-test', 'Bound');
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const actor = actors[0]!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const entity = entities[0]!;
 
-        const binding = actor.getComponent(PrefabNodeBinding);
+        const binding = entity.getComponent(PrefabNodeBinding);
         expect(binding).toBeDefined();
         expect(binding!.nodeId).toBe('root');
         expect(binding!.instanceId).toBeTruthy();
     });
 
-    it('applies namePrefix option to actor names', () => {
+    it('applies namePrefix option to entity names', () => {
         const prefab = makeSimplePrefab('prefab/prefix-test', 'Enemy');
-        const actors = harness.actorRuntime.instantiatePrefab(prefab, {
+        const entities = harness.entityRuntime.instantiatePrefab(prefab, {
             namePrefix: 'Instance_1/',
         });
 
-        expect(actors[0]!.name).toBe('Instance_1/Enemy');
+        expect(entities[0]!.name).toBe('Instance_1/Enemy');
     });
 
-    it('creates multiple actors from a prefab with several actor snapshots', () => {
+    it('creates multiple entities from a prefab with several entity snapshots', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/multi',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('node-a', 'ActorA'),
-                makeActorSnapshot('node-b', 'ActorB'),
-                makeActorSnapshot('node-c', 'ActorC'),
+            entities: [
+                makeEntitySnapshot('node-a', 'EntityA'),
+                makeEntitySnapshot('node-b', 'EntityB'),
+                makeEntitySnapshot('node-c', 'EntityC'),
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        expect(actors).toHaveLength(3);
-        expect(actors.map((a) => a.name)).toEqual(['ActorA', 'ActorB', 'ActorC']);
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        expect(entities).toHaveLength(3);
+        expect(entities.map((a) => a.name)).toEqual(['EntityA', 'EntityB', 'EntityC']);
     });
 });
 
@@ -240,56 +240,56 @@ describe('Prefab Instantiation — Hierarchical Prefab', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/hierarchy',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('parent', 'Parent'),
-                makeActorSnapshot('child', 'Child', { parentNodeId: 'parent' }),
+            entities: [
+                makeEntitySnapshot('parent', 'Parent'),
+                makeEntitySnapshot('child', 'Child', { parentNodeId: 'parent' }),
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const parent = actors.find((a) => a.name === 'Parent')!;
-        const child = actors.find((a) => a.name === 'Child')!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const parent = entities.find((a) => a.name === 'Parent')!;
+        const child = entities.find((a) => a.name === 'Child')!;
 
         const childHierarchy = child.getComponent(Hierarchy);
         expect(childHierarchy).toBeDefined();
-        expect(childHierarchy!.parentActor).toBe(parent);
+        expect(childHierarchy!.parentEntity).toBe(parent);
     });
 
     it('supports multi-level hierarchy (grandparent -> parent -> child)', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/deep-hierarchy',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('grandparent', 'GrandParent'),
-                makeActorSnapshot('parent', 'Parent', { parentNodeId: 'grandparent' }),
-                makeActorSnapshot('child', 'Child', { parentNodeId: 'parent' }),
+            entities: [
+                makeEntitySnapshot('grandparent', 'GrandParent'),
+                makeEntitySnapshot('parent', 'Parent', { parentNodeId: 'grandparent' }),
+                makeEntitySnapshot('child', 'Child', { parentNodeId: 'parent' }),
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const grandParent = actors.find((a) => a.name === 'GrandParent')!;
-        const parent = actors.find((a) => a.name === 'Parent')!;
-        const child = actors.find((a) => a.name === 'Child')!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const grandParent = entities.find((a) => a.name === 'GrandParent')!;
+        const parent = entities.find((a) => a.name === 'Parent')!;
+        const child = entities.find((a) => a.name === 'Child')!;
 
-        expect(parent.getComponent(Hierarchy)!.parentActor).toBe(grandParent);
-        expect(child.getComponent(Hierarchy)!.parentActor).toBe(parent);
+        expect(parent.getComponent(Hierarchy)!.parentEntity).toBe(grandParent);
+        expect(child.getComponent(Hierarchy)!.parentEntity).toBe(parent);
     });
 
-    it('root actors have no parent', () => {
+    it('root entities have no parent', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/roots',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root-a', 'RootA'),
-                makeActorSnapshot('root-b', 'RootB'),
+            entities: [
+                makeEntitySnapshot('root-a', 'RootA'),
+                makeEntitySnapshot('root-b', 'RootB'),
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
 
-        for (const actor of actors) {
-            const hierarchy = actor.getComponent(Hierarchy);
-            expect(hierarchy!.parentActor).toBeUndefined();
+        for (const entity of entities) {
+            const hierarchy = entity.getComponent(Hierarchy);
+            expect(hierarchy!.parentEntity).toBeUndefined();
         }
     });
 
@@ -297,44 +297,44 @@ describe('Prefab Instantiation — Hierarchical Prefab', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/skeleton',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'Root'),
-                makeActorSnapshot('spine', 'Spine', { parentNodeId: 'root' }),
-                makeActorSnapshot('head', 'Head', { parentNodeId: 'spine' }),
-                makeActorSnapshot('left-arm', 'LeftArm', { parentNodeId: 'spine' }),
-                makeActorSnapshot('right-arm', 'RightArm', { parentNodeId: 'spine' }),
+            entities: [
+                makeEntitySnapshot('root', 'Root'),
+                makeEntitySnapshot('spine', 'Spine', { parentNodeId: 'root' }),
+                makeEntitySnapshot('head', 'Head', { parentNodeId: 'spine' }),
+                makeEntitySnapshot('left-arm', 'LeftArm', { parentNodeId: 'spine' }),
+                makeEntitySnapshot('right-arm', 'RightArm', { parentNodeId: 'spine' }),
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const spine = actors.find((a) => a.name === 'Spine')!;
-        const head = actors.find((a) => a.name === 'Head')!;
-        const leftArm = actors.find((a) => a.name === 'LeftArm')!;
-        const rightArm = actors.find((a) => a.name === 'RightArm')!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const spine = entities.find((a) => a.name === 'Spine')!;
+        const head = entities.find((a) => a.name === 'Head')!;
+        const leftArm = entities.find((a) => a.name === 'LeftArm')!;
+        const rightArm = entities.find((a) => a.name === 'RightArm')!;
 
-        expect(head.getComponent(Hierarchy)!.parentActor).toBe(spine);
-        expect(leftArm.getComponent(Hierarchy)!.parentActor).toBe(spine);
-        expect(rightArm.getComponent(Hierarchy)!.parentActor).toBe(spine);
+        expect(head.getComponent(Hierarchy)!.parentEntity).toBe(spine);
+        expect(leftArm.getComponent(Hierarchy)!.parentEntity).toBe(spine);
+        expect(rightArm.getComponent(Hierarchy)!.parentEntity).toBe(spine);
     });
 
     it('child transforms are relative to parent after instantiation', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/transform-hierarchy',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('parent', 'Parent', {
+            entities: [
+                makeEntitySnapshot('parent', 'Parent', {
                     components: [makeTransformComponent([10, 0, 0])],
                 }),
-                makeActorSnapshot('child', 'Child', {
+                makeEntitySnapshot('child', 'Child', {
                     parentNodeId: 'parent',
                     components: [makeTransformComponent([0, 5, 0])],
                 }),
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const parentTransform = actors[0]!.getComponent(Transform)!;
-        const childTransform = actors[1]!.getComponent(Transform)!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const parentTransform = entities[0]!.getComponent(Transform)!;
+        const childTransform = entities[1]!.getComponent(Transform)!;
 
         expect(parentTransform.position.x).toBe(10);
         expect(childTransform.position.y).toBe(5);
@@ -351,11 +351,11 @@ describe('Prefab Instantiation — Multiple Instances', () => {
         harness = createPrefabTestHarness();
     });
 
-    it('each instance gets unique entity/actor IDs', () => {
+    it('each instance gets unique entity/entity IDs', () => {
         const prefab = makeSimplePrefab('prefab/id-test', 'Clone');
 
-        const instance1 = harness.actorRuntime.instantiatePrefab(prefab);
-        const instance2 = harness.actorRuntime.instantiatePrefab(prefab);
+        const instance1 = harness.entityRuntime.instantiatePrefab(prefab);
+        const instance2 = harness.entityRuntime.instantiatePrefab(prefab);
 
         expect(instance1[0]!.id).not.toBe(instance2[0]!.id);
     });
@@ -363,8 +363,8 @@ describe('Prefab Instantiation — Multiple Instances', () => {
     it('each instance gets unique PrefabNodeBinding instanceId', () => {
         const prefab = makeSimplePrefab('prefab/instance-id-test', 'Clone');
 
-        const instance1 = harness.actorRuntime.instantiatePrefab(prefab);
-        const instance2 = harness.actorRuntime.instantiatePrefab(prefab);
+        const instance1 = harness.entityRuntime.instantiatePrefab(prefab);
+        const instance2 = harness.entityRuntime.instantiatePrefab(prefab);
 
         const binding1 = instance1[0]!.getComponent(PrefabNodeBinding)!;
         const binding2 = instance2[0]!.getComponent(PrefabNodeBinding)!;
@@ -376,8 +376,8 @@ describe('Prefab Instantiation — Multiple Instances', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/comp-id-test',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'Actor', {
+            entities: [
+                makeEntitySnapshot('root', 'Entity', {
                     components: [
                         makeTransformComponent(),
                         makeComponent('TestHealth', { maxHealth: 100, currentHealth: 100, isInvincible: false }),
@@ -386,8 +386,8 @@ describe('Prefab Instantiation — Multiple Instances', () => {
             ],
         };
 
-        const instance1 = harness.actorRuntime.instantiatePrefab(prefab);
-        const instance2 = harness.actorRuntime.instantiatePrefab(prefab);
+        const instance1 = harness.entityRuntime.instantiatePrefab(prefab);
+        const instance2 = harness.entityRuntime.instantiatePrefab(prefab);
 
         const components1 = instance1[0]!.getAllComponents();
         const components2 = instance2[0]!.getAllComponents();
@@ -404,8 +404,8 @@ describe('Prefab Instantiation — Multiple Instances', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/isolation-test',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'Actor', {
+            entities: [
+                makeEntitySnapshot('root', 'Entity', {
                     components: [
                         makeTransformComponent([0, 0, 0]),
                         makeComponent('TestHealth', { maxHealth: 100, currentHealth: 50, isInvincible: false }),
@@ -414,8 +414,8 @@ describe('Prefab Instantiation — Multiple Instances', () => {
             ],
         };
 
-        const instance1 = harness.actorRuntime.instantiatePrefab(prefab);
-        const instance2 = harness.actorRuntime.instantiatePrefab(prefab);
+        const instance1 = harness.entityRuntime.instantiatePrefab(prefab);
+        const instance2 = harness.entityRuntime.instantiatePrefab(prefab);
 
         const health1 = instance1[0]!.getComponent(TestHealth)!;
         const health2 = instance2[0]!.getComponent(TestHealth)!;
@@ -430,8 +430,8 @@ describe('Prefab Instantiation — Multiple Instances', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/functional-test',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'Actor', {
+            entities: [
+                makeEntitySnapshot('root', 'Entity', {
                     components: [
                         makeTransformComponent([1, 2, 3]),
                         makeComponent('TestHealth', { maxHealth: 200, currentHealth: 200, isInvincible: true }),
@@ -440,24 +440,24 @@ describe('Prefab Instantiation — Multiple Instances', () => {
             ],
         };
 
-        const instance1 = harness.actorRuntime.instantiatePrefab(prefab);
-        const instance2 = harness.actorRuntime.instantiatePrefab(prefab);
+        const instance1 = harness.entityRuntime.instantiatePrefab(prefab);
+        const instance2 = harness.entityRuntime.instantiatePrefab(prefab);
 
-        for (const actors of [instance1, instance2]) {
-            const actor = actors[0]!;
-            expect(actor.getComponent(Transform)).toBeDefined();
-            expect(actor.getComponent(TestHealth)).toBeDefined();
-            expect(actor.getComponent(PrefabNodeBinding)).toBeDefined();
-            expect(actor.active).toBe(true);
+        for (const entities of [instance1, instance2]) {
+            const entity = entities[0]!;
+            expect(entity.getComponent(Transform)).toBeDefined();
+            expect(entity.getComponent(TestHealth)).toBeDefined();
+            expect(entity.getComponent(PrefabNodeBinding)).toBeDefined();
+            expect(entity.active).toBe(true);
         }
     });
 
     it('can instantiate the same prefab many times without errors', () => {
         const prefab = makeSimplePrefab('prefab/stress-test', 'Stress');
-        const allInstances: Actor[][] = [];
+        const allInstances: EntityId[][] = [];
 
         for (let i = 0; i < 20; i++) {
-            allInstances.push(harness.actorRuntime.instantiatePrefab(prefab) as Actor[]);
+            allInstances.push(harness.entityRuntime.instantiatePrefab(prefab) as EntityId[]);
         }
 
         const allIds = new Set(allInstances.map((inst) => inst[0]!.id));
@@ -479,8 +479,8 @@ describe('Prefab Instantiation — Component Data Hydration', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/transform-data',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'PositionedActor', {
+            entities: [
+                makeEntitySnapshot('root', 'PositionedEntity', {
                     components: [
                         makeTransformComponent([5, 10, -3], [0, 0.707, 0, 0.707], [2, 2, 2]),
                     ],
@@ -488,8 +488,8 @@ describe('Prefab Instantiation — Component Data Hydration', () => {
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const transform = actors[0]!.getComponent(Transform)!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const transform = entities[0]!.getComponent(Transform)!;
 
         expect(transform.position.x).toBeCloseTo(5);
         expect(transform.position.y).toBeCloseTo(10);
@@ -504,8 +504,8 @@ describe('Prefab Instantiation — Component Data Hydration', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/health-data',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'Tank', {
+            entities: [
+                makeEntitySnapshot('root', 'Tank', {
                     components: [
                         makeTransformComponent(),
                         makeComponent('TestHealth', {
@@ -518,8 +518,8 @@ describe('Prefab Instantiation — Component Data Hydration', () => {
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const health = actors[0]!.getComponent(TestHealth)!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const health = entities[0]!.getComponent(TestHealth)!;
 
         expect(health.maxHealth).toBe(500);
         expect(health.currentHealth).toBe(350);
@@ -530,8 +530,8 @@ describe('Prefab Instantiation — Component Data Hydration', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/weapon-string',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'Warrior', {
+            entities: [
+                makeEntitySnapshot('root', 'Warrior', {
                     components: [
                         makeTransformComponent(),
                         makeComponent('TestWeapon', {
@@ -543,48 +543,48 @@ describe('Prefab Instantiation — Component Data Hydration', () => {
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const weapon = actors[0]!.getComponent(TestWeapon)!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const weapon = entities[0]!.getComponent(TestWeapon)!;
 
         expect(weapon.damage).toBe(25);
         expect(weapon.weaponName).toBe('Flamebrand');
     });
 
-    it('resolves entity references (nodeId to Actor)', () => {
+    it('resolves entity references (nodeId to EntityId)', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/entity-ref',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('node/weapon', 'WeaponHolder', {
+            entities: [
+                makeEntitySnapshot('node/weapon', 'WeaponHolder', {
                     components: [
                         makeTransformComponent(),
                         makeComponent('TestWeapon', {
                             damage: 15,
                             weaponName: 'Dagger',
-                            targetActor: { kind: 'entity', target: 'node/enemy' },
+                            targetEntity: { kind: 'entity', target: 'node/enemy' },
                         }),
                     ],
                 }),
-                makeActorSnapshot('node/enemy', 'Enemy', {
+                makeEntitySnapshot('node/enemy', 'Enemy', {
                     components: [makeTransformComponent([10, 0, 0])],
                 }),
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const weaponHolder = actors.find((a) => a.name === 'WeaponHolder')!;
-        const enemy = actors.find((a) => a.name === 'Enemy')!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const weaponHolder = entities.find((a) => a.name === 'WeaponHolder')!;
+        const enemy = entities.find((a) => a.name === 'Enemy')!;
         const weapon = weaponHolder.getComponent(TestWeapon)!;
 
-        expect(weapon.targetActor).toBe(enemy);
+        expect(weapon.targetEntity).toBe(enemy);
     });
 
     it('resolves transform references (nodeId to Transform)', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/transform-ref',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('node/follower', 'Follower', {
+            entities: [
+                makeEntitySnapshot('node/follower', 'Follower', {
                     components: [
                         makeTransformComponent(),
                         makeComponent('TestFollowTarget', {
@@ -593,15 +593,15 @@ describe('Prefab Instantiation — Component Data Hydration', () => {
                         }),
                     ],
                 }),
-                makeActorSnapshot('node/leader', 'Leader', {
+                makeEntitySnapshot('node/leader', 'Leader', {
                     components: [makeTransformComponent([5, 0, 0])],
                 }),
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const follower = actors.find((a) => a.name === 'Follower')!;
-        const leader = actors.find((a) => a.name === 'Leader')!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const follower = entities.find((a) => a.name === 'Follower')!;
+        const leader = entities.find((a) => a.name === 'Leader')!;
         const follow = follower.getComponent(TestFollowTarget)!;
 
         expect(follow.leaderTransform).toBe(leader.getComponent(Transform));
@@ -611,8 +611,8 @@ describe('Prefab Instantiation — Component Data Hydration', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/vec3-hydration',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('node/follower', 'Follower', {
+            entities: [
+                makeEntitySnapshot('node/follower', 'Follower', {
                     components: [
                         makeTransformComponent(),
                         makeComponent('TestFollowTarget', {
@@ -623,8 +623,8 @@ describe('Prefab Instantiation — Component Data Hydration', () => {
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab);
-        const follow = actors[0]!.getComponent(TestFollowTarget)!;
+        const entities = harness.entityRuntime.instantiatePrefab(prefab);
+        const follow = entities[0]!.getComponent(TestFollowTarget)!;
 
         expect(follow.offset).toBeInstanceOf(Vec3);
         expect(follow.offset.x).toBeCloseTo(7);
@@ -643,13 +643,13 @@ describe('Prefab Instantiation — Prefab Overrides', () => {
         harness = createPrefabTestHarness();
     });
 
-    it('applies set-actor-field override to change actor name', () => {
+    it('applies set-entity-field override to change entity name', () => {
         const prefab = makeSimplePrefab('prefab/override-name', 'Original');
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab, {
+        const entities = harness.entityRuntime.instantiatePrefab(prefab, {
             liveOverrides: [
                 {
-                    kind: 'set-actor-field',
+                    kind: 'set-entity-field',
                     nodeId: 'root',
                     field: 'name',
                     value: 'Overridden',
@@ -657,20 +657,20 @@ describe('Prefab Instantiation — Prefab Overrides', () => {
             ],
         });
 
-        expect(actors[0]!.name).toBe('Overridden');
+        expect(entities[0]!.name).toBe('Overridden');
     });
 
-    it('applies set-actor-field override to change active state', () => {
+    it('applies set-entity-field override to change active state', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/override-active',
             kind: 'prefab',
-            actors: [makeActorSnapshot('root', 'Actor', { active: true })],
+            entities: [makeEntitySnapshot('root', 'Entity', { active: true })],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab, {
+        const entities = harness.entityRuntime.instantiatePrefab(prefab, {
             liveOverrides: [
                 {
-                    kind: 'set-actor-field',
+                    kind: 'set-entity-field',
                     nodeId: 'root',
                     field: 'active',
                     value: false,
@@ -678,15 +678,15 @@ describe('Prefab Instantiation — Prefab Overrides', () => {
             ],
         });
 
-        expect(actors[0]!.active).toBe(false);
+        expect(entities[0]!.active).toBe(false);
     });
 
     it('applies set-component-property override to modify component data', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/override-comp',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'Actor', {
+            entities: [
+                makeEntitySnapshot('root', 'Entity', {
                     components: [
                         makeTransformComponent(),
                         makeComponent('TestHealth', {
@@ -699,7 +699,7 @@ describe('Prefab Instantiation — Prefab Overrides', () => {
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab, {
+        const entities = harness.entityRuntime.instantiatePrefab(prefab, {
             liveOverrides: [
                 {
                     kind: 'set-component-property',
@@ -711,59 +711,59 @@ describe('Prefab Instantiation — Prefab Overrides', () => {
             ],
         });
 
-        const health = actors[0]!.getComponent(TestHealth)!;
+        const health = entities[0]!.getComponent(TestHealth)!;
         expect(health.maxHealth).toBe(999);
     });
 
-    it('applies add-actor override to add a new actor to the prefab', () => {
+    it('applies add-entity override to add a new entity to the prefab', () => {
         const prefab: ScenePrefabDefinition = {
-            id: 'prefab/override-add-actor',
+            id: 'prefab/override-add-entity',
             kind: 'prefab',
-            actors: [makeActorSnapshot('root', 'Root')],
+            entities: [makeEntitySnapshot('root', 'Root')],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab, {
+        const entities = harness.entityRuntime.instantiatePrefab(prefab, {
             liveOverrides: [
                 {
-                    kind: 'add-actor',
-                    actor: makeActorSnapshot('extra', 'ExtraActor', {
+                    kind: 'add-entity',
+                    entity: makeEntitySnapshot('extra', 'ExtraEntity', {
                         parentNodeId: 'root',
                     }),
                 },
             ],
         });
 
-        expect(actors).toHaveLength(2);
-        const extra = actors.find((a) => a.name === 'ExtraActor');
+        expect(entities).toHaveLength(2);
+        const extra = entities.find((a) => a.name === 'ExtraEntity');
         expect(extra).toBeDefined();
     });
 
-    it('applies remove-actor override to remove an actor from the prefab', () => {
+    it('applies remove-entity override to remove an entity from the prefab', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/override-remove',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'Root'),
-                makeActorSnapshot('disposable', 'Disposable', { parentNodeId: 'root' }),
+            entities: [
+                makeEntitySnapshot('root', 'Root'),
+                makeEntitySnapshot('disposable', 'Disposable', { parentNodeId: 'root' }),
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab, {
+        const entities = harness.entityRuntime.instantiatePrefab(prefab, {
             liveOverrides: [
-                { kind: 'remove-actor', nodeId: 'disposable' },
+                { kind: 'remove-entity', nodeId: 'disposable' },
             ],
         });
 
-        expect(actors).toHaveLength(1);
-        expect(actors[0]!.name).toBe('Root');
+        expect(entities).toHaveLength(1);
+        expect(entities[0]!.name).toBe('Root');
     });
 
     it('applies multiple overrides simultaneously', () => {
         const prefab: ScenePrefabDefinition = {
             id: 'prefab/multi-override',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'Original', {
+            entities: [
+                makeEntitySnapshot('root', 'Original', {
                     components: [
                         makeTransformComponent([0, 0, 0]),
                         makeComponent('TestHealth', {
@@ -776,10 +776,10 @@ describe('Prefab Instantiation — Prefab Overrides', () => {
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(prefab, {
+        const entities = harness.entityRuntime.instantiatePrefab(prefab, {
             liveOverrides: [
                 {
-                    kind: 'set-actor-field',
+                    kind: 'set-entity-field',
                     nodeId: 'root',
                     field: 'name',
                     value: 'Renamed',
@@ -794,8 +794,8 @@ describe('Prefab Instantiation — Prefab Overrides', () => {
             ],
         });
 
-        expect(actors[0]!.name).toBe('Renamed');
-        expect(actors[0]!.getComponent(TestHealth)!.isInvincible).toBe(true);
+        expect(entities[0]!.name).toBe('Renamed');
+        expect(entities[0]!.getComponent(TestHealth)!.isInvincible).toBe(true);
     });
 });
 
@@ -813,8 +813,8 @@ describe('Prefab Instantiation — Prefab Variant', () => {
         const basePrefab: ScenePrefabDefinition = {
             id: 'prefab/base-enemy',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'BaseEnemy', {
+            entities: [
+                makeEntitySnapshot('root', 'BaseEnemy', {
                     components: [
                         makeTransformComponent([0, 0, 0]),
                         makeComponent('TestHealth', {
@@ -831,10 +831,10 @@ describe('Prefab Instantiation — Prefab Variant', () => {
             id: 'prefab/elite-enemy',
             kind: 'variant',
             base: { kind: 'registry', prefabId: 'prefab/base-enemy' },
-            actors: [],
+            entities: [],
             overrides: [
                 {
-                    kind: 'set-actor-field',
+                    kind: 'set-entity-field',
                     nodeId: 'root',
                     field: 'name',
                     value: 'EliteEnemy',
@@ -849,7 +849,7 @@ describe('Prefab Instantiation — Prefab Variant', () => {
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(variant, {
+        const entities = harness.entityRuntime.instantiatePrefab(variant, {
             prefabResolver: {
                 resolvePrefab: (prefab) => {
                     const workflow = new ScenePrefabWorkflow({
@@ -860,18 +860,18 @@ describe('Prefab Instantiation — Prefab Variant', () => {
             },
         });
 
-        expect(actors).toHaveLength(1);
-        expect(actors[0]!.name).toBe('EliteEnemy');
-        expect(actors[0]!.getComponent(TestHealth)!.maxHealth).toBe(500);
+        expect(entities).toHaveLength(1);
+        expect(entities[0]!.name).toBe('EliteEnemy');
+        expect(entities[0]!.getComponent(TestHealth)!.maxHealth).toBe(500);
     });
 
-    it('variant inherits base actors when no actor overrides exist', () => {
+    it('variant inherits base entities when no entity overrides exist', () => {
         const basePrefab: ScenePrefabDefinition = {
             id: 'prefab/base-structure',
             kind: 'prefab',
-            actors: [
-                makeActorSnapshot('root', 'BaseRoot'),
-                makeActorSnapshot('child', 'BaseChild', { parentNodeId: 'root' }),
+            entities: [
+                makeEntitySnapshot('root', 'BaseRoot'),
+                makeEntitySnapshot('child', 'BaseChild', { parentNodeId: 'root' }),
             ],
         };
 
@@ -879,11 +879,11 @@ describe('Prefab Instantiation — Prefab Variant', () => {
             id: 'prefab/derived-structure',
             kind: 'variant',
             base: { kind: 'registry', prefabId: 'prefab/base-structure' },
-            actors: [],
+            entities: [],
             overrides: [],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(variant, {
+        const entities = harness.entityRuntime.instantiatePrefab(variant, {
             prefabResolver: {
                 resolvePrefab: (prefab) => {
                     const workflow = new ScenePrefabWorkflow({
@@ -894,33 +894,33 @@ describe('Prefab Instantiation — Prefab Variant', () => {
             },
         });
 
-        expect(actors).toHaveLength(2);
-        expect(actors.map((a) => a.name)).toEqual(['BaseRoot', 'BaseChild']);
+        expect(entities).toHaveLength(2);
+        expect(entities.map((a) => a.name)).toEqual(['BaseRoot', 'BaseChild']);
     });
 
-    it('variant can add new actors on top of base', () => {
+    it('variant can add new entities on top of base', () => {
         const basePrefab: ScenePrefabDefinition = {
-            id: 'prefab/base-with-actor',
+            id: 'prefab/base-with-entity',
             kind: 'prefab',
-            actors: [makeActorSnapshot('root', 'BaseRoot')],
+            entities: [makeEntitySnapshot('root', 'BaseRoot')],
         };
 
         const variant: ScenePrefabDefinition = {
-            id: 'prefab/variant-extra-actor',
+            id: 'prefab/variant-extra-entity',
             kind: 'variant',
-            base: { kind: 'registry', prefabId: 'prefab/base-with-actor' },
-            actors: [],
+            base: { kind: 'registry', prefabId: 'prefab/base-with-entity' },
+            entities: [],
             overrides: [
                 {
-                    kind: 'add-actor',
-                    actor: makeActorSnapshot('extra', 'ExtraFromVariant', {
+                    kind: 'add-entity',
+                    entity: makeEntitySnapshot('extra', 'ExtraFromVariant', {
                         parentNodeId: 'root',
                     }),
                 },
             ],
         };
 
-        const actors = harness.actorRuntime.instantiatePrefab(variant, {
+        const entities = harness.entityRuntime.instantiatePrefab(variant, {
             prefabResolver: {
                 resolvePrefab: (prefab) => {
                     const workflow = new ScenePrefabWorkflow({
@@ -931,29 +931,29 @@ describe('Prefab Instantiation — Prefab Variant', () => {
             },
         });
 
-        expect(actors).toHaveLength(2);
-        const extra = actors.find((a) => a.name === 'ExtraFromVariant');
+        expect(entities).toHaveLength(2);
+        const extra = entities.find((a) => a.name === 'ExtraFromVariant');
         expect(extra).toBeDefined();
-        expect(extra!.getComponent(Hierarchy)!.parentActor).toBe(actors[0]);
+        expect(extra!.getComponent(Hierarchy)!.parentEntity).toBe(entities[0]);
     });
 
     it('resolved variant has lineage including both base and variant IDs', () => {
         const basePrefab: ScenePrefabDefinition = {
             id: 'prefab/lineage-base',
             kind: 'prefab',
-            actors: [makeActorSnapshot('root', 'Base')],
+            entities: [makeEntitySnapshot('root', 'Base')],
         };
 
         const variant: ScenePrefabDefinition = {
             id: 'prefab/lineage-variant',
             kind: 'variant',
             base: { kind: 'registry', prefabId: 'prefab/lineage-base' },
-            actors: [],
+            entities: [],
         };
 
         let resolvedLineage: readonly string[] = [];
 
-        harness.actorRuntime.instantiatePrefab(variant, {
+        harness.entityRuntime.instantiatePrefab(variant, {
             prefabResolver: {
                 resolvePrefab: (prefab) => {
                     const workflow = new ScenePrefabWorkflow({

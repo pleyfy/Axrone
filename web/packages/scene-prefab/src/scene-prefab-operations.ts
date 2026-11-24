@@ -1,6 +1,6 @@
 import { ScenePrefabValidationError } from './errors';
 import {
-    cloneSceneActorSnapshot,
+    cloneSceneEntitySnapshot,
     cloneSceneComponentSnapshot,
     cloneScenePrefabDefinition,
     cloneScenePrefabMetadata,
@@ -12,7 +12,7 @@ import {
     isSceneSerializedObjectValue,
 } from './scene-prefab-internals';
 import type {
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     SceneComponentSnapshot,
     ScenePrefabDefinition,
     ScenePrefabNestedInstance,
@@ -29,7 +29,7 @@ interface MutableSceneComponentSnapshot {
     data: SceneSerializedValue;
 }
 
-interface MutableSceneActorSnapshot {
+interface MutableSceneEntitySnapshot {
     nodeId: string;
     parentNodeId: string | null;
     name: string;
@@ -44,8 +44,8 @@ interface MutableSceneActorSnapshot {
 
 export interface ScenePrefabState {
     id: string;
-    actors: MutableSceneActorSnapshot[];
-    actorIndex: Map<string, MutableSceneActorSnapshot>;
+    entities: MutableSceneEntitySnapshot[];
+    entityIndex: Map<string, MutableSceneEntitySnapshot>;
 }
 
 const toMutableComponent = (component: SceneComponentSnapshot): MutableSceneComponentSnapshot => ({
@@ -54,36 +54,36 @@ const toMutableComponent = (component: SceneComponentSnapshot): MutableSceneComp
     data: cloneSceneSerializedValue(component.data),
 });
 
-const createActorSource = (
-    actor: SceneActorSnapshot,
+const createEntitySource = (
+    entity: SceneEntitySnapshot,
     nodeId: string,
     sourcePrefabId: string,
     lineage: readonly string[],
 ): ScenePrefabNodeSource =>
-    cloneScenePrefabNodeSource(actor.source) ?? {
+    cloneScenePrefabNodeSource(entity.source) ?? {
         prefabId: sourcePrefabId,
         nodeId,
         ...(lineage.length > 0 ? { lineage: [...lineage] } : {}),
     };
 
-const toMutableActor = (
-    actor: SceneActorSnapshot,
+const toMutableEntity = (
+    entity: SceneEntitySnapshot,
     index: number,
     sourcePrefabId: string,
     lineage: readonly string[],
-): MutableSceneActorSnapshot => {
-    const nodeId = ensureScenePrefabNodeId(actor, sourcePrefabId, index);
+): MutableSceneEntitySnapshot => {
+    const nodeId = ensureScenePrefabNodeId(entity, sourcePrefabId, index);
     return {
         nodeId,
-        parentNodeId: actor.parentNodeId ?? null,
-        name: actor.name,
-        layer: actor.layer,
-        tag: actor.tag,
-        active: actor.active,
-        persistent: actor.persistent,
-        pooled: actor.pooled,
-        source: createActorSource(actor, nodeId, sourcePrefabId, lineage),
-        components: actor.components.map((component) => toMutableComponent(component)),
+        parentNodeId: entity.parentNodeId ?? null,
+        name: entity.name,
+        layer: entity.layer,
+        tag: entity.tag,
+        active: entity.active,
+        persistent: entity.persistent,
+        pooled: entity.pooled,
+        source: createEntitySource(entity, nodeId, sourcePrefabId, lineage),
+        components: entity.components.map((component) => toMutableComponent(component)),
     };
 };
 
@@ -93,37 +93,37 @@ const materializeComponent = (component: MutableSceneComponentSnapshot): SceneCo
     data: cloneSceneSerializedValue(component.data),
 });
 
-const materializeActor = (actor: MutableSceneActorSnapshot): SceneActorSnapshot => ({
-    nodeId: actor.nodeId,
-    parentNodeId: actor.parentNodeId,
-    name: actor.name,
-    layer: actor.layer,
-    tag: actor.tag,
-    active: actor.active,
-    persistent: actor.persistent,
-    pooled: actor.pooled,
-    ...(actor.source ? { source: cloneScenePrefabNodeSource(actor.source) } : {}),
-    components: actor.components.map((component) => materializeComponent(component)),
+const materializeEntity = (entity: MutableSceneEntitySnapshot): SceneEntitySnapshot => ({
+    nodeId: entity.nodeId,
+    parentNodeId: entity.parentNodeId,
+    name: entity.name,
+    layer: entity.layer,
+    tag: entity.tag,
+    active: entity.active,
+    persistent: entity.persistent,
+    pooled: entity.pooled,
+    ...(entity.source ? { source: cloneScenePrefabNodeSource(entity.source) } : {}),
+    components: entity.components.map((component) => materializeComponent(component)),
 });
 
-const rebuildActorIndex = (state: ScenePrefabState): void => {
-    state.actorIndex.clear();
-    for (const actor of state.actors) {
-        if (state.actorIndex.has(actor.nodeId)) {
+const rebuildEntityIndex = (state: ScenePrefabState): void => {
+    state.entityIndex.clear();
+    for (const entity of state.entities) {
+        if (state.entityIndex.has(entity.nodeId)) {
             throw new ScenePrefabValidationError(
-                `Prefab '${state.id}' contains duplicate actor nodeId '${actor.nodeId}'`,
+                `Prefab '${state.id}' contains duplicate entity nodeId '${entity.nodeId}'`,
             );
         }
-        state.actorIndex.set(actor.nodeId, actor);
+        state.entityIndex.set(entity.nodeId, entity);
 
         const seenComponentIds = new Set<string>();
-        for (const component of actor.components) {
+        for (const component of entity.components) {
             if (!component.id) {
                 continue;
             }
             if (seenComponentIds.has(component.id)) {
                 throw new ScenePrefabValidationError(
-                    `Prefab '${state.id}' actor '${actor.nodeId}' contains duplicate component '${component.id}'`,
+                    `Prefab '${state.id}' entity '${entity.nodeId}' contains duplicate component '${component.id}'`,
                 );
             }
             seenComponentIds.add(component.id);
@@ -137,25 +137,25 @@ export const getScenePrefabLineage = (definition: ScenePrefabDefinition): readon
         : [definition.id];
 
 export const createScenePrefabState = (
-    definition: Pick<ScenePrefabDefinition, 'id' | 'actors'>,
+    definition: Pick<ScenePrefabDefinition, 'id' | 'entities'>,
     sourcePrefabId = definition.id,
     lineage: readonly string[] = [sourcePrefabId],
 ): ScenePrefabState => {
-    const actors = definition.actors.map((actor, index) =>
-        toMutableActor(actor, index, sourcePrefabId, lineage),
+    const entities = definition.entities.map((entity, index) =>
+        toMutableEntity(entity, index, sourcePrefabId, lineage),
     );
     const state: ScenePrefabState = {
         id: definition.id,
-        actors,
-        actorIndex: new Map<string, MutableSceneActorSnapshot>(),
+        entities,
+        entityIndex: new Map<string, MutableSceneEntitySnapshot>(),
     };
-    rebuildActorIndex(state);
+    rebuildEntityIndex(state);
     return state;
 };
 
-export const materializeScenePrefabActors = (
+export const materializeScenePrefabEntities = (
     state: ScenePrefabState,
-): readonly SceneActorSnapshot[] => state.actors.map((actor) => materializeActor(actor));
+): readonly SceneEntitySnapshot[] => state.entities.map((entity) => materializeEntity(entity));
 
 export const materializeScenePrefabDefinition = (
     definition: ScenePrefabDefinition,
@@ -164,7 +164,7 @@ export const materializeScenePrefabDefinition = (
     const clone = cloneScenePrefabDefinition(definition);
     return {
         ...clone,
-        actors: materializeScenePrefabActors(state),
+        entities: materializeScenePrefabEntities(state),
     };
 };
 
@@ -175,43 +175,43 @@ export const materializeScenePrefabResolvedDefinition = (
 ): ScenePrefabResolvedDefinition => ({
     id: definition.id,
     kind: 'resolved',
-    actors: materializeScenePrefabActors(state),
+    entities: materializeScenePrefabEntities(state),
     lineage: [...lineage],
     ...(definition.metadata ? { metadata: cloneScenePrefabMetadata(definition.metadata) } : {}),
 });
 
-export const mergeScenePrefabActors = (
+export const mergeScenePrefabEntities = (
     state: ScenePrefabState,
-    actors: readonly SceneActorSnapshot[],
+    entities: readonly SceneEntitySnapshot[],
     sourcePrefabId: string,
     lineage: readonly string[] = [sourcePrefabId],
 ): void => {
-    const actorPositions = new Map<string, number>();
-    for (let position = 0; position < state.actors.length; position += 1) {
-        actorPositions.set(state.actors[position]!.nodeId, position);
+    const entityPositions = new Map<string, number>();
+    for (let position = 0; position < state.entities.length; position += 1) {
+        entityPositions.set(state.entities[position]!.nodeId, position);
     }
 
-    for (let index = 0; index < actors.length; index += 1) {
-        const actor = toMutableActor(actors[index]!, index, sourcePrefabId, lineage);
-        const existingPosition = actorPositions.get(actor.nodeId);
+    for (let index = 0; index < entities.length; index += 1) {
+        const entity = toMutableEntity(entities[index]!, index, sourcePrefabId, lineage);
+        const existingPosition = entityPositions.get(entity.nodeId);
         if (existingPosition !== undefined) {
-            state.actors.splice(existingPosition, 1, actor);
+            state.entities.splice(existingPosition, 1, entity);
         } else {
-            actorPositions.set(actor.nodeId, state.actors.length);
-            state.actors.push(actor);
+            entityPositions.set(entity.nodeId, state.entities.length);
+            state.entities.push(entity);
         }
 
-        state.actorIndex.set(actor.nodeId, actor);
+        state.entityIndex.set(entity.nodeId, entity);
     }
 };
 
 export const validateScenePrefabState = (state: ScenePrefabState): void => {
-    rebuildActorIndex(state);
+    rebuildEntityIndex(state);
 
-    for (const actor of state.actors) {
-        if (actor.parentNodeId !== null && !state.actorIndex.has(actor.parentNodeId)) {
+    for (const entity of state.entities) {
+        if (entity.parentNodeId !== null && !state.entityIndex.has(entity.parentNodeId)) {
             throw new ScenePrefabValidationError(
-                `Prefab '${state.id}' actor '${actor.nodeId}' references missing parent '${actor.parentNodeId}'`,
+                `Prefab '${state.id}' entity '${entity.nodeId}' references missing parent '${entity.parentNodeId}'`,
             );
         }
     }
@@ -232,7 +232,7 @@ export const validateScenePrefabState = (state: ScenePrefabState): void => {
 
         visiting.add(nodeId);
 
-        const parentNodeId = state.actorIndex.get(nodeId)?.parentNodeId;
+        const parentNodeId = state.entityIndex.get(nodeId)?.parentNodeId;
         if (parentNodeId !== null && parentNodeId !== undefined) {
             visit(parentNodeId);
         }
@@ -241,24 +241,24 @@ export const validateScenePrefabState = (state: ScenePrefabState): void => {
         visited.add(nodeId);
     };
 
-    for (const actor of state.actors) {
-        visit(actor.nodeId);
+    for (const entity of state.entities) {
+        visit(entity.nodeId);
     }
 };
 
-const ensureActor = (state: ScenePrefabState, nodeId: string): MutableSceneActorSnapshot => {
-    const actor = state.actorIndex.get(nodeId);
-    if (!actor) {
+const ensureEntity = (state: ScenePrefabState, nodeId: string): MutableSceneEntitySnapshot => {
+    const entity = state.entityIndex.get(nodeId);
+    if (!entity) {
         throw new ScenePrefabValidationError(
-            `Prefab '${state.id}' does not contain actor '${nodeId}'`,
+            `Prefab '${state.id}' does not contain entity '${nodeId}'`,
         );
     }
-    return actor;
+    return entity;
 };
 
 const ensureComponentIndex = (
     state: ScenePrefabState,
-    actor: MutableSceneActorSnapshot,
+    entity: MutableSceneEntitySnapshot,
     operation: ScenePrefabOverrideOperation,
 ): number => {
     if (
@@ -270,28 +270,28 @@ const ensureComponentIndex = (
         throw new ScenePrefabValidationError('Invalid component operation');
     }
 
-    const componentIndex = findScenePrefabComponentIndex(actor.components, operation.selector);
+    const componentIndex = findScenePrefabComponentIndex(entity.components, operation.selector);
     if (componentIndex >= 0) {
         return componentIndex;
     }
 
     throw new ScenePrefabValidationError(
-        `Prefab '${state.id}' actor '${actor.nodeId}' is missing component selector`,
+        `Prefab '${state.id}' entity '${entity.nodeId}' is missing component selector`,
     );
 };
 
 const collectSubtreeIds = (state: ScenePrefabState, rootNodeId: string): Set<string> => {
     const collected = new Set<string>();
     const childrenByParent = new Map<string, string[]>();
-    for (const actor of state.actors) {
-        if (actor.parentNodeId === null) {
+    for (const entity of state.entities) {
+        if (entity.parentNodeId === null) {
             continue;
         }
-        const siblings = childrenByParent.get(actor.parentNodeId);
+        const siblings = childrenByParent.get(entity.parentNodeId);
         if (siblings) {
-            siblings.push(actor.nodeId);
+            siblings.push(entity.nodeId);
         } else {
-            childrenByParent.set(actor.parentNodeId, [actor.nodeId]);
+            childrenByParent.set(entity.parentNodeId, [entity.nodeId]);
         }
     }
 
@@ -324,21 +324,21 @@ const normalizeComponentInsertIndex = (index: number | undefined, length: number
     return Math.min(Math.max(index, 0), length);
 };
 
-const validateActorFieldValue = (
-    operation: Extract<ScenePrefabOverrideOperation, { kind: 'set-actor-field' }>,
+const validateEntityFieldValue = (
+    operation: Extract<ScenePrefabOverrideOperation, { kind: 'set-entity-field' }>,
 ): void => {
     switch (operation.field) {
         case 'name':
         case 'tag':
             if (typeof operation.value !== 'string') {
                 throw new ScenePrefabValidationError(
-                    `Actor field '${operation.field}' expects a string value`,
+                    `Entity field '${operation.field}' expects a string value`,
                 );
             }
             return;
         case 'layer':
             if (typeof operation.value !== 'number' || !Number.isFinite(operation.value)) {
-                throw new ScenePrefabValidationError("Actor field 'layer' expects a finite number");
+                throw new ScenePrefabValidationError("Entity field 'layer' expects a finite number");
             }
             return;
         case 'active':
@@ -346,7 +346,7 @@ const validateActorFieldValue = (
         case 'pooled':
             if (typeof operation.value !== 'boolean') {
                 throw new ScenePrefabValidationError(
-                    `Actor field '${operation.field}' expects a boolean value`,
+                    `Entity field '${operation.field}' expects a boolean value`,
                 );
             }
             return;
@@ -433,110 +433,110 @@ const applyScenePrefabOverrideOperation = (
     operation: ScenePrefabOverrideOperation,
 ): void => {
     switch (operation.kind) {
-        case 'add-actor': {
-            const actor = toMutableActor(operation.actor, 0, state.id, [state.id]);
-            if (state.actorIndex.has(actor.nodeId)) {
+        case 'add-entity': {
+            const entity = toMutableEntity(operation.entity, 0, state.id, [state.id]);
+            if (state.entityIndex.has(entity.nodeId)) {
                 throw new ScenePrefabValidationError(
-                    `Prefab '${state.id}' already contains actor '${actor.nodeId}'`,
+                    `Prefab '${state.id}' already contains entity '${entity.nodeId}'`,
                 );
             }
 
             const insertIndex = operation.afterNodeId
-                ? state.actors.findIndex((entry) => entry.nodeId === operation.afterNodeId)
+                ? state.entities.findIndex((entry) => entry.nodeId === operation.afterNodeId)
                 : -1;
 
             if (insertIndex >= 0) {
-                state.actors.splice(insertIndex + 1, 0, actor);
+                state.entities.splice(insertIndex + 1, 0, entity);
             } else {
-                state.actors.push(actor);
+                state.entities.push(entity);
             }
 
-            state.actorIndex.set(actor.nodeId, actor);
+            state.entityIndex.set(entity.nodeId, entity);
             return;
         }
-        case 'remove-actor': {
-            ensureActor(state, operation.nodeId);
+        case 'remove-entity': {
+            ensureEntity(state, operation.nodeId);
             const subtreeIds = collectSubtreeIds(state, operation.nodeId);
-            state.actors = state.actors.filter((actor) => !subtreeIds.has(actor.nodeId));
+            state.entities = state.entities.filter((entity) => !subtreeIds.has(entity.nodeId));
             for (const nodeId of subtreeIds) {
-                state.actorIndex.delete(nodeId);
+                state.entityIndex.delete(nodeId);
             }
             return;
         }
-        case 'reparent-actor': {
-            const actor = ensureActor(state, operation.nodeId);
+        case 'reparent-entity': {
+            const entity = ensureEntity(state, operation.nodeId);
             if (
                 operation.parentNodeId !== undefined &&
                 operation.parentNodeId !== null &&
-                !state.actorIndex.has(operation.parentNodeId)
+                !state.entityIndex.has(operation.parentNodeId)
             ) {
                 throw new ScenePrefabValidationError(
                     `Prefab '${state.id}' cannot reparent '${operation.nodeId}' to missing parent '${operation.parentNodeId}'`,
                 );
             }
 
-            actor.parentNodeId = operation.parentNodeId ?? null;
+            entity.parentNodeId = operation.parentNodeId ?? null;
             return;
         }
-        case 'set-actor-field': {
-            validateActorFieldValue(operation);
-            const actor = ensureActor(state, operation.nodeId);
+        case 'set-entity-field': {
+            validateEntityFieldValue(operation);
+            const entity = ensureEntity(state, operation.nodeId);
             switch (operation.field) {
                 case 'name':
-                    actor.name = operation.value as string;
+                    entity.name = operation.value as string;
                     return;
                 case 'layer':
-                    actor.layer = operation.value as number;
+                    entity.layer = operation.value as number;
                     return;
                 case 'tag':
-                    actor.tag = operation.value as string;
+                    entity.tag = operation.value as string;
                     return;
                 case 'active':
-                    actor.active = operation.value as boolean;
+                    entity.active = operation.value as boolean;
                     return;
                 case 'persistent':
-                    actor.persistent = operation.value as boolean;
+                    entity.persistent = operation.value as boolean;
                     return;
                 case 'pooled':
-                    actor.pooled = operation.value as boolean;
+                    entity.pooled = operation.value as boolean;
                     return;
             }
             return;
         }
         case 'add-component': {
-            const actor = ensureActor(state, operation.nodeId);
+            const entity = ensureEntity(state, operation.nodeId);
             if (
                 operation.component.id &&
-                actor.components.some((component) => component.id === operation.component.id)
+                entity.components.some((component) => component.id === operation.component.id)
             ) {
                 throw new ScenePrefabValidationError(
-                    `Prefab '${state.id}' actor '${actor.nodeId}' already contains component '${operation.component.id}'`,
+                    `Prefab '${state.id}' entity '${entity.nodeId}' already contains component '${operation.component.id}'`,
                 );
             }
 
             const insertIndex = normalizeComponentInsertIndex(
                 operation.index,
-                actor.components.length,
+                entity.components.length,
             );
-            actor.components.splice(insertIndex, 0, toMutableComponent(operation.component));
+            entity.components.splice(insertIndex, 0, toMutableComponent(operation.component));
             return;
         }
         case 'remove-component': {
-            const actor = ensureActor(state, operation.nodeId);
-            const componentIndex = ensureComponentIndex(state, actor, operation);
-            actor.components.splice(componentIndex, 1);
+            const entity = ensureEntity(state, operation.nodeId);
+            const componentIndex = ensureComponentIndex(state, entity, operation);
+            entity.components.splice(componentIndex, 1);
             return;
         }
         case 'replace-component': {
-            const actor = ensureActor(state, operation.nodeId);
-            const componentIndex = ensureComponentIndex(state, actor, operation);
-            actor.components.splice(componentIndex, 1, toMutableComponent(operation.component));
+            const entity = ensureEntity(state, operation.nodeId);
+            const componentIndex = ensureComponentIndex(state, entity, operation);
+            entity.components.splice(componentIndex, 1, toMutableComponent(operation.component));
             return;
         }
         case 'set-component-property': {
-            const actor = ensureActor(state, operation.nodeId);
-            const componentIndex = ensureComponentIndex(state, actor, operation);
-            const component = actor.components[componentIndex]!;
+            const entity = ensureEntity(state, operation.nodeId);
+            const componentIndex = ensureComponentIndex(state, entity, operation);
+            const component = entity.components[componentIndex]!;
             component.data = setSceneSerializedValueAtPath(
                 component.data,
                 operation.path,
@@ -545,9 +545,9 @@ const applyScenePrefabOverrideOperation = (
             return;
         }
         case 'unset-component-property': {
-            const actor = ensureActor(state, operation.nodeId);
-            const componentIndex = ensureComponentIndex(state, actor, operation);
-            const component = actor.components[componentIndex]!;
+            const entity = ensureEntity(state, operation.nodeId);
+            const componentIndex = ensureComponentIndex(state, entity, operation);
+            const component = entity.components[componentIndex]!;
             component.data = unsetSceneSerializedValueAtPath(component.data, operation.path);
             return;
         }
@@ -565,26 +565,26 @@ export const applyScenePrefabOverrideOperations = (
     validateScenePrefabState(state);
 };
 
-export const scopeScenePrefabActors = (
-    actors: readonly SceneActorSnapshot[],
+export const scopeScenePrefabEntities = (
+    entities: readonly SceneEntitySnapshot[],
     nested: ScenePrefabNestedInstance,
     sourcePrefabId: string,
-): readonly SceneActorSnapshot[] =>
-    actors.map((actor, index) => {
-        const originalNodeId = ensureScenePrefabNodeId(actor, sourcePrefabId, index);
-        const scopedActor = cloneSceneActorSnapshot(actor);
-        const source = cloneScenePrefabNodeSource(actor.source) ?? {
+): readonly SceneEntitySnapshot[] =>
+    entities.map((entity, index) => {
+        const originalNodeId = ensureScenePrefabNodeId(entity, sourcePrefabId, index);
+        const scopedEntity = cloneSceneEntitySnapshot(entity);
+        const source = cloneScenePrefabNodeSource(entity.source) ?? {
             prefabId: sourcePrefabId,
             nodeId: originalNodeId,
         };
 
         return {
-            ...scopedActor,
+            ...scopedEntity,
             nodeId: createScenePrefabScopedNodeId(nested.instanceId, originalNodeId),
-            parentNodeId: actor.parentNodeId
-                ? createScenePrefabScopedNodeId(nested.instanceId, actor.parentNodeId)
+            parentNodeId: entity.parentNodeId
+                ? createScenePrefabScopedNodeId(nested.instanceId, entity.parentNodeId)
                 : nested.parentNodeId ?? null,
-            name: nested.namePrefix ? `${nested.namePrefix}${actor.name}` : actor.name,
+            name: nested.namePrefix ? `${nested.namePrefix}${entity.name}` : entity.name,
             source: {
                 ...source,
                 instancePath: [...(source.instancePath ?? []), nested.instanceId],
@@ -602,22 +602,22 @@ export const scopeScenePrefabOverrideOperations = (
             createScenePrefabScopedNodeId(nested.instanceId, nodeId);
 
         switch (operation.kind) {
-            case 'add-actor': {
-                const scopedActor = scopeScenePrefabActors([operation.actor], nested, sourcePrefabId)[0]!;
+            case 'add-entity': {
+                const scopedEntity = scopeScenePrefabEntities([operation.entity], nested, sourcePrefabId)[0]!;
                 return {
-                    kind: 'add-actor',
-                    actor: scopedActor,
+                    kind: 'add-entity',
+                    entity: scopedEntity,
                     ...(operation.afterNodeId ? { afterNodeId: scopeNodeId(operation.afterNodeId) } : {}),
                 };
             }
-            case 'remove-actor':
+            case 'remove-entity':
                 return {
-                    kind: 'remove-actor',
+                    kind: 'remove-entity',
                     nodeId: scopeNodeId(operation.nodeId),
                 };
-            case 'reparent-actor':
+            case 'reparent-entity':
                 return {
-                    kind: 'reparent-actor',
+                    kind: 'reparent-entity',
                     nodeId: scopeNodeId(operation.nodeId),
                     ...(operation.parentNodeId !== undefined
                         ? {
@@ -627,9 +627,9 @@ export const scopeScenePrefabOverrideOperations = (
                           }
                         : {}),
                 };
-            case 'set-actor-field':
+            case 'set-entity-field':
                 return {
-                    kind: 'set-actor-field',
+                    kind: 'set-entity-field',
                     nodeId: scopeNodeId(operation.nodeId),
                     field: operation.field,
                     value: operation.value,

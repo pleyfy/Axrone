@@ -4,7 +4,7 @@
  * Validates prefab loading and entity/component creation using the actual
  * .prefab files shipped in Assets/Prefab/. This is a P0 integration test
  * that exercises the full prefab pipeline:
- *   resolve -> create actors -> hydrate components -> establish hierarchy -> start
+ *   resolve -> create entities -> hydrate components -> establish hierarchy -> start
  *
  * Tests cover:
  *   1. Prefab JSON can be parsed without errors
@@ -22,7 +22,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
     ScenePrefabWorkflow,
-    type SceneActorSnapshot,
+    type SceneEntitySnapshot,
     type SceneComponentSnapshot,
     type ScenePrefabDefinition,
     type SceneSerializedValue,
@@ -84,8 +84,8 @@ const readPrefabFile = (fileName: string): PrefabFile => {
 const toScenePrefabDefinition = (file: PrefabFile): ScenePrefabDefinition => ({
     id: file.id,
     kind: 'prefab',
-    actors: file.entities.map(
-        (entity): SceneActorSnapshot => ({
+    entities: file.entities.map(
+        (entity): SceneEntitySnapshot => ({
             nodeId: entity.id,
             parentNodeId: entity.parentId,
             name: entity.name,
@@ -490,7 +490,7 @@ describe.runIf(hasPrefabFixtures)('T-02: Prefab Instantiation Integration (file-
 
             expect(result.definition.kind).toBe('resolved');
             expect(result.definition.lineage).toEqual([cubeFile.id]);
-            expect(result.definition.actors.length).toBe(cubeFile.entities.length);
+            expect(result.definition.entities.length).toBe(cubeFile.entities.length);
         });
 
         it('resolves EN_Character_Stickman_01.prefab through the workflow', () => {
@@ -503,7 +503,7 @@ describe.runIf(hasPrefabFixtures)('T-02: Prefab Instantiation Integration (file-
             });
 
             expect(result.definition.kind).toBe('resolved');
-            expect(result.definition.actors.length).toBe(28);
+            expect(result.definition.entities.length).toBe(28);
         });
 
         it('resolved Cube prefab preserves hierarchy (root has no parent)', () => {
@@ -511,11 +511,11 @@ describe.runIf(hasPrefabFixtures)('T-02: Prefab Instantiation Integration (file-
             const workflow = new ScenePrefabWorkflow({ prefabs: [definition] });
             const result = workflow.resolvePrefab({ kind: 'registry', prefabId: cubeFile.id });
 
-            const rootActor = result.definition.actors.find(
+            const rootEntity = result.definition.entities.find(
                 (a) => a.name === 'Cube',
             );
-            expect(rootActor).toBeDefined();
-            expect(rootActor!.parentNodeId).toBeNull();
+            expect(rootEntity).toBeDefined();
+            expect(rootEntity!.parentNodeId).toBeNull();
         });
 
         it('resolved character prefab preserves full hierarchy chain', () => {
@@ -526,28 +526,28 @@ describe.runIf(hasPrefabFixtures)('T-02: Prefab Instantiation Integration (file-
                 prefabId: characterFile.id,
             });
 
-            const actors = result.definition.actors;
-            const actorById = new Map(actors.map((a) => [a.nodeId, a]));
+            const entities = result.definition.entities;
+            const entityById = new Map(entities.map((a) => [a.nodeId, a]));
 
-            // Verify every non-root actor's parentNodeId points to an existing actor
-            for (const actor of actors) {
-                if (actor.parentNodeId !== null) {
+            // Verify every non-root entity's parentNodeId points to an existing entity
+            for (const entity of entities) {
+                if (entity.parentNodeId !== null) {
                     expect(
-                        actorById.has(actor.parentNodeId),
-                        `Actor "${actor.name}" references missing parent "${actor.parentNodeId}"`,
+                        entityById.has(entity.parentNodeId),
+                        `Entity "${entity.name}" references missing parent "${entity.parentNodeId}"`,
                     ).toBe(true);
                 }
             }
         });
 
-        it('resolved prefab actors carry source metadata', () => {
+        it('resolved prefab entities carry source metadata', () => {
             const definition = toScenePrefabDefinition(cubeFile);
             const workflow = new ScenePrefabWorkflow({ prefabs: [definition] });
             const result = workflow.resolvePrefab({ kind: 'registry', prefabId: cubeFile.id });
 
-            for (const actor of result.definition.actors) {
-                expect(actor.source).toBeDefined();
-                expect(actor.source!.prefabId).toBe(cubeFile.id);
+            for (const entity of result.definition.entities) {
+                expect(entity.source).toBeDefined();
+                expect(entity.source!.prefabId).toBe(cubeFile.id);
             }
         });
 
@@ -556,8 +556,8 @@ describe.runIf(hasPrefabFixtures)('T-02: Prefab Instantiation Integration (file-
             const workflow = new ScenePrefabWorkflow({ prefabs: [definition] });
             const result = workflow.resolvePrefab({ kind: 'registry', prefabId: cubeFile.id });
 
-            const cubeActor = result.definition.actors.find((a) => a.name === 'Cube')!;
-            const transformComp = cubeActor.components.find((c) => c.type === 'transform');
+            const cubeEntity = result.definition.entities.find((a) => a.name === 'Cube')!;
+            const transformComp = cubeEntity.components.find((c) => c.type === 'transform');
             expect(transformComp).toBeDefined();
 
             const data = transformComp!.data as Record<string, unknown>;

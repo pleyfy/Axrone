@@ -1,9 +1,9 @@
 import {
-    cloneSceneActorSnapshot,
+    cloneSceneEntitySnapshot,
     cloneSceneComponentSnapshot,
     cloneScenePrefabOverrideOperation,
     cloneSceneSerializedValue,
-    copySceneActorSnapshot,
+    copySceneEntitySnapshot,
     copySceneComponentSnapshot,
     createScenePrefabComponentSelector,
     deepEqualSceneSerializedValue,
@@ -19,7 +19,7 @@ import {
     readSceneSerializedValueAtPath,
 } from './scene-prefab-operations';
 import type {
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     SceneComponentSnapshot,
     ScenePrefabConflict,
     ScenePrefabComponentSelector,
@@ -39,11 +39,11 @@ interface IndexedComponentEntry {
 }
 
 interface OperationDescriptor {
-    readonly actorId: string;
+    readonly entityUid: string;
     readonly scope:
-        | 'actor-add'
-        | 'actor-remove'
-        | 'actor-field'
+        | 'entity-add'
+        | 'entity-remove'
+        | 'entity-field'
         | 'component-add'
         | 'component-remove'
         | 'component-replace'
@@ -53,7 +53,7 @@ interface OperationDescriptor {
     readonly path?: ScenePrefabPropertyPath;
 }
 
-const isActorSnapshotValue = (value: unknown): value is SceneActorSnapshot =>
+const isEntitySnapshotValue = (value: unknown): value is SceneEntitySnapshot =>
     !!value &&
     typeof value === 'object' &&
     'name' in value &&
@@ -86,40 +86,40 @@ const indexComponents = (
     return entries;
 };
 
-const topologicallyOrderAddedActors = (
-    actors: readonly SceneActorSnapshot[],
-    pendingActorIds: ReadonlySet<string>,
-): readonly SceneActorSnapshot[] => {
-    const actorIndex = new Map<string, SceneActorSnapshot>();
-    for (const actor of actors) {
-        if (actor.nodeId) {
-            actorIndex.set(actor.nodeId, actor);
+const topologicallyOrderAddedEntities = (
+    entities: readonly SceneEntitySnapshot[],
+    pendingEntityUids: ReadonlySet<string>,
+): readonly SceneEntitySnapshot[] => {
+    const entityIndex = new Map<string, SceneEntitySnapshot>();
+    for (const entity of entities) {
+        if (entity.nodeId) {
+            entityIndex.set(entity.nodeId, entity);
         }
     }
 
-    const ordered: SceneActorSnapshot[] = [];
+    const ordered: SceneEntitySnapshot[] = [];
     const visited = new Set<string>();
 
-    const visit = (actor: SceneActorSnapshot): void => {
-        const nodeId = actor.nodeId;
+    const visit = (entity: SceneEntitySnapshot): void => {
+        const nodeId = entity.nodeId;
         if (!nodeId || visited.has(nodeId)) {
             return;
         }
 
-        if (actor.parentNodeId && pendingActorIds.has(actor.parentNodeId)) {
-            const parentActor = actorIndex.get(actor.parentNodeId);
-            if (parentActor) {
-                visit(parentActor);
+        if (entity.parentNodeId && pendingEntityUids.has(entity.parentNodeId)) {
+            const parentEntity = entityIndex.get(entity.parentNodeId);
+            if (parentEntity) {
+                visit(parentEntity);
             }
         }
 
         visited.add(nodeId);
-        ordered.push(actor);
+        ordered.push(entity);
     };
 
-    for (const actor of actors) {
-        if (actor.nodeId && pendingActorIds.has(actor.nodeId)) {
-            visit(actor);
+    for (const entity of entities) {
+        if (entity.nodeId && pendingEntityUids.has(entity.nodeId)) {
+            visit(entity);
         }
     }
 
@@ -185,10 +185,10 @@ const diffComponentValue = (
 };
 
 const cloneConflictBaseValue = (
-    value: SceneSerializedValue | SceneActorSnapshot | SceneComponentSnapshot | string | number | boolean | null,
+    value: SceneSerializedValue | SceneEntitySnapshot | SceneComponentSnapshot | string | number | boolean | null,
 ):
     | SceneSerializedValue
-    | SceneActorSnapshot
+    | SceneEntitySnapshot
     | SceneComponentSnapshot
     | string
     | number
@@ -198,8 +198,8 @@ const cloneConflictBaseValue = (
         return value;
     }
 
-    if (isActorSnapshotValue(value)) {
-        return cloneSceneActorSnapshot(value);
+    if (isEntitySnapshotValue(value)) {
+        return cloneSceneEntitySnapshot(value);
     }
 
     if (isComponentSnapshotValue(value)) {
@@ -238,7 +238,7 @@ const isSamePropertyPath = (
 ): boolean =>
     left.length === right.length && left.every((segment, index) => segment === right[index]);
 
-const isSameActorSnapshot = (left: SceneActorSnapshot, right: SceneActorSnapshot): boolean => {
+const isSameEntitySnapshot = (left: SceneEntitySnapshot, right: SceneEntitySnapshot): boolean => {
     if (
         left.nodeId !== right.nodeId ||
         (left.parentNodeId ?? null) !== (right.parentNodeId ?? null) ||
@@ -279,23 +279,23 @@ const isSameOverrideOperation = (
     }
 
     switch (left.kind) {
-        case 'add-actor':
+        case 'add-entity':
             return (
-                right.kind === 'add-actor' &&
+                right.kind === 'add-entity' &&
                 left.afterNodeId === right.afterNodeId &&
-                isSameActorSnapshot(left.actor, right.actor)
+                isSameEntitySnapshot(left.entity, right.entity)
             );
-        case 'remove-actor':
-            return right.kind === 'remove-actor' && left.nodeId === right.nodeId;
-        case 'reparent-actor':
+        case 'remove-entity':
+            return right.kind === 'remove-entity' && left.nodeId === right.nodeId;
+        case 'reparent-entity':
             return (
-                right.kind === 'reparent-actor' &&
+                right.kind === 'reparent-entity' &&
                 left.nodeId === right.nodeId &&
                 left.parentNodeId === right.parentNodeId
             );
-        case 'set-actor-field':
+        case 'set-entity-field':
             return (
-                right.kind === 'set-actor-field' &&
+                right.kind === 'set-entity-field' &&
                 left.nodeId === right.nodeId &&
                 left.field === right.field &&
                 left.value === right.value
@@ -340,31 +340,31 @@ const isSameOverrideOperation = (
 
 const describeOperation = (operation: ScenePrefabOverrideOperation): OperationDescriptor => {
     switch (operation.kind) {
-        case 'add-actor':
+        case 'add-entity':
             return {
-                actorId: operation.actor.nodeId ?? '',
-                scope: 'actor-add',
+                entityUid: operation.entity.nodeId ?? '',
+                scope: 'entity-add',
             };
-        case 'remove-actor':
+        case 'remove-entity':
             return {
-                actorId: operation.nodeId,
-                scope: 'actor-remove',
+                entityUid: operation.nodeId,
+                scope: 'entity-remove',
             };
-        case 'reparent-actor':
+        case 'reparent-entity':
             return {
-                actorId: operation.nodeId,
-                scope: 'actor-field',
+                entityUid: operation.nodeId,
+                scope: 'entity-field',
                 fieldKey: 'parentNodeId',
             };
-        case 'set-actor-field':
+        case 'set-entity-field':
             return {
-                actorId: operation.nodeId,
-                scope: 'actor-field',
+                entityUid: operation.nodeId,
+                scope: 'entity-field',
                 fieldKey: operation.field,
             };
         case 'add-component':
             return {
-                actorId: operation.nodeId,
+                entityUid: operation.nodeId,
                 scope: 'component-add',
                 componentKey: operation.component.id
                     ? `id:${operation.component.id}`
@@ -372,26 +372,26 @@ const describeOperation = (operation: ScenePrefabOverrideOperation): OperationDe
             };
         case 'remove-component':
             return {
-                actorId: operation.nodeId,
+                entityUid: operation.nodeId,
                 scope: 'component-remove',
                 componentKey: getScenePrefabComponentSelectorKey(operation.selector),
             };
         case 'replace-component':
             return {
-                actorId: operation.nodeId,
+                entityUid: operation.nodeId,
                 scope: 'component-replace',
                 componentKey: getScenePrefabComponentSelectorKey(operation.selector),
             };
         case 'set-component-property':
             return {
-                actorId: operation.nodeId,
+                entityUid: operation.nodeId,
                 scope: 'component-property',
                 componentKey: getScenePrefabComponentSelectorKey(operation.selector),
                 path: operation.path,
             };
         case 'unset-component-property':
             return {
-                actorId: operation.nodeId,
+                entityUid: operation.nodeId,
                 scope: 'component-property',
                 componentKey: getScenePrefabComponentSelectorKey(operation.selector),
                 path: operation.path,
@@ -406,15 +406,15 @@ const operationsConflict = (
     const leftDescriptor = describeOperation(left);
     const rightDescriptor = describeOperation(right);
 
-    if (leftDescriptor.actorId !== rightDescriptor.actorId) {
+    if (leftDescriptor.entityUid !== rightDescriptor.entityUid) {
         return false;
     }
 
-    if (leftDescriptor.scope === 'actor-remove' || rightDescriptor.scope === 'actor-remove') {
+    if (leftDescriptor.scope === 'entity-remove' || rightDescriptor.scope === 'entity-remove') {
         return true;
     }
 
-    if (leftDescriptor.scope === 'actor-add' || rightDescriptor.scope === 'actor-add') {
+    if (leftDescriptor.scope === 'entity-add' || rightDescriptor.scope === 'entity-add') {
         return true;
     }
 
@@ -459,14 +459,14 @@ const createConflictKey = (left: OperationDescriptor, right: OperationDescriptor
     const componentKey = left.componentKey ?? right.componentKey;
     if (!componentKey) {
         return left.fieldKey === right.fieldKey && left.fieldKey
-            ? `actor:${left.actorId}:field:${left.fieldKey}`
-            : `actor:${left.actorId}`;
+            ? `entity:${left.entityUid}:field:${left.fieldKey}`
+            : `entity:${left.entityUid}`;
     }
 
     const path = left.path ?? right.path;
     return path && path.length > 0
-        ? `component:${left.actorId}:${componentKey}:path:${serializeScenePrefabPropertyPath(path)}`
-        : `component:${left.actorId}:${componentKey}`;
+        ? `component:${left.entityUid}:${componentKey}:path:${serializeScenePrefabPropertyPath(path)}`
+        : `component:${left.entityUid}:${componentKey}`;
 };
 
 const createConflict = (
@@ -477,61 +477,61 @@ const createConflict = (
     const baseState = createScenePrefabState(base);
     const localDescriptor = describeOperation(local);
     const incomingDescriptor = describeOperation(incoming);
-    const actor = baseState.actorIndex.get(localDescriptor.actorId);
+    const entity = baseState.entityIndex.get(localDescriptor.entityUid);
 
     let baseValue:
         | SceneSerializedValue
-        | SceneActorSnapshot
+        | SceneEntitySnapshot
         | SceneComponentSnapshot
         | string
         | number
         | boolean
         | null = null;
 
-    if (!actor) {
+    if (!entity) {
         baseValue = null;
     } else if (!localDescriptor.componentKey) {
         if (!localDescriptor.fieldKey) {
-            baseValue = cloneSceneActorSnapshot({
-                nodeId: actor.nodeId,
-                parentNodeId: actor.parentNodeId,
-                name: actor.name,
-                layer: actor.layer,
-                tag: actor.tag,
-                active: actor.active,
-                persistent: actor.persistent,
-                pooled: actor.pooled,
-                ...(actor.source ? { source: actor.source } : {}),
-                components: actor.components.map((component) => copySceneComponentSnapshot(component)),
+            baseValue = cloneSceneEntitySnapshot({
+                nodeId: entity.nodeId,
+                parentNodeId: entity.parentNodeId,
+                name: entity.name,
+                layer: entity.layer,
+                tag: entity.tag,
+                active: entity.active,
+                persistent: entity.persistent,
+                pooled: entity.pooled,
+                ...(entity.source ? { source: entity.source } : {}),
+                components: entity.components.map((component) => copySceneComponentSnapshot(component)),
             });
         } else {
             switch (localDescriptor.fieldKey) {
                 case 'parentNodeId':
-                    baseValue = actor.parentNodeId;
+                    baseValue = entity.parentNodeId;
                     break;
                 case 'name':
-                    baseValue = actor.name;
+                    baseValue = entity.name;
                     break;
                 case 'layer':
-                    baseValue = actor.layer;
+                    baseValue = entity.layer;
                     break;
                 case 'tag':
-                    baseValue = actor.tag;
+                    baseValue = entity.tag;
                     break;
                 case 'active':
-                    baseValue = actor.active;
+                    baseValue = entity.active;
                     break;
                 case 'persistent':
-                    baseValue = actor.persistent;
+                    baseValue = entity.persistent;
                     break;
                 case 'pooled':
-                    baseValue = actor.pooled;
+                    baseValue = entity.pooled;
                     break;
             }
         }
     } else {
         const componentEntry = indexComponents(
-            actor.components.map((component) => copySceneComponentSnapshot(component)),
+            entity.components.map((component) => copySceneComponentSnapshot(component)),
         ).get(localDescriptor.componentKey);
 
         if (!componentEntry) {
@@ -579,125 +579,125 @@ export const diffScenePrefabDefinitions = (
     const targetState = createScenePrefabState(target);
     const overrides: ScenePrefabOverrideOperation[] = [];
 
-    const removedActorIds = new Set<string>();
-    for (const actor of baseState.actors) {
-        if (!targetState.actorIndex.has(actor.nodeId)) {
-            removedActorIds.add(actor.nodeId);
+    const removedEntityUids = new Set<string>();
+    for (const entity of baseState.entities) {
+        if (!targetState.entityIndex.has(entity.nodeId)) {
+            removedEntityUids.add(entity.nodeId);
         }
     }
 
-    for (const actor of baseState.actors) {
-        if (!removedActorIds.has(actor.nodeId)) {
+    for (const entity of baseState.entities) {
+        if (!removedEntityUids.has(entity.nodeId)) {
             continue;
         }
 
-        if (actor.parentNodeId && removedActorIds.has(actor.parentNodeId)) {
+        if (entity.parentNodeId && removedEntityUids.has(entity.parentNodeId)) {
             continue;
         }
 
         overrides.push({
-            kind: 'remove-actor',
-            nodeId: actor.nodeId,
+            kind: 'remove-entity',
+            nodeId: entity.nodeId,
         });
     }
 
-    const addedActorIds = new Set<string>();
-    for (const actor of targetState.actors) {
-        if (!baseState.actorIndex.has(actor.nodeId)) {
-            addedActorIds.add(actor.nodeId);
+    const addedEntityUids = new Set<string>();
+    for (const entity of targetState.entities) {
+        if (!baseState.entityIndex.has(entity.nodeId)) {
+            addedEntityUids.add(entity.nodeId);
         }
     }
 
-    for (const actor of topologicallyOrderAddedActors(
-        targetState.actors.map((entry) => copySceneActorSnapshot(entry)),
-        addedActorIds,
+    for (const entity of topologicallyOrderAddedEntities(
+        targetState.entities.map((entry) => copySceneEntitySnapshot(entry)),
+        addedEntityUids,
     )) {
         overrides.push({
-            kind: 'add-actor',
-            actor: cloneSceneActorSnapshot(actor),
+            kind: 'add-entity',
+            entity: cloneSceneEntitySnapshot(entity),
         });
     }
 
-    for (const baseActor of baseState.actors) {
-        const targetActor = targetState.actorIndex.get(baseActor.nodeId);
-        if (!targetActor) {
+    for (const baseEntity of baseState.entities) {
+        const targetEntity = targetState.entityIndex.get(baseEntity.nodeId);
+        if (!targetEntity) {
             continue;
         }
 
-        if (baseActor.parentNodeId !== targetActor.parentNodeId) {
+        if (baseEntity.parentNodeId !== targetEntity.parentNodeId) {
             overrides.push({
-                kind: 'reparent-actor',
-                nodeId: baseActor.nodeId,
-                parentNodeId: targetActor.parentNodeId,
+                kind: 'reparent-entity',
+                nodeId: baseEntity.nodeId,
+                parentNodeId: targetEntity.parentNodeId,
             });
         }
 
-        if (baseActor.name !== targetActor.name) {
+        if (baseEntity.name !== targetEntity.name) {
             overrides.push({
-                kind: 'set-actor-field',
-                nodeId: baseActor.nodeId,
+                kind: 'set-entity-field',
+                nodeId: baseEntity.nodeId,
                 field: 'name',
-                value: targetActor.name,
+                value: targetEntity.name,
             });
         }
 
-        if (baseActor.layer !== targetActor.layer) {
+        if (baseEntity.layer !== targetEntity.layer) {
             overrides.push({
-                kind: 'set-actor-field',
-                nodeId: baseActor.nodeId,
+                kind: 'set-entity-field',
+                nodeId: baseEntity.nodeId,
                 field: 'layer',
-                value: targetActor.layer,
+                value: targetEntity.layer,
             });
         }
 
-        if (baseActor.tag !== targetActor.tag) {
+        if (baseEntity.tag !== targetEntity.tag) {
             overrides.push({
-                kind: 'set-actor-field',
-                nodeId: baseActor.nodeId,
+                kind: 'set-entity-field',
+                nodeId: baseEntity.nodeId,
                 field: 'tag',
-                value: targetActor.tag,
+                value: targetEntity.tag,
             });
         }
 
-        if (baseActor.active !== targetActor.active) {
+        if (baseEntity.active !== targetEntity.active) {
             overrides.push({
-                kind: 'set-actor-field',
-                nodeId: baseActor.nodeId,
+                kind: 'set-entity-field',
+                nodeId: baseEntity.nodeId,
                 field: 'active',
-                value: targetActor.active,
+                value: targetEntity.active,
             });
         }
 
-        if (baseActor.persistent !== targetActor.persistent) {
+        if (baseEntity.persistent !== targetEntity.persistent) {
             overrides.push({
-                kind: 'set-actor-field',
-                nodeId: baseActor.nodeId,
+                kind: 'set-entity-field',
+                nodeId: baseEntity.nodeId,
                 field: 'persistent',
-                value: targetActor.persistent,
+                value: targetEntity.persistent,
             });
         }
 
-        if (baseActor.pooled !== targetActor.pooled) {
+        if (baseEntity.pooled !== targetEntity.pooled) {
             overrides.push({
-                kind: 'set-actor-field',
-                nodeId: baseActor.nodeId,
+                kind: 'set-entity-field',
+                nodeId: baseEntity.nodeId,
                 field: 'pooled',
-                value: targetActor.pooled,
+                value: targetEntity.pooled,
             });
         }
 
         const baseComponents = indexComponents(
-            baseActor.components.map((component) => copySceneComponentSnapshot(component)),
+            baseEntity.components.map((component) => copySceneComponentSnapshot(component)),
         );
         const targetComponents = indexComponents(
-            targetActor.components.map((component) => copySceneComponentSnapshot(component)),
+            targetEntity.components.map((component) => copySceneComponentSnapshot(component)),
         );
 
         for (const [key, entry] of baseComponents) {
             if (!targetComponents.has(key)) {
                 overrides.push({
                     kind: 'remove-component',
-                    nodeId: baseActor.nodeId,
+                    nodeId: baseEntity.nodeId,
                     selector: entry.selector,
                 });
             }
@@ -707,7 +707,7 @@ export const diffScenePrefabDefinitions = (
             if (!baseComponents.has(key)) {
                 overrides.push({
                     kind: 'add-component',
-                    nodeId: baseActor.nodeId,
+                    nodeId: baseEntity.nodeId,
                     component: cloneSceneComponentSnapshot(entry.component),
                     index: entry.index,
                 });
@@ -723,7 +723,7 @@ export const diffScenePrefabDefinitions = (
             if (baseEntry.component.type !== targetEntry.component.type) {
                 overrides.push({
                     kind: 'replace-component',
-                    nodeId: baseActor.nodeId,
+                    nodeId: baseEntity.nodeId,
                     selector: baseEntry.selector,
                     component: cloneSceneComponentSnapshot(targetEntry.component),
                 });
@@ -731,7 +731,7 @@ export const diffScenePrefabDefinitions = (
             }
 
             diffComponentValue(
-                baseActor.nodeId,
+                baseEntity.nodeId,
                 baseEntry.selector,
                 baseEntry.component.data,
                 targetEntry.component.data,

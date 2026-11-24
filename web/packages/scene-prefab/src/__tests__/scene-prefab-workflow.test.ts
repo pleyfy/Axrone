@@ -7,7 +7,7 @@ import {
 } from '../scene-prefab-workflow';
 import { ScenePrefabResolutionError } from '../errors';
 import type {
-    SceneActorSnapshot,
+    SceneEntitySnapshot,
     SceneComponentSnapshot,
     ScenePrefabDefinition,
     ScenePrefabOverrideOperation,
@@ -16,12 +16,12 @@ import type {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-const makeActor = (
+const makeEntity = (
     nodeId: string,
-    name = 'Actor',
+    name = 'Entity',
     parentNodeId: string | null = null,
     components: SceneComponentSnapshot[] = [],
-): SceneActorSnapshot => ({
+): SceneEntitySnapshot => ({
     nodeId,
     parentNodeId,
     name,
@@ -35,11 +35,11 @@ const makeActor = (
 
 const makeDefinition = (
     id: string,
-    actors: SceneActorSnapshot[] = [makeActor('root', 'Root')],
+    entities: SceneEntitySnapshot[] = [makeEntity('root', 'Root')],
 ): ScenePrefabDefinition => ({
     id,
     kind: 'prefab',
-    actors,
+    entities,
 });
 
 // ---------------------------------------------------------------------------
@@ -95,11 +95,11 @@ describe('ScenePrefabWorkflow — registry', () => {
 
     it('local registration takes precedence over external', () => {
         const external: ScenePrefabRegistrySource = {
-            getPrefab: () => makeDefinition('p1', [makeActor('root', 'External')]),
+            getPrefab: () => makeDefinition('p1', [makeEntity('root', 'External')]),
         };
-        const local = makeDefinition('p1', [makeActor('root', 'Local')]);
+        const local = makeDefinition('p1', [makeEntity('root', 'Local')]);
         const wf = new ScenePrefabWorkflow({ prefabs: [local], registry: external });
-        expect(wf.getPrefab('p1')!.actors[0]!.name).toBe('Local');
+        expect(wf.getPrefab('p1')!.entities[0]!.name).toBe('Local');
     });
 
     it('register returns this for chaining', () => {
@@ -122,12 +122,12 @@ describe('ScenePrefabWorkflow — resolution', () => {
 
     it('resolves variant chain (base -> variant) with overrides', () => {
         const base = makeDefinition('base', [
-            makeActor('root', 'BaseRoot', null, [{ type: 'Transform', data: { x: 0 } }]),
+            makeEntity('root', 'BaseRoot', null, [{ type: 'Transform', data: { x: 0 } }]),
         ]);
         const variant: ScenePrefabDefinition = {
             id: 'variant',
             kind: 'variant',
-            actors: [makeActor('root', 'VariantRoot')],
+            entities: [makeEntity('root', 'VariantRoot')],
             base: { kind: 'registry', prefabId: 'base' },
             overrides: [{
                 kind: 'set-component-property',
@@ -141,15 +141,15 @@ describe('ScenePrefabWorkflow — resolution', () => {
         const simpleVariant: ScenePrefabDefinition = {
             id: 'variant',
             kind: 'variant',
-            actors: [makeActor('root', 'VariantRoot')],
+            entities: [makeEntity('root', 'VariantRoot')],
             base: { kind: 'registry', prefabId: 'base' },
         };
 
         const wf = new ScenePrefabWorkflow({ prefabs: [base, simpleVariant] });
         const result = wf.resolvePrefab({ kind: 'registry', prefabId: 'variant' });
         expect(result.definition.kind).toBe('resolved');
-        // variant overrides base actor name
-        expect(result.definition.actors[0]!.name).toBe('VariantRoot');
+        // variant overrides base entity name
+        expect(result.definition.entities[0]!.name).toBe('VariantRoot');
         // lineage includes base + variant
         expect(result.definition.lineage).toContain('base');
         expect(result.definition.lineage).toContain('variant');
@@ -157,12 +157,12 @@ describe('ScenePrefabWorkflow — resolution', () => {
 
     it('resolves nested instance with scoped nodeIds', () => {
         const nested = makeDefinition('nested-prefab', [
-            makeActor('inner-root', 'InnerRoot'),
+            makeEntity('inner-root', 'InnerRoot'),
         ]);
         const parent: ScenePrefabDefinition = {
             id: 'parent',
             kind: 'prefab',
-            actors: [makeActor('root', 'Root')],
+            entities: [makeEntity('root', 'Root')],
             nested: [{
                 instanceId: 'inst-1',
                 reference: { kind: 'registry', prefabId: 'nested-prefab' },
@@ -172,7 +172,7 @@ describe('ScenePrefabWorkflow — resolution', () => {
 
         const wf = new ScenePrefabWorkflow({ prefabs: [nested, parent] });
         const result = wf.resolvePrefab({ kind: 'registry', prefabId: 'parent' });
-        const nodeIds = result.definition.actors.map((a) => a.nodeId);
+        const nodeIds = result.definition.entities.map((a) => a.nodeId);
         expect(nodeIds).toContain('inst-1::inner-root');
     });
 
@@ -180,13 +180,13 @@ describe('ScenePrefabWorkflow — resolution', () => {
         const a: ScenePrefabDefinition = {
             id: 'a',
             kind: 'prefab',
-            actors: [makeActor('root')],
+            entities: [makeEntity('root')],
             base: { kind: 'registry', prefabId: 'b' },
         };
         const b: ScenePrefabDefinition = {
             id: 'b',
             kind: 'prefab',
-            actors: [makeActor('root')],
+            entities: [makeEntity('root')],
             base: { kind: 'registry', prefabId: 'a' },
         };
 
@@ -227,14 +227,14 @@ describe('ScenePrefabWorkflow — resolution', () => {
     });
 
     it('resolves inline reference', () => {
-        const inlineDef = makeDefinition('inline-p', [makeActor('root', 'Inline')]);
+        const inlineDef = makeDefinition('inline-p', [makeEntity('root', 'Inline')]);
         const wf = new ScenePrefabWorkflow();
         const result = wf.resolvePrefab({
             kind: 'inline',
             prefab: inlineDef,
         });
         expect(result.definition.kind).toBe('resolved');
-        expect(result.definition.actors[0]!.name).toBe('Inline');
+        expect(result.definition.entities[0]!.name).toBe('Inline');
     });
 
     it('resolves a definition directly (not via reference)', () => {
@@ -259,10 +259,10 @@ describe('ScenePrefabWorkflow — caching', () => {
     it('cache invalidated on register', () => {
         const wf = new ScenePrefabWorkflow({ prefabs: [makeDefinition('p1')] });
         wf.resolvePrefab({ kind: 'registry', prefabId: 'p1' });
-        wf.register(makeDefinition('p1', [makeActor('root', 'Updated')]));
+        wf.register(makeDefinition('p1', [makeEntity('root', 'Updated')]));
         const result = wf.resolvePrefab({ kind: 'registry', prefabId: 'p1' });
         expect(result.cacheHit).toBe(false);
-        expect(result.definition.actors[0]!.name).toBe('Updated');
+        expect(result.definition.entities[0]!.name).toBe('Updated');
     });
 
     it('cache invalidated on unregister', () => {
@@ -289,7 +289,7 @@ describe('ScenePrefabWorkflow — caching', () => {
         wf.resolvePrefab({ kind: 'registry', prefabId: 'p1' });
         const result = wf.resolvePrefab(
             { kind: 'registry', prefabId: 'p1' },
-            { liveOverrides: [{ kind: 'set-actor-field', nodeId: 'root', field: 'name', value: 'X' }] },
+            { liveOverrides: [{ kind: 'set-entity-field', nodeId: 'root', field: 'name', value: 'X' }] },
         );
         expect(result.cacheHit).toBe(false);
     });
@@ -297,11 +297,11 @@ describe('ScenePrefabWorkflow — caching', () => {
     it('cached results are isolated from caller mutation', () => {
         const wf = new ScenePrefabWorkflow({ prefabs: [makeDefinition('p1')] });
         const first = wf.resolvePrefab({ kind: 'registry', prefabId: 'p1' });
-        (first.definition.actors[0] as { name: string }).name = 'Mutated';
+        (first.definition.entities[0] as { name: string }).name = 'Mutated';
 
         const second = wf.resolvePrefab({ kind: 'registry', prefabId: 'p1' });
         expect(second.cacheHit).toBe(true);
-        expect(second.definition.actors[0]!.name).toBe('Root');
+        expect(second.definition.entities[0]!.name).toBe('Root');
     });
 });
 
@@ -313,10 +313,10 @@ describe('ScenePrefabWorkflow — applyOverrides', () => {
         const wf = new ScenePrefabWorkflow({ prefabs: [makeDefinition('p1')] });
         const result = wf.applyOverrides(
             { kind: 'registry', prefabId: 'p1' },
-            [{ kind: 'set-actor-field', nodeId: 'root', field: 'name', value: 'Overridden' }],
+            [{ kind: 'set-entity-field', nodeId: 'root', field: 'name', value: 'Overridden' }],
         );
         expect(result.kind).toBe('resolved');
-        expect(result.actors[0]!.name).toBe('Overridden');
+        expect(result.entities[0]!.name).toBe('Overridden');
     });
 });
 
@@ -326,7 +326,7 @@ describe('ScenePrefabWorkflow — applyOverrides', () => {
 describe('ScenePrefabWorkflow — diff and merge', () => {
     it('diff delegates to diffScenePrefabDefinitions', () => {
         const base = makeDefinition('base');
-        const modified = makeDefinition('modified', [makeActor('root', 'Changed')]);
+        const modified = makeDefinition('modified', [makeEntity('root', 'Changed')]);
         const wf = new ScenePrefabWorkflow({ prefabs: [base, modified] });
         const result = wf.diff(
             { kind: 'registry', prefabId: 'base' },
@@ -337,8 +337,8 @@ describe('ScenePrefabWorkflow — diff and merge', () => {
 
     it('merge delegates to mergeScenePrefabDefinitions', () => {
         const base = makeDefinition('base');
-        const local = makeDefinition('local', [makeActor('root', 'Local')]);
-        const incoming = makeDefinition('incoming', [makeActor('root', 'Incoming')]);
+        const local = makeDefinition('local', [makeEntity('root', 'Local')]);
+        const incoming = makeDefinition('incoming', [makeEntity('root', 'Incoming')]);
         const wf = new ScenePrefabWorkflow({ prefabs: [base, local, incoming] });
         const result = wf.merge(
             { kind: 'registry', prefabId: 'base' },

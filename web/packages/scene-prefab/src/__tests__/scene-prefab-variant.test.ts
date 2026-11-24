@@ -8,7 +8,7 @@ import { createScenePrefabWorkflow } from '../scene-prefab-workflow';
 import { encodeSceneValue } from '@axrone/scene-runtime/serialization';
 import type { ScenePrefabDefinition, ScenePrefabOverrideOperation } from '../types';
 
-const createActor = (
+const createEntity = (
     nodeId: string,
     name: string,
     parentNodeId: string | null = null,
@@ -41,9 +41,9 @@ describe('scene-prefab-variant', () => {
             const definition: ScenePrefabDefinition = {
                 id: 'prefab/hero',
                 kind: 'resolved',
-                actors: [
-                    createActor('root', 'Hero', null, [createTransform([0, 0, 0], 'cmp-t')]),
-                    createActor('weapon', 'Weapon', 'root', [createTransform([1, 0, 0])]),
+                entities: [
+                    createEntity('root', 'Hero', null, [createTransform([0, 0, 0], 'cmp-t')]),
+                    createEntity('weapon', 'Weapon', 'root', [createTransform([1, 0, 0])]),
                 ],
             };
 
@@ -51,23 +51,23 @@ describe('scene-prefab-variant', () => {
 
             expect(result.kind).toBe('prefab');
             expect(result.id).toBe('prefab/hero');
-            expect(result.actors).toHaveLength(2);
+            expect(result.entities).toHaveLength(2);
             expect(result.base).toBeUndefined();
             expect(result.nested).toBeUndefined();
             expect(result.overrides).toBeUndefined();
         });
 
-        it('strips source metadata from all actors', () => {
+        it('strips source metadata from all entities', () => {
             const definition: ScenePrefabDefinition = {
                 id: 'prefab/hero',
                 kind: 'resolved',
-                actors: [
+                entities: [
                     {
-                        ...createActor('root', 'Hero'),
+                        ...createEntity('root', 'Hero'),
                         source: { prefabId: 'prefab/hero', nodeId: 'root' },
                     },
                     {
-                        ...createActor('child', 'Child', 'root'),
+                        ...createEntity('child', 'Child', 'root'),
                         source: {
                             prefabId: 'prefab/weapon',
                             nodeId: 'weapon-root',
@@ -79,8 +79,8 @@ describe('scene-prefab-variant', () => {
 
             const result = unpackScenePrefabInstance(definition);
 
-            for (const actor of result.actors) {
-                expect(actor.source).toBeUndefined();
+            for (const entity of result.entities) {
+                expect(entity.source).toBeUndefined();
             }
         });
 
@@ -88,14 +88,14 @@ describe('scene-prefab-variant', () => {
             const definition: ScenePrefabDefinition = {
                 id: 'prefab/hero',
                 kind: 'prefab',
-                actors: [
-                    createActor('root', 'Hero', null, [createTransform([0, 0, 0], 'cmp-t')]),
+                entities: [
+                    createEntity('root', 'Hero', null, [createTransform([0, 0, 0], 'cmp-t')]),
                 ],
             };
 
             const overrides: ScenePrefabOverrideOperation[] = [
                 {
-                    kind: 'set-actor-field',
+                    kind: 'set-entity-field',
                     nodeId: 'root',
                     field: 'name',
                     value: 'Super Hero',
@@ -104,7 +104,7 @@ describe('scene-prefab-variant', () => {
 
             const result = unpackScenePrefabInstance(definition, overrides);
 
-            expect(result.actors[0]?.name).toBe('Super Hero');
+            expect(result.entities[0]?.name).toBe('Super Hero');
             expect(result.kind).toBe('prefab');
         });
 
@@ -112,7 +112,7 @@ describe('scene-prefab-variant', () => {
             const definition: ScenePrefabDefinition = {
                 id: 'prefab/hero',
                 kind: 'prefab',
-                actors: [createActor('root', 'Hero')],
+                entities: [createEntity('root', 'Hero')],
             };
 
             const result = unpackScenePrefabInstance(definition, [], 'unpacked/hero');
@@ -124,8 +124,8 @@ describe('scene-prefab-variant', () => {
             const basePrefab: ScenePrefabDefinition = {
                 id: 'prefab/base',
                 kind: 'prefab',
-                actors: [
-                    createActor('root', 'Base', null, [createTransform([0, 0, 0], 'cmp-t')]),
+                entities: [
+                    createEntity('root', 'Base', null, [createTransform([0, 0, 0], 'cmp-t')]),
                 ],
             };
 
@@ -133,10 +133,10 @@ describe('scene-prefab-variant', () => {
                 id: 'prefab/variant',
                 kind: 'variant',
                 base: { kind: 'registry', prefabId: 'prefab/base' },
-                actors: [],
+                entities: [],
                 overrides: [
                     {
-                        kind: 'set-actor-field',
+                        kind: 'set-entity-field',
                         nodeId: 'root',
                         field: 'name',
                         value: 'Variant Hero',
@@ -149,16 +149,16 @@ describe('scene-prefab-variant', () => {
             const unpacked = unpackScenePrefabInstance(resolved);
 
             expect(unpacked.kind).toBe('prefab');
-            expect(unpacked.actors[0]?.name).toBe('Variant Hero');
+            expect(unpacked.entities[0]?.name).toBe('Variant Hero');
             expect(unpacked.base).toBeUndefined();
-            expect(unpacked.actors[0]?.source).toBeUndefined();
+            expect(unpacked.entities[0]?.source).toBeUndefined();
         });
 
         it('preserves metadata when present', () => {
             const definition: ScenePrefabDefinition = {
                 id: 'prefab/hero',
                 kind: 'prefab',
-                actors: [createActor('root', 'Hero')],
+                entities: [createEntity('root', 'Hero')],
                 metadata: { version: '1.0.0' },
             };
 
@@ -175,14 +175,14 @@ describe('scene-prefab-variant', () => {
             expect(variant.id).toBe('prefab/elite');
             expect(variant.kind).toBe('variant');
             expect(variant.base).toEqual({ kind: 'registry', prefabId: 'prefab/base' });
-            expect(variant.actors).toEqual([]);
+            expect(variant.entities).toEqual([]);
             expect(variant.overrides).toEqual([]);
         });
 
         it('includes provided overrides as cloned operations', () => {
             const overrides: ScenePrefabOverrideOperation[] = [
                 {
-                    kind: 'set-actor-field',
+                    kind: 'set-entity-field',
                     nodeId: 'root',
                     field: 'name',
                     value: 'Elite',
@@ -220,8 +220,8 @@ describe('scene-prefab-variant', () => {
             const basePrefab: ScenePrefabDefinition = {
                 id: 'prefab/base',
                 kind: 'prefab',
-                actors: [
-                    createActor('root', 'Base Hero', null, [
+                entities: [
+                    createEntity('root', 'Base Hero', null, [
                         createTransform([0, 0, 0], 'cmp-t'),
                         { type: 'Stats', id: 'cmp-s', data: { damage: 10, health: 100 } },
                     ]),
@@ -230,7 +230,7 @@ describe('scene-prefab-variant', () => {
 
             const overrides: ScenePrefabOverrideOperation[] = [
                 {
-                    kind: 'set-actor-field',
+                    kind: 'set-entity-field',
                     nodeId: 'root',
                     field: 'name',
                     value: 'Elite Hero',
@@ -248,8 +248,8 @@ describe('scene-prefab-variant', () => {
             const workflow = createScenePrefabWorkflow({ prefabs: [basePrefab, variant] });
             const resolved = workflow.resolvePrefab(variant).definition;
 
-            expect(resolved.actors[0]?.name).toBe('Elite Hero');
-            const statsData = resolved.actors[0]?.components.find((c) => c.type === 'Stats')?.data;
+            expect(resolved.entities[0]?.name).toBe('Elite Hero');
+            const statsData = resolved.entities[0]?.components.find((c) => c.type === 'Stats')?.data;
             expect(statsData).toEqual(
                 encodeSceneValue({ damage: 50, health: 100 }),
             );
@@ -261,43 +261,43 @@ describe('scene-prefab-variant', () => {
             const base: ScenePrefabDefinition = {
                 id: 'prefab/base',
                 kind: 'prefab',
-                actors: [createActor('root', 'Hero', null, [createTransform([0, 0, 0])])],
+                entities: [createEntity('root', 'Hero', null, [createTransform([0, 0, 0])])],
             };
 
             const result = applyOverridesToBaseDefinition(base, []);
 
             expect(result.id).toBe('prefab/base');
             expect(result.kind).toBe('prefab');
-            expect(result.actors).toHaveLength(1);
-            expect(result.actors[0]?.name).toBe('Hero');
+            expect(result.entities).toHaveLength(1);
+            expect(result.entities[0]?.name).toBe('Hero');
             // Verify it's a clone
-            expect(result.actors).not.toBe(base.actors);
+            expect(result.entities).not.toBe(base.entities);
         });
 
-        it('applies set-actor-field overrides', () => {
+        it('applies set-entity-field overrides', () => {
             const base: ScenePrefabDefinition = {
                 id: 'prefab/base',
                 kind: 'prefab',
-                actors: [createActor('root', 'Hero')],
+                entities: [createEntity('root', 'Hero')],
             };
 
             const overrides: ScenePrefabOverrideOperation[] = [
-                { kind: 'set-actor-field', nodeId: 'root', field: 'name', value: 'Super Hero' },
-                { kind: 'set-actor-field', nodeId: 'root', field: 'active', value: false },
+                { kind: 'set-entity-field', nodeId: 'root', field: 'name', value: 'Super Hero' },
+                { kind: 'set-entity-field', nodeId: 'root', field: 'active', value: false },
             ];
 
             const result = applyOverridesToBaseDefinition(base, overrides);
 
-            expect(result.actors[0]?.name).toBe('Super Hero');
-            expect(result.actors[0]?.active).toBe(false);
+            expect(result.entities[0]?.name).toBe('Super Hero');
+            expect(result.entities[0]?.active).toBe(false);
         });
 
         it('applies set-component-property overrides', () => {
             const base: ScenePrefabDefinition = {
                 id: 'prefab/base',
                 kind: 'prefab',
-                actors: [
-                    createActor('root', 'Hero', null, [
+                entities: [
+                    createEntity('root', 'Hero', null, [
                         { type: 'Stats', id: 'cmp-s', data: { damage: 10, health: 100 } },
                     ]),
                 ],
@@ -314,58 +314,58 @@ describe('scene-prefab-variant', () => {
             ];
 
             const result = applyOverridesToBaseDefinition(base, overrides);
-            const statsData = result.actors[0]?.components[0]?.data;
+            const statsData = result.entities[0]?.components[0]?.data;
 
             expect(statsData).toEqual(encodeSceneValue({ damage: 99, health: 100 }));
         });
 
-        it('applies add-actor overrides', () => {
+        it('applies add-entity overrides', () => {
             const base: ScenePrefabDefinition = {
                 id: 'prefab/base',
                 kind: 'prefab',
-                actors: [createActor('root', 'Hero')],
+                entities: [createEntity('root', 'Hero')],
             };
 
             const overrides: ScenePrefabOverrideOperation[] = [
                 {
-                    kind: 'add-actor',
-                    actor: createActor('pet', 'Pet', 'root', [createTransform([0, 1, 0])]),
+                    kind: 'add-entity',
+                    entity: createEntity('pet', 'Pet', 'root', [createTransform([0, 1, 0])]),
                 },
             ];
 
             const result = applyOverridesToBaseDefinition(base, overrides);
 
-            expect(result.actors).toHaveLength(2);
-            expect(result.actors[1]?.nodeId).toBe('pet');
-            expect(result.actors[1]?.parentNodeId).toBe('root');
+            expect(result.entities).toHaveLength(2);
+            expect(result.entities[1]?.nodeId).toBe('pet');
+            expect(result.entities[1]?.parentNodeId).toBe('root');
         });
 
-        it('applies remove-actor overrides', () => {
+        it('applies remove-entity overrides', () => {
             const base: ScenePrefabDefinition = {
                 id: 'prefab/base',
                 kind: 'prefab',
-                actors: [
-                    createActor('root', 'Hero'),
-                    createActor('child', 'Child', 'root'),
+                entities: [
+                    createEntity('root', 'Hero'),
+                    createEntity('child', 'Child', 'root'),
                 ],
             };
 
             const overrides: ScenePrefabOverrideOperation[] = [
-                { kind: 'remove-actor', nodeId: 'child' },
+                { kind: 'remove-entity', nodeId: 'child' },
             ];
 
             const result = applyOverridesToBaseDefinition(base, overrides);
 
-            expect(result.actors).toHaveLength(1);
-            expect(result.actors[0]?.nodeId).toBe('root');
+            expect(result.entities).toHaveLength(1);
+            expect(result.entities[0]?.nodeId).toBe('root');
         });
 
         it('applies add-component and remove-component overrides', () => {
             const base: ScenePrefabDefinition = {
                 id: 'prefab/base',
                 kind: 'prefab',
-                actors: [
-                    createActor('root', 'Hero', null, [
+                entities: [
+                    createEntity('root', 'Hero', null, [
                         { type: 'Transform', id: 'cmp-t', data: { position: [0, 0, 0] } },
                         { type: 'OldScript', id: 'cmp-old', data: { enabled: true } },
                     ]),
@@ -389,7 +389,7 @@ describe('scene-prefab-variant', () => {
             ];
 
             const result = applyOverridesToBaseDefinition(base, overrides);
-            const componentTypes = result.actors[0]?.components.map((c) => c.type);
+            const componentTypes = result.entities[0]?.components.map((c) => c.type);
 
             expect(componentTypes).toEqual(['Transform', 'NewScript']);
         });
@@ -398,7 +398,7 @@ describe('scene-prefab-variant', () => {
             const base: ScenePrefabDefinition = {
                 id: 'prefab/resolved',
                 kind: 'resolved',
-                actors: [createActor('root', 'Hero')],
+                entities: [createEntity('root', 'Hero')],
             };
 
             const result = applyOverridesToBaseDefinition(base, []);
@@ -410,7 +410,7 @@ describe('scene-prefab-variant', () => {
             const base: ScenePrefabDefinition = {
                 id: 'prefab/base',
                 kind: 'prefab',
-                actors: [createActor('root', 'Hero')],
+                entities: [createEntity('root', 'Hero')],
                 metadata: { version: '3.0.0' },
             };
 
@@ -425,17 +425,17 @@ describe('scene-prefab-variant', () => {
             const basePrefab: ScenePrefabDefinition = {
                 id: 'prefab/base',
                 kind: 'prefab',
-                actors: [
-                    createActor('root', 'Hero', null, [
+                entities: [
+                    createEntity('root', 'Hero', null, [
                         createTransform([0, 0, 0], 'cmp-t'),
                         { type: 'Stats', id: 'cmp-s', data: { damage: 10 } },
                     ]),
-                    createActor('weapon', 'Sword', 'root', [createTransform([1, 0, 0])]),
+                    createEntity('weapon', 'Sword', 'root', [createTransform([1, 0, 0])]),
                 ],
             };
 
             const overrides: ScenePrefabOverrideOperation[] = [
-                { kind: 'set-actor-field', nodeId: 'root', field: 'name', value: 'Elite' },
+                { kind: 'set-entity-field', nodeId: 'root', field: 'name', value: 'Elite' },
                 {
                     kind: 'set-component-property',
                     nodeId: 'root',
@@ -455,22 +455,22 @@ describe('scene-prefab-variant', () => {
             const resolvedBase = workflow.resolvePrefab(basePrefab).definition;
             const unpackedDirect = unpackScenePrefabInstance(resolvedBase, overrides, 'result');
 
-            expect(unpackedVariant.actors).toEqual(unpackedDirect.actors);
+            expect(unpackedVariant.entities).toEqual(unpackedDirect.entities);
         });
 
         it('applyOverrides then unpack is idempotent for empty overrides', () => {
             const base: ScenePrefabDefinition = {
                 id: 'prefab/base',
                 kind: 'prefab',
-                actors: [
-                    createActor('root', 'Hero', null, [createTransform([1, 2, 3])]),
+                entities: [
+                    createEntity('root', 'Hero', null, [createTransform([1, 2, 3])]),
                 ],
             };
 
             const applied = applyOverridesToBaseDefinition(base, []);
             const unpacked = unpackScenePrefabInstance(applied);
 
-            expect(unpacked.actors).toEqual(applied.actors);
+            expect(unpacked.entities).toEqual(applied.entities);
         });
     });
 });
