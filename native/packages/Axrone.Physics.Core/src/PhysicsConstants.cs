@@ -4,7 +4,7 @@ using Axrone.Numeric;
 
 /// <summary>
 /// Canonical physics tuning: gravity defaults, velocity caps, slops,
-/// Baumgarte factors, solver budgets, correction caps and sleep thresholds.
+/// Baumgarte fentities, solver budgets, correction caps and sleep thresholds.
 /// Mirrors the web physics-core constant table; solvers and worlds take
 /// their defaults from here so both dimensions push with the same hand.
 /// </summary>

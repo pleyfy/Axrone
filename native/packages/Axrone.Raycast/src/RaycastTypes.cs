@@ -48,10 +48,10 @@ public enum RaycastLayer : uint
     /// <summary>Static scenery.</summary>
     Static = 1u << 1,
 
-    /// <summary>Dynamic actors.</summary>
+    /// <summary>Dynamic entities.</summary>
     Dynamic = 1u << 2,
 
-    /// <summary>Kinematic actors.</summary>
+    /// <summary>Kinematic entities.</summary>
     Kinematic = 1u << 3,
 
     /// <summary>Trigger volumes.</summary>
